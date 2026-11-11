@@ -16,6 +16,7 @@
 退出码：0 通过 / 1 门禁不通 / 2 环境错误
 """
 import io
+import hashlib
 import json, os, re, subprocess, sys
 
 # v91.36：Windows 控制台默认 GBK，print 里的 ✅/✗ 等字符会 UnicodeEncodeError 让钩子**崩在最后一步**
@@ -43,6 +44,21 @@ STRICT = False
 
 def _script_key(script):
     return os.path.basename(script)
+
+
+def _sig_of(rel):
+    """v157.28：给 census 记录绑定版本（smoke-test.js 的 md5 前 12 位）。
+
+    来历：2026-11-10 门禁被 Q3「分片漏跑 3 条」锁死 —— 全量基线 11-08、分片 11-09、
+    当前源码 11-10，三份分母来自三个版本，"缺 3 条"是版本差异。
+    没有版本签名的集合比对，等于用旧尺子量新代码。"""
+    try:
+        h = hashlib.md5()
+        with io.open(os.path.join(ROOT, rel), 'rb') as f:
+            h.update(f.read())
+        return h.hexdigest()[:12]
+    except Exception:
+        return ''
 
 
 def load_baseline():
@@ -128,6 +144,9 @@ DATASET = ('.workbuddy/tools/audit/audit_v89179c_dataset_refs.js', 'dataset 引�
 # v89.230（兵种链路批）：兵种链体检 —— 一个兵种从数据表链到六组节点（形态/图标三链/解锁/
 # 被引表/派生出口/退役残留）。**唯一实现**（smoke §230② 也调它）；gate 里直跑一遍更早报红。
 TROOPCHAIN = ('.workbuddy/tools/audit/audit_v89229b_troopchain.js', '兵种链体检', True)
+# v157.30（老板「增加旧币去路」）：旧币出口**行为**体检（扣钱 / 加兵 / 加珠宝 / 冷却）。
+# 不塞进 smoke：那要动 4.7 万行的状态剧本与分片生成；这条只需无头真调一遍，1 秒。
+GOLDSINK = ('.workbuddy/tools/audit/audit_v15730_goldsink.js', '旧币出口', True)
 
 
 def _find_node():
@@ -309,6 +328,12 @@ def judge(r, script, label):
                 _cen['full'] = _pass + _fail + _warn + _skip
                 _cen['fullDetail'] = {'pass': _pass, 'fail': _fail, 'warn': _warn, 'skip': _skip}
                 _cen['fullAt'] = __import__('time').strftime('%Y-%m-%dT%H:%M:%S')
+                _old_sig = _cen.get('fullSig') or ''
+                _new_sig = _sig_of('smoke-test.js')
+                # 源码变了 → 旧的标题集合与新分母不是同一份代码，留着会误导 Q3
+                if _old_sig and _new_sig and _old_sig != _new_sig:
+                    _cen['titles'] = None
+                _cen['fullSig'] = _new_sig
                 try:
                     with io.open(_cf, 'w', encoding='utf-8', newline='\n') as _f:
                         json.dump(_cen, _f, ensure_ascii=False, indent=1)
@@ -495,13 +520,13 @@ def main():
     node_path = _find_node_path()
 
     if full:
-        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN]
+        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN, GOLDSINK]
         why = '--full 强制三件套 + 数据表卫生全跑'
     elif needs_full(files):
-        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN]
+        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN, GOLDSINK]
         why = '改动了代码（index.html 或 js/**）→ 三件套 + 数据表卫生全跑'
     else:
-        plan = [TESTS[0], TABLES, DATASET, TROOPCHAIN]
+        plan = [TESTS[0], TABLES, DATASET, TROOPCHAIN, GOLDSINK]
         why = '未触及代码 → 只跑 audit + 数据表卫生 + dataset 引用（各 1~2 秒兜底）'
 
     print(f'━━ 三件套门禁 ━━ {why}')
@@ -542,7 +567,11 @@ def main():
     # ============================================================
     _ta = os.path.join(ROOT, '.workbuddy', 'tools', 'prof', 'tier_audit.js')
     if os.path.exists(_ta):
-        _r = subprocess.run([node, _ta], cwd=ROOT, capture_output=True, timeout=120)
+        # v157.28：GATE_SCOPE=1 —— 告诉自审器"这次判的是串行门禁"。
+        # 分片覆盖（Q3）只影响内环加速，不该阻断一条不读分片的链（此前它把门禁锁死）。
+        _env_ta = dict(os.environ)
+        _env_ta['GATE_SCOPE'] = '1'
+        _r = subprocess.run([node, _ta], cwd=ROOT, capture_output=True, timeout=120, env=_env_ta)
         _out = (_r.stdout or b'').decode('utf-8', 'replace')
         _err = (_r.stderr or b'').decode('utf-8', 'replace')
         if _r.returncode != 0:

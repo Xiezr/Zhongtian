@@ -32,6 +32,63 @@ const YMD = TODAY.getFullYear() + '-' +
 const rows = [];      /* { name, ok, detail } */
 function add(name, ok, detail) { rows.push({ name, ok: !!ok, detail: detail || '' }); }
 
+/* ============================================================
+ * --layers：自检体系的**架构总览**（v157.28 · 老板令「自检体系架构」）
+ * ------------------------------------------------------------
+ * 为什么要有它：分层写进文档就会过期 —— 这里把"每一层的入口在不在册、
+ * 最近一次跑出什么"直接读产物打出来，架构才是可验证的，不是纸面的。
+ * 只读、不跑任何测试（毫秒级）。
+ * ============================================================ */
+if (process.argv.indexOf('--layers') >= 0) {
+  const has = (p) => fs.existsSync(path.join(ROOT, p)) ? '✅' : '❌';
+  const j = (p) => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, p), 'utf8')); } catch (e) { return null; } };
+  const cen = j('.workbuddy/smoke-census.json') || {};
+  const vis = j('.workbuddy/visual-last.json') || null;
+  const fd = cen.fullDetail || null;
+  const smokeLast = cen.fullAt
+    ? (cen.fullAt.replace('T', ' ').slice(5) + '　' + (fd
+      ? (fd.pass + ' 通过 / ' + fd.fail + ' 失败 / ' + fd.warn + ' 待修 / ' + fd.skip + ' 跳过')
+      : (cen.full + ' 条')))
+    : '—（跑一次 gate 才有分母）';
+  const splitLast = cen.lastSplit
+    ? (String(cen.lastSplit.at).replace('T', ' ').slice(5) + '　' + cen.lastSplit.total + ' 条 / '
+       + cen.lastSplit.wallSec + 's / ' + cen.lastSplit.parts + ' 分片'
+       + (cen.lastSplit.sig ? '' : '　⚠️ 无版本签名'))
+    : '—（跑一次 smoke_fast）';
+  const visLast = vis
+    ? (String(vis.at || '').replace('T', ' ').slice(5) + '　' + (vis.results || []).length + ' 场景 / '
+       + (vis.red ? ('❌ ' + vis.red + ' 不符') : '✅ 一致') + (vis.warn ? (' / ⚠️ ' + vis.warn + ' 微差') : ''))
+    : '—（跑一次 visual_baseline）';
+
+  const L = [
+    ['L0', '结构契约', 'audit.js + tables + dataset + troopchain', has('audit.js'), '随 gate 跑（~6s 合计）'],
+    ['L1', '数值规则', '.workbuddy/tools/fast/fast-test.js', has('.workbuddy/tools/fast/fast-test.js'), '14 条 · 0.16s（内环）'],
+    ['L2', '守恒律', 'invariants-test.js', has('invariants-test.js'), '随 gate 跑（~6s）'],
+    ['L3', '状态剧本', 'smoke-test.js（串行·唯一裁判）', has('smoke-test.js'), smokeLast],
+    ['L3b', '分片加速', 'smoke_fast.js（内环·不当裁判）', has('.workbuddy/tools/prof/smoke_fast.js'), splitLast],
+    ['L4', '链路', 'chain-audit.js', has('chain-audit.js'), '随 gate 跑（~2s）'],
+    ['L5', '真实 DOM', 'e2e-test.js', has('e2e-test.js'), '随 gate 跑（~3min · 1107 条）'],
+    ['L6', '实机性能', '.workbuddy/tools/audit/audit_v125b_perf_ui.js', has('.workbuddy/tools/audit/audit_v125b_perf_ui.js'), '手动（动界面必跑）'],
+    ['L6b', '视觉基线', '.workbuddy/tools/prof/visual_baseline.js', has('.workbuddy/tools/prof/visual_baseline.js'), visLast],
+    ['L6c', '世界长跑', '.workbuddy/tools/sim/sim-run.js', has('.workbuddy/tools/sim/sim-run.js'), '手动（世界层改动必跑）'],
+    ['L7', '元判据', '.workbuddy/tools/prof/tier_audit.js', has('.workbuddy/tools/prof/tier_audit.js'), 'gate 前置 · 六问 · 0.5s'],
+  ];
+  /* 中文按 2 列宽对齐（否则表格在等宽字体里歪） */
+  const w = (s) => String(s).replace(/[\u4e00-\u9fff「」（）：、，·]/g, '__').length;
+  const pad = (s, n) => String(s) + ' '.repeat(Math.max(0, n - w(s)));
+  const out = [];
+  out.push('自检体系架构（层 → 入口 → 在册 → 最近一次）');
+  out.push('判据唯一出口：python .workbuddy/tools/git/gate.py --full（--strict 可推翻一切豁免）');
+  out.push('');
+  out.push('  ' + pad('层', 4) + pad('职责', 12) + pad('入口', 52) + pad('在册', 6) + '最近一次');
+  L.forEach((r) => out.push('  ' + pad(r[0], 4) + pad(r[1], 12) + pad(r[2], 52) + pad(r[3], 6) + r[4]));
+  out.push('');
+  out.push('  ⚠️ L3b 分片是加速器，结论只作内环参考；裁判看 L3 串行。');
+  out.push('  ⚠️ L6 三项手动 —— 这是当前架构最大的空档（"动了界面/世界却没人跑"）。');
+  console.log(out.join('\n'));
+  process.exit(0);
+}
+
 function run(cmd, args, timeout) {
   try {
     const out = execFileSync(cmd, args, {
@@ -60,11 +117,21 @@ function listIn(file, marker) {
   return (seg.match(/'([a-z0-9]+)'/g) || []).map(function (s) { return s.replace(/'/g, ''); });
 }
 (function checkManifests() {
-  const b = listIn('.workbuddy/tools/patch/build_bundle.py', 'ORDER = [');
+  /* v156.28 起清单**唯一权威 = js/modules.json 的 layout.order**：
+     build_bundle.py 读它，audit 直接 `require(...).order`（MODULES / REF_MODULES 同源）。
+     老逻辑在三处脚本里各找一个字面量 —— 迁移之后必然报「有一份没解析到」，
+     而且那项红跟代码健康度毫无关系（纯脚本过期）。
+     现在只守一件事：smoke 里那份**镜像**（§591② 守卫用）必须与权威清单逐项相等。 */
+  const layFile = path.join(ROOT, 'js/modules.json');
+  if (!fs.existsSync(layFile)) { add('四份模块清单一致', false, '缺 js/modules.json'); return; }
+  let lay = null;
+  try { lay = JSON.parse(fs.readFileSync(layFile, 'utf8')).layout; } catch (e) { lay = null; }
+  if (!lay || !lay.order || !lay.order.length) { add('四份模块清单一致', false, 'modules.json 缺 layout.order'); return; }
+  const b = lay.order;
   const s = listIn('smoke-test.js', 'var ORDER = [');
-  const m = listIn('audit.js', 'const MODULES = [');
-  const r = listIn('audit.js', 'const REF_MODULES = [');
-  if (!b || !s || !m || !r) { add('四份模块清单一致', false, '有一份没解析到'); return; }
+  /* audit 侧不再有字面量（MODULES = require('./js/modules.json').order，REF_MODULES = MODULES） */
+  const m = b, r = b;
+  if (!b || !s) { add('四份模块清单一致', false, '有一份没解析到'); return; }
   const eq = (a, c) => a.length === c.length && a.every((x, i) => x === c[i]);
   const problems = [];
   /* build_bundle ORDER 与 smoke 守卫 ORDER 必须是**完全同一份**（同一个视角：加载顺序）*/

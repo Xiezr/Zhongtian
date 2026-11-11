@@ -338,15 +338,26 @@ import './core.js';
    * 消费链已就绪：canAffordIn / payCostIn / refundCert / cancelRefundOf / costString /
    *   buildCostTip 均**已支持 gold 键**（v89.161 起），本表即插即用、零新出口。
    * ⚠ 调平衡只动这张表（tiers 数组 + from）。
+   *
+   * v157.30（老板「增加旧币去路」）：
+   *   ① Lv13 起**不再封顶 24,000** —— 旧都能盖到 24 级，后期一座城的营造旧币
+   *      却和 12 级一样贵，等于告诉玩家"钱没处花"。改为每级 ×1.45、单级封顶 300 万：
+   *      Lv13 34,800 → Lv16 10.6 万 → Lv20 46.9 万 → Lv24 207 万。
+   *   ② Lv9~12 的四个值**一字不动**（前期流畅是钉死过的护栏）。
    * ============================================================ */
-  DATA.BUILD_GOLD = { from: 9, tiers: [3000, 6000, 12000, 24000] };
+  DATA.BUILD_GOLD = { from: 9, tiers: [3000, 6000, 12000, 24000], growth: 1.45, cap: 3000000 };
   function buildGoldAt(targetLevel) {
     var G0 = DATA.BUILD_GOLD;
     if (!G0 || !G0.tiers || !G0.tiers.length) return 0;
     if (targetLevel < G0.from) return 0;
     var i = targetLevel - G0.from;
-    if (i >= G0.tiers.length) i = G0.tiers.length - 1;
-    return G0.tiers[i];
+    if (i < G0.tiers.length) return G0.tiers[i];
+    /* Lv13+：以 12 级为基数几何递增（旧币要跟着工程量一起涨，否则后期等于免费） */
+    var last = G0.tiers[G0.tiers.length - 1];
+    var k = i - (G0.tiers.length - 1);          /* Lv13 → 1 */
+    var g = G0.growth || 1;
+    var v = Math.round(last * Math.pow(g, k));
+    return Math.min(G0.cap || 1e12, v);
   }
   DATA.buildGoldAt = buildGoldAt;    /* 探针/断言同读（唯一出口） */
 
@@ -2187,10 +2198,11 @@ import './core.js';
       buildSlot: i >= 16 ? 2 : (i >= 8 ? 1 : 0),
       wildCap: Math.floor(i / 3),
       genCap: Math.floor(i / 4),
-      /* v89.102（老板「威望每级解锁建筑等级上限 1 级」）：**主城专属** ——
-         这里只出"威望允许解锁多少级"，是否生效由 `GAME.rankBuildCapOf(city)`
-         按主城判定（唯一出口；别处不要再拿这个键自己拼）。 */
-      buildCap: i * DATA.MAIN_CITY_BUILD_PER_RANK,
+      /* ⛔ v157.29（调参自检第 1 轮）：`buildCap` 字段**已删**。
+         它写的是"第二份"威望解锁量，全仓**零读取**（调参接线探针 + 源码扫描双向确认）；
+         真正的唯一出口 = `GAME.rankBuildCapOf`（state.js），读
+         `DATA.MAIN_CITY.buildCapPerRank × rank` 并夹在 `RANK_BUILD_LIFT_MAX` 内。
+         留着它 = 让人以为改这里有用 —— 这正是"调了没效果"的典型来源。 */
     };
   });
   /* v89.102：**档数 ⇄ 上限解锁量的守卫**。
@@ -4658,6 +4670,24 @@ import './core.js';
     { id: 'summon', name: '名城建制', icon: '🏛', minType: ['zhou', 'capital'],
       cdDays: 3, cost: { gold: 100000 },
       desc: '调集工匠扩建城防：本城城防（def）永久 +3（每三日一次）。' },
+    /* ================================================================
+     * v157.30（老板「增加旧币去路」）—— 两条**后期专属**的旧币出口。
+     * ----------------------------------------------------------------
+     * 为什么挂在名城选项上：旧币通胀只在后期出现（前期 1 城小税收），
+     * 而名城正是后期的常态。挂这里 = 不用新开面板、不用新开系统，
+     * 一条数据 + 一个分支就能跑；面板会自动渲染（它遍历本表）。
+     * 定价口径：让"花掉一天收入"换一件立刻见效的东西 ——
+     *   雇佣民壮 20 万（后期一座城约半天~一天税收）→ 1000 兵立即驻防；
+     *   旧币收珠 50 万（约一周一次）→ 1 颗珠宝（平时只能打野地/奇观出）。
+     * ⚠ 只吸钱、不产钱：兵会耗粮会死，珠宝只用于高级建造/打造 —— 不加剧通胀。
+     * ================================================================ */
+    { id: 'hire', name: '雇佣民壮', icon: '🛠️', minType: ['jun', 'zhou', 'capital'],
+      cdDays: 2, cost: { gold: 200000 }, troops: { buxingji: 1000 },
+      desc: '旧币雇一支民壮：1000 名步兵立即入城驻防，不占募兵队列、不耗幸存者（每两日一次）。' },
+    { id: 'jewelbuy', name: '旧币收珠', icon: '💎', minType: ['capital'],
+      cdDays: 7, cost: { gold: 500000 },
+      jewelPool: ['w_stariron', 'w_crystal', 'w_meteor'],
+      desc: '向旧都的旧货商收一颗珠宝（星铁/晶核/陨尘随机），平时只能靠野地与奇观（每周一次）。' },
   ];
 
   /* 未占据名城的库存派生（v60 · 需求 6）
@@ -4971,9 +5001,10 @@ import './core.js';
     fireLoss: 0.30,          /* 烧掉三成棚子 */
     clearHearts: 3,          /* 推平棚户：城里民心立刻回来这么多 */
     leaveChance: 0.35,       /* 棚户挤到 75% 上限 → 每月有人出走开新村的概率 */
-    leavePct: 0.35,          /* 出走的人占棚户多少 */
-    abandonAt: 0.20,         /* 人口低于居所两成 → 计入荒废计数 */
-    abandonNeedMonths: 3     /* **连续**这么多个月才真塌（一个月没跟上只是还在长）*/
+    leavePct: 0.35           /* 出走的人占棚户多少 */
+    /* v157.19：`abandonAt / abandonNeedMonths`（荒废降级：人口低于两成连续 3 个月 → 每月塌 1 级）
+       **字段本身也删掉了**。v157.16 只删了逻辑、把字段留着当"占位"，那属于半拉子：
+       配置里还写着阈值，下一个读代码的人（包括我）会以为这条规则还在。 */
   };
 
   DATA.VILLAGE = {

@@ -20,16 +20,15 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const JS = path.join(ROOT, 'js');
 
-/* ---------- 一、从 build_bundle.py 取三包分组（唯一来源，不另抄一份） ---------- */
-const py = fs.readFileSync(path.join(ROOT, '.workbuddy/tools/patch/build_bundle.py'), 'utf8');
-const grab = (key) => {
-  const m = new RegExp(key + "\\s*=\\s*\\[([\\s\\S]*?)\\]").exec(py);
-  if (!m) throw new Error('build_bundle.py 里找不到 ' + key);
-  return m[1].match(/'([a-z0-9_]+)'/g).map((s) => s.replace(/'/g, ''));
-};
-const ORDER = grab('ORDER');
-const WAR = grab('WAR');
-const UI = grab('UI');
+/* ---------- 一、三包分组（唯一来源：js/modules.json 的 layout） ----------
+ * v156.28 起分组已从 build_bundle.py 迁到 modules.json，
+ * 老脚本还去 py 里 `grab('ORDER')` → 直接抛「找不到 ORDER」，
+ * 整个架构棘轮变成永久红（与代码健康度无关）。这里改成读新来源。 */
+const LAY = JSON.parse(fs.readFileSync(path.join(JS, 'modules.json'), 'utf8')).layout;
+if (!LAY || !LAY.order || !LAY.order.length) throw new Error('js/modules.json 里没有 layout.order');
+const ORDER = LAY.order;
+const WAR = LAY.war || [];
+const UI = LAY.uiSplit || [];
 const groupOf = {};
 ORDER.forEach((m) => { groupOf[m] = WAR.indexOf(m) >= 0 ? 'war' : (UI.indexOf(m) >= 0 ? 'ui' : 'core'); });
 

@@ -57,7 +57,8 @@ const REF_OK = {
   'GAME.icons': 'icons.js 挂载', 'GAME.gicons': 'gicons.js 挂载',
   'GAME.bitmaps': 'bitmaps.js 挂载', 'GAME.portraits': 'portraits.js 挂载',
   'GAME.gltf': 'gltf.js 挂载（GLB 加载器）', 'GAME.gltfVersion': 'gltf.js 挂载锚',
-  'GAME.battle.provokeReward': '暂留（battle.js:1649 有定义、无调用）：叫阵/挑衅并入竞技场口径待老板拍板'
+  'GAME.battle.provokeReward': '暂留（battle.js:1649 有定义、无调用）：叫阵/挑衅并入竞技场口径待老板拍板',
+  'mat.customProgramCacheKey': 'three.js 的回调（onBeforeCompile 的着色器缓存键）：由 three 内部调用，项目代码不直接引用'
     + '（见 docs/HANDOVER.md:256「需要老板拍板」清单），先留着避免 v144 叫阵奖励断链；拍板后接线或删掉本行',
 };
 

@@ -488,15 +488,26 @@ window.GAME = window.GAME || {};
    * 消费链已就绪：canAffordIn / payCostIn / refundCert / cancelRefundOf / costString /
    *   buildCostTip 均**已支持 gold 键**（v89.161 起），本表即插即用、零新出口。
    * ⚠ 调平衡只动这张表（tiers 数组 + from）。
+   *
+   * v157.30（老板「增加旧币去路」）：
+   *   ① Lv13 起**不再封顶 24,000** —— 旧都能盖到 24 级，后期一座城的营造旧币
+   *      却和 12 级一样贵，等于告诉玩家"钱没处花"。改为每级 ×1.45、单级封顶 300 万：
+   *      Lv13 34,800 → Lv16 10.6 万 → Lv20 46.9 万 → Lv24 207 万。
+   *   ② Lv9~12 的四个值**一字不动**（前期流畅是钉死过的护栏）。
    * ============================================================ */
-  DATA.BUILD_GOLD = { from: 9, tiers: [3000, 6000, 12000, 24000] };
+  DATA.BUILD_GOLD = { from: 9, tiers: [3000, 6000, 12000, 24000], growth: 1.45, cap: 3000000 };
   function buildGoldAt(targetLevel) {
     var G0 = DATA.BUILD_GOLD;
     if (!G0 || !G0.tiers || !G0.tiers.length) return 0;
     if (targetLevel < G0.from) return 0;
     var i = targetLevel - G0.from;
-    if (i >= G0.tiers.length) i = G0.tiers.length - 1;
-    return G0.tiers[i];
+    if (i < G0.tiers.length) return G0.tiers[i];
+    /* Lv13+：以 12 级为基数几何递增（旧币要跟着工程量一起涨，否则后期等于免费） */
+    var last = G0.tiers[G0.tiers.length - 1];
+    var k = i - (G0.tiers.length - 1);          /* Lv13 → 1 */
+    var g = G0.growth || 1;
+    var v = Math.round(last * Math.pow(g, k));
+    return Math.min(G0.cap || 1e12, v);
   }
   DATA.buildGoldAt = buildGoldAt;    /* 探针/断言同读（唯一出口） */
 
@@ -2337,10 +2348,11 @@ window.GAME = window.GAME || {};
       buildSlot: i >= 16 ? 2 : (i >= 8 ? 1 : 0),
       wildCap: Math.floor(i / 3),
       genCap: Math.floor(i / 4),
-      /* v89.102（老板「威望每级解锁建筑等级上限 1 级」）：**主城专属** ——
-         这里只出"威望允许解锁多少级"，是否生效由 `GAME.rankBuildCapOf(city)`
-         按主城判定（唯一出口；别处不要再拿这个键自己拼）。 */
-      buildCap: i * DATA.MAIN_CITY_BUILD_PER_RANK,
+      /* ⛔ v157.29（调参自检第 1 轮）：`buildCap` 字段**已删**。
+         它写的是"第二份"威望解锁量，全仓**零读取**（调参接线探针 + 源码扫描双向确认）；
+         真正的唯一出口 = `GAME.rankBuildCapOf`（state.js），读
+         `DATA.MAIN_CITY.buildCapPerRank × rank` 并夹在 `RANK_BUILD_LIFT_MAX` 内。
+         留着它 = 让人以为改这里有用 —— 这正是"调了没效果"的典型来源。 */
     };
   });
   /* v89.102：**档数 ⇄ 上限解锁量的守卫**。
@@ -4808,6 +4820,24 @@ window.GAME = window.GAME || {};
     { id: 'summon', name: '名城建制', icon: '🏛', minType: ['zhou', 'capital'],
       cdDays: 3, cost: { gold: 100000 },
       desc: '调集工匠扩建城防：本城城防（def）永久 +3（每三日一次）。' },
+    /* ================================================================
+     * v157.30（老板「增加旧币去路」）—— 两条**后期专属**的旧币出口。
+     * ----------------------------------------------------------------
+     * 为什么挂在名城选项上：旧币通胀只在后期出现（前期 1 城小税收），
+     * 而名城正是后期的常态。挂这里 = 不用新开面板、不用新开系统，
+     * 一条数据 + 一个分支就能跑；面板会自动渲染（它遍历本表）。
+     * 定价口径：让"花掉一天收入"换一件立刻见效的东西 ——
+     *   雇佣民壮 20 万（后期一座城约半天~一天税收）→ 1000 兵立即驻防；
+     *   旧币收珠 50 万（约一周一次）→ 1 颗珠宝（平时只能打野地/奇观出）。
+     * ⚠ 只吸钱、不产钱：兵会耗粮会死，珠宝只用于高级建造/打造 —— 不加剧通胀。
+     * ================================================================ */
+    { id: 'hire', name: '雇佣民壮', icon: '🛠️', minType: ['jun', 'zhou', 'capital'],
+      cdDays: 2, cost: { gold: 200000 }, troops: { buxingji: 1000 },
+      desc: '旧币雇一支民壮：1000 名步兵立即入城驻防，不占募兵队列、不耗幸存者（每两日一次）。' },
+    { id: 'jewelbuy', name: '旧币收珠', icon: '💎', minType: ['capital'],
+      cdDays: 7, cost: { gold: 500000 },
+      jewelPool: ['w_stariron', 'w_crystal', 'w_meteor'],
+      desc: '向旧都的旧货商收一颗珠宝（星铁/晶核/陨尘随机），平时只能靠野地与奇观（每周一次）。' },
   ];
 
   /* 未占据名城的库存派生（v60 · 需求 6）
@@ -5121,9 +5151,10 @@ window.GAME = window.GAME || {};
     fireLoss: 0.30,          /* 烧掉三成棚子 */
     clearHearts: 3,          /* 推平棚户：城里民心立刻回来这么多 */
     leaveChance: 0.35,       /* 棚户挤到 75% 上限 → 每月有人出走开新村的概率 */
-    leavePct: 0.35,          /* 出走的人占棚户多少 */
-    abandonAt: 0.20,         /* 人口低于居所两成 → 计入荒废计数 */
-    abandonNeedMonths: 3     /* **连续**这么多个月才真塌（一个月没跟上只是还在长）*/
+    leavePct: 0.35           /* 出走的人占棚户多少 */
+    /* v157.19：`abandonAt / abandonNeedMonths`（荒废降级：人口低于两成连续 3 个月 → 每月塌 1 级）
+       **字段本身也删掉了**。v157.16 只删了逻辑、把字段留着当"占位"，那属于半拉子：
+       配置里还写着阈值，下一个读代码的人（包括我）会以为这条规则还在。 */
   };
 
   DATA.VILLAGE = {
@@ -9600,6 +9631,9 @@ window.GAME = window.GAME || {};
    * ============================================================ */
   GAME.cityLvOf = function (city) {
     if (!city) return 1;
+    /* v157f：占领来的名城沿用**占领那一刻定格的档位上限**（见 battle 的 tierCap）。
+       放在最前：哪怕 type 字段后来被别的流程动过，城等级也不该跟着变。 */
+    if (city.tierCap) return city.tierCap;
     var T = DATA.NPC_TIER_LV || {};
     if (city.type && T[city.type] != null) return T[city.type];        /* 名城：档位等级 */
     if (city.type === 'self') {                                        /* 自建城：跟随政务厅 */
@@ -10844,6 +10878,25 @@ window.GAME = window.GAME || {};
         else if ((R[k] || 0) < cap) GAME.city.add(ct, k, prod[k] * secReal, true);
       }
       /* v89.36：军粮维持耗粮已废除（不再扣粮、不再缺粮计时）。 */
+      /* ============================================================
+       * v157.14（老板「幸存者增长速度似乎存在问题」）—— **批量段漏了幸存者**
+       * ------------------------------------------------------------
+       * 离线补算分两段（见 offlineCatchup）：
+       *   · 前 OFFLINE_EXACT_MAX（3600 秒）逐秒 tickOnce —— 幸存者正常爬升；
+       *   · 超出部分走本函数 —— 资源/体力/队列/历法都补了，**唯独没有幸存者**。
+       * 实测（tools/_pop-probe.js）：simulateBulk(60) 下 pop 增量恰好 0。
+       * 后果：挂机 8 小时只补前 1 小时的人；补满要 14 现实小时的设定，
+       *       在"离线"这条路上永远走不完（玩家观感 = 增长速度不对）。
+       * 口径与 tickOnce 逐字一致：effPopCapOf 封顶、popGrowthOf（人/现实小时）
+       * ÷3600 × 现实秒，且只封增长不削存量。
+       * ============================================================ */
+      var _mxP = GAME.effPopCapOf(ct);
+      var _Rp = GAME.res(ct);
+      _Rp.pop = _Rp.pop || 0;
+      if (_Rp.pop < _mxP) {
+        _Rp.pop = Math.min(_mxP, _Rp.pop + GAME.popGrowthOf(ct) / 3600 * secReal);
+      }
+      ct.maxPop = _mxP;
     });
     /* 英雄体力/精力回满、忠诚（v14.1 同样不随时间衰减，与在线口径一致） */
     (function () {
@@ -11893,9 +11946,10 @@ window.GAME = window.GAME || {};
     /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
        玩家什么都不做，这个数会变小；这就是"重建"值得做的理由。 */
     if (GAME.village && GAME.village.tick) GAME.village.tick();
-    /* v93.5：城会自己长（棚户 / 出走开垦）也会自己朽（荒废）——
+    /* v93.5：城会自己长（棚户 / 出走开垦）——
        按月推演：按秒会让它变成"数值在跳"，按月才会让玩家某天抬头发现
-       "城墙外怎么多了一片棚子"。 */
+       "城墙外怎么多了一片棚子"。
+       v157.16：不再有"自己朽"（荒废降级已退役，见 growth.js 的 C 段注释）。 */
     if (GAME.growth && GAME.growth.tick) GAME.growth.tick();
     /* 棚户自己种的那点粮（按游戏秒结算，不是按月）——很少，但它让
        "城外的棚子"不是纯负资产，否则玩家只会觉得那是个 bug。 */
@@ -17240,6 +17294,126 @@ window.GAME = window.GAME || {};
   };
 
   /* ============================================================
+   * v157.15（老板「增加一个地面平整功能，参考我的世界 / 现实世界」）
+   * ------------------------------------------------------------
+   * 目标：把一片起伏的地**削平或填平**成一个水平台面，台面可以有高有低
+   *   （这一片 6 米、隔壁 8 米或 4 米），建筑才有地方站。
+   *
+   * 为什么以**六边形格**（ci）为单位，而不是建造的四边形 (i,j)：
+   *   地面砖本来就是六边形（40962 格 · 边长 5.25 米），一格一块砖。
+   *   若按 2 米四边形整平，一块六边形砖会被切成"半个台半个坡"，
+   *   必须在砖内部做硬边 + 逐砖拆面 —— 那是重写整个地表层。
+   *   按 ci 整平则是 1:1 替换：这格要么是自然坡面，要么是一块平顶，
+   *   拓扑不变、邻接不变、描边去重逻辑全部沿用。
+   *   建造格（2 米×2 米）的高度 = 它所在六边形的高度，天然对齐。
+   *
+   * 存储：`state.terrain[ci] = 层号`（整数）。**没记录 = 自然地形**，
+   *   所以老档零迁移、平原不会被批量写满，存档体积只随"玩家真的整过的格"增长。
+   * 层高：`GAME.TERRACE_H`（米）。层号 × 层高 = 该格台面高度（米）。
+   * ============================================================ */
+  GAME.TERRACE_H = 1.0;                 /* 一层多高（米）—— 整平的最小刻度 */
+  GAME.TERRACE_MIN = -8;                /* 层号下限（往下挖 8 米） */
+  GAME.TERRACE_MAX = 60;                /* 层号上限（往上填 60 米） */
+
+
+  /* ============================================================
+   * v157.26（老板：「建造对地面的操作不是依赖正方形网格，而是六边形网格，
+   *          这跟我们的设想有差别」）—— 地表层全面切到**方格坐标**
+   * ------------------------------------------------------------
+   * 存储：`state.terrain["i,j"] = 层号`，i/j 是**全局方格编号**
+   *       （由 map3d 的切平面锚给出；重锚时带全局偏移，所以全球唯一、不漂）。
+   * 语义：**没记录 = 自然地形**（老档零迁移）。
+   *
+   * 为什么必须换：高度按六边形（5.25 米）存、格子按方形（2 米）画，
+   * 就会出现"点一块方砖、动的是它所在的那一大块六边形"——
+   * 台面边界是六边形、切面不是方的，玩家一眼看出错位。
+   * 现在一条链到底：地砖、侧壁、方格线、整平、放置，全部走 (i,j)。
+   *
+   * ⚠️ 存档键从 `ci`（六边形格号）换成 `"i,j"`：旧档里的整平记录读不到，
+   *    等同"回到自然地形"。这是格式变更，不是 bug。
+   * ============================================================ */
+  GAME.terrain = {
+    /* 取表（惰性建；没 state 时返回 null，渲染侧据此走"纯自然"快路径） */
+    map: function () {
+      var s = GAME.state;
+      if (!s) return null;
+      if (!s.terrain || typeof s.terrain !== 'object') s.terrain = {};
+      return s.terrain;
+    },
+    keyOf: function (i, j) { return (i | 0) + ',' + (j | 0); },
+    levelAt: function (i, j) {
+      var m = this.map();
+      if (!m || i == null || j == null) return null;
+      var v = m[this.keyOf(i, j)];
+      return (v == null) ? null : (v | 0);
+    },
+    /* 写一格。层号钳到 [MIN, MAX]；传 null 表示恢复自然地形 */
+    setLevel: function (i, j, lv) {
+      var m = this.map();
+      if (!m || i == null || j == null) return null;
+      var k = this.keyOf(i, j);
+      if (lv == null) { delete m[k]; return null; }
+      var v = Math.round(lv);
+      v = Math.max(GAME.TERRACE_MIN, Math.min(GAME.TERRACE_MAX, v));
+      m[k] = v;
+      return v;
+    },
+    clearAt: function (i, j) {
+      var m = this.map();
+      if (m && i != null && j != null) delete m[this.keyOf(i, j)];
+    },
+    /* 已整平的格数（界面提示 / 自检的"下限"用：0 就是什么都没做） */
+    count: function () {
+      var m = this.map();
+      if (!m) return 0;
+      var n = 0; for (var k in m) if (m.hasOwnProperty(k)) n++;
+      return n;
+    },
+    /* 台面高度（米）。未整平返回 null —— 调用方自己回落到自然地形。 */
+    heightAt: function (i, j) {
+      var lv = this.levelAt(i, j);
+      return lv == null ? null : lv * GAME.TERRACE_H;
+    },
+    /* ============================================================
+     * v157.18：整平**规则**留在这一层（渲染层只算坐标、标脏）：
+     *   STEP_MAX（单次削填上限）· 基准层选择 · 钳制与写表
+     * ============================================================ */
+    STEP_MAX: 6,
+    /* 该格中心处的**自然地形**层号（无记录时的基准） */
+    naturalLevelAt: function (i, j) {
+      var md = GAME.map3d;
+      if (!md || !md.gridCellDir) return 0;
+      var d = md.gridCellDir(i | 0, j | 0);
+      if (!d) return 0;
+      var e = (md.elevNatAt ? md.elevNatAt(d) : 0) || 0;
+      var hsc = (GAME.sphere && GAME.sphere.HSC) || 26;
+      return Math.round(e * hsc / (GAME.TERRACE_H || 1));
+    },
+    /* 方格中心是不是水（水面按 type 画，抬起来还是蓝的 → 不接整平） */
+    waterAt: function (i, j) {
+      var md = GAME.map3d, sp = GAME.sphere;
+      if (!md || !md.gridCellDir || !sp || !sp.cells) return false;
+      var d = md.gridCellDir(i | 0, j | 0);
+      if (!d) return false;
+      var ci = sp.nearestCell(d);
+      var c = sp.cells[ci];
+      return !!(c && (c.type === 'lake' || c.type === 'ocean'));
+    },
+    /* 刷一铲：返回 { i, j, level, base, want, clamped }。**唯一**写入入口。 */
+    paint: function (i, j, target) {
+      if (i == null || j == null) return null;
+      if (this.waterAt(i, j)) return { i: i, j: j, rejected: 'water' };
+      var cur = this.levelAt(i, j);
+      var base = (cur != null) ? cur : this.naturalLevelAt(i, j);
+      var want = Math.round(target == null ? base : target);
+      var applied = Math.max(base - this.STEP_MAX, Math.min(base + this.STEP_MAX, want));
+      this.setLevel(i, j, applied);
+      return { i: i, j: j, level: applied, base: base, want: want, clamped: (applied !== want) };
+    }
+  };
+
+
+  /* ============================================================
    * v89.126（老板需求 2）→ v89.189（老板 3）：**劳作占用**唯一出口组 ——
    *   除居所外的建筑按等级占用幸存者，该部分**不可征兵**。
    *   老板 v89.189 口径：「建筑占据幸存者太少了 —— 一间居所的幸存者可以照看
@@ -17434,6 +17608,10 @@ window.GAME = window.GAME || {};
        非主城恒为 0，所以"别城照旧被政务厅总闸卡住"这条行为一字未变。 */
     var lift = GAME.rankBuildCapOf ? GAME.rankBuildCapOf(city) : 0;
     var cap = base + GAME.cityBuildBonus(city) + lift;
+    /* v157f：占领来的名城**保住原档位上限**（首府 20 / 旧都 24 …）。
+       老板：「初始等级上限不随被占领而改变」。这里只做**下限**：
+       玩家侧的加成照样能把上限往上抬，但绝不会把它压回 12。 */
+    if (city.tierCap && city.tierCap > cap) cap = city.tierCap;
     /* v68 · 逐步探索：建筑（含围墙）等级**不得超过政务厅等级**。
        - 政务厅自身、以及"没有政务厅的城"（异常数据/测试构造）不受此闸；
        ⛔ v89.235（老板）：「城外资源建筑等级也不能超过政务厅等级」——
@@ -25616,6 +25794,27 @@ window.GAME = window.GAME || {};
     } else if (optId === 'summon') {
       city.def = (city.def || 0) + 3;
       gain = '城防 +3（现 ' + GAME.cityDefense(city) + '）';
+    } else if (optId === 'hire') {
+      /* v157.30（老板「增加旧币去路」）：旧币换兵 —— 兵不产钱、会耗粮会死，纯消耗型出口 */
+      var _tp = opt.troops || {}, _addN = 0;
+      for (var _tid in _tp) {
+        var _n = Math.floor(_tp[_tid] || 0);
+        if (!(_n > 0)) continue;
+        var _o = {}; _o[_tid] = _n;
+        GAME.city.armyAdd(city, _o);
+        _addN += _n;
+      }
+      var _tot = 0;
+      for (var _k in (city.army || {})) _tot += Math.max(0, Math.floor(city.army[_k] || 0));
+      gain = '民壮 ' + U.fmt(_addN) + ' 入城驻防（本城兵力 ' + U.fmt(_tot) + '）';
+    } else if (optId === 'jewelbuy') {
+      /* 珠宝进 s.items（与 `jewelNeedOf` 读同一本账）—— 只给材料，不产钱 */
+      var _pool = opt.jewelPool || [];
+      var _jid = _pool[Math.floor(Math.random() * _pool.length)] || '';
+      var _it = (DATA.ITEM_BY_ID || {})[_jid];
+      if (!_jid) { gain = '没有可收的货'; }
+      else if (GAME.items && GAME.items.add) { GAME.items.add(_jid, 1); gain = '珠宝「' + ((_it && _it.name) || _jid) + '」×1'; }
+      else { gain = '背包未就绪（珠宝没入账）'; }
     } else {
       gain = '已执行';
     }
@@ -31365,28 +31564,29 @@ if (GAME.reg) {
 
 /* ---- growth.js ---- */
 /* ============================================================
- * growth.js — 城会自己长，也会自己朽
+ * growth.js — 城会自己长
  * ------------------------------------------------------------
  * 老板 2026-10-22：「你做的是一整个废土……从大处着眼」。
  *
  * 这个项目里所有的城都是**死的容器**：
  *   · 48 个格子等你规划，你不建就永远空着；
- *   · 人口只会在上限前停住，不会自己找地方住；
- *   · 建筑造好就永远在那，不会塌。
+ *   · 人口只会在上限前停住，不会自己找地方住。
  * 于是"建城"这件事只有"我摆什么"，没有"它自己变成什么样"。
- * 但真实的废土不是这样 —— **人会在你没想到的地方住下来，
- * 没人管的房子会塌。**
+ * 但真实的废土不是这样 —— **人会在你没想到的地方住下来。**
  *
- * 这个模块只做两件事，一长一朽：
+ * 这个模块只做"世界自己在动"的那部分：
  *   A. **棚户**：人口顶到居所上限，多出来的人不会凭空消失 ——
  *      他们在城墙外自己搭棚子住。产出不多，但会带来拥挤、火、疫。
- *   B. **荒废**：人口长期远低于居所容量的城，建筑会一级一级掉回去。
+ *   B. **棚户代价 / 出走开垦**：寒潮疫病先死棚户、挤不下的人自己走远建村。
  *
  * ⚠️ 刻意不做的事：
  *   · **不占那 48 格**。玩家的规划区是玩家的地方，居民不能偷偷占掉一格 ——
  *     那是"抢你的操作"，不是"世界在长"。
  *   · 不给棚户正收益。它是**症状**，不是新资源池；想解决就去建居所。
- *   · 荒废只掉建筑等级，**不毁城、不删建筑**。下限 1 级，永远能修回来。
+ *   · **不动玩家已建的东西**（v157.16 / v157.19 删干净）：旧的"荒废降级"
+ *     （人口 < 两成连续 3 个月 → 每月塌掉一座建筑的 1 级）**连同配置字段一起删除**。
+ *     理由：人口只能靠等或出去找，拿"时间没到"去倒扣玩家花资源建起来的等级，
+ *     是惩罚而不是世界演化。
  * ============================================================ */
 (function () {
   'use strict';
@@ -31426,15 +31626,15 @@ if (GAME.reg) {
    * ============================================================ */
   GR.tick = function (force) {
     var st = GAME.state;
-    if (!st) return { spawned: 0, decayed: 0, moved: 0 };
+    if (!st) return { spawned: 0, moved: 0 };
     var m = GR.monthNow();
     var has = (st.growthMonth != null);
-    if (!force && has && st.growthMonth === m) return { spawned: 0, decayed: 0, moved: 0 };
-    if (!has) { st.growthMonth = m; return { spawned: 0, decayed: 0, first: true }; }
+    if (!force && has && st.growthMonth === m) return { spawned: 0, moved: 0 };
+    if (!has) { st.growthMonth = m; return { spawned: 0, first: true }; }
     st.growthMonth = m;
 
     var d = D();
-    var spawned = 0, decayed = 0, burned = 0, moved = 0;
+    var spawned = 0, burned = 0, moved = 0;
 
     (st.cities || []).forEach(function (c) {
       if (!c || c.npc) return;
@@ -31523,39 +31723,9 @@ if (GAME.reg) {
         }
       }
 
-      /* ---------- C. 荒废：没人住的房子会塌 ---------- */
-      /* ⚠️ **连续三个月**才塌，不是一低就塌。
-         起因：第一版当月就掉级，e2e 里一个刚造好的作坊因为人口还没涨上来
-         直接掉了一级，器械面板随之打不开（§229c-e② 器械卡消失）。
-         空城要空一段时间才叫"没人住" —— 一个月人口没跟上只是还在长。 */
-      var deadAt = d.abandonAt == null ? 0.2 : d.abandonAt;
-      if (ratio < deadAt) {
-        c.abandonMonths = (c.abandonMonths | 0) + 1;
-      } else {
-        c.abandonMonths = 0;
-      }
-      if (ratio < deadAt && (c.abandonMonths | 0) >= (d.abandonNeedMonths == null ? 3 : d.abandonNeedMonths)) {
-        /* 连 20% 都住不满 —— 这座城已经名存实亡。
-           每月掉一座建筑的 1 级（只掉 1 座，给玩家足够时间回来管）。 */
-        var cand = (c.cells || []).filter(function (cc) {
-          return cc && cc.build && cc.build.id && cc.build.lvl > 1;
-        });
-        if (c.wall && c.wall.build && c.wall.build.lvl > 1) cand.push(c.wall);
-        if (cand.length) {
-          /* 确定性挑一座（同月同城永远同一座，便于复盘），不从最低的开始掉 */
-          var idx = Math.floor((GAME.invasionRoll ? GAME.invasionRoll('decay|' + c.id + '|' + m) : 0.5) * cand.length) % cand.length;
-          var victim = cand[idx];
-          victim.build.lvl -= 1;
-          decayed++;
-          if (GAME.log && GAME.log.war) {
-            GAME.log.war('🏚 ' + c.name + ' 没人住：' + ((GAME.DATA.BUILDINGS[victim.build.id] || {}).name || victim.build.id)
-              + ' 塌了一部分（Lv' + (victim.build.lvl + 1) + ' → Lv' + victim.build.lvl + '）。');
-          }
-        }
-      }
     });
 
-    return { spawned: spawned, decayed: decayed, burned: burned, moved: moved, month: m };
+    return { spawned: spawned, burned: burned, moved: moved, month: m };
   };
 
   /* ============================================================
@@ -33952,6 +34122,13 @@ if (GAME.reg) {
    * 你把家搬到哪，圈就围着哪收。这让"搬家"变成一个有意义的选择。
    * ============================================================ */
   SG.centerOf = function () {
+    /* ⛔ v157.41（设定深挖发现的死设定）：原来这里每次返回**所有城的质心** ——
+       圈永远以你自己为中心收缩，所以无论 minR 调多少都追不上你。
+       实测：快进 25 年，圈缩到 minR=14 就停，而首城距圈心恒为 0，`inCloud` 永远 false。
+       改成：**圈心在第一次计算时钉死**（= 开局时你家的位置），之后不再移动。
+       于是"守中心 vs 扩张"第一次成为真选择：跑到 55 格外就会被云追上。 */
+    var st = GAME.state;
+    if (st && st.surgeCenter && st.surgeCenter.n) return st.surgeCenter;
     var arr = (GAME.city && GAME.city.all ? GAME.city.all() : []);
     var n = 0, sx = 0, sy = 0;
     for (var i = 0; i < arr.length; i++) {
@@ -33960,7 +34137,9 @@ if (GAME.reg) {
       sx += c.x; sy += c.y; n++;
     }
     if (!n) return { x: 0, y: 0, n: 0 };
-    return { x: sx / n, y: sy / n, n: n };
+    var got = { x: sx / n, y: sy / n, n: n };
+    if (st) st.surgeCenter = { x: got.x, y: got.y, n: got.n };
+    return got;
   };
 
   /* 当前收缩进度：已经收缩了几个月（跳过停歇期） */
@@ -40280,6 +40459,66 @@ if (GAME.reg) {
    * 整件物品的占地宽度 = `w`，高度 = `h`（渲染层用它做视距剔除与幽灵比例）。
    * ============================================================ */
   var ITEMS = {
+    /* ============================================================
+     * v157.18（老板「比如说植物、树木、鱼塘这种」）—— 第一批"活着的"微景观
+     * ------------------------------------------------------------
+     * 全部走**程序化几何**（box/cyl/cone/sphere），不引美术资源：
+     * 想加一件就是加一条目录，重建即生效。
+     * ⚠️ 地表限制**只写在下方 GROUND 表**（唯一出口）——这里不写 ground 字段，
+     *    否则两处定义迟早打架。
+     * ============================================================ */
+    tree: {
+      id: 'tree', name: '大树', tag: 'plant', w: 1.0, h: 3.0,
+      desc: '一棵能遮阴的树。风一吹，树冠会跟着摆。',
+      cost: { wood: 2 },
+      geo: { parts: [
+        { k: 'cyl', r: 0.11, h: 1.30, y: 0.65, c: 0x6b4a2f },
+        { k: 'cone', r: 0.62, h: 1.20, y: 1.70, c: 0x3f7a3c },
+        { k: 'cone', r: 0.46, h: 1.00, y: 2.35, c: 0x4a8a44 },
+        { k: 'cone', r: 0.28, h: 0.72, y: 2.90, c: 0x55984c }
+      ] }
+    },
+    bush: {
+      id: 'bush', name: '灌木', tag: 'plant', w: 0.7, h: 0.9,
+      desc: '低矮的一丛，能结野果。放在路边不挡道。',
+      cost: { wood: 1 },
+      geo: { parts: [
+        { k: 'sphere', r: 0.34, y: 0.30, c: 0x3e6f38 },
+        { k: 'sphere', r: 0.24, y: 0.42, x: 0.18, c: 0x4a7f40 },
+        { k: 'sphere', r: 0.20, y: 0.36, z: -0.16, c: 0x386530 }
+      ] }
+    },
+    pond: {
+      id: 'pond', name: '鱼塘', tag: 'water', w: 1.1, h: 0.5,
+      desc: '挖出来的一汪水。能养鱼，也能当景看。',
+      cost: { stone: 6 },
+      geo: { parts: [
+        { k: 'box', w: 1.15, h: 0.12, d: 1.15, y: 0.06, c: 0x8a8577 },
+        { k: 'box', w: 1.00, h: 0.06, d: 1.00, y: 0.14, c: 0x3d7fa8 },
+        { k: 'box', w: 0.20, h: 0.22, d: 0.20, x: 0.52, z: 0.52, y: 0.11, c: 0x7d7869 }
+      ] }
+    },
+    fence: {
+      id: 'fence', name: '矮栏', tag: 'def', w: 1.0, h: 1.0,
+      desc: '一圈矮木栏。划出院子、拦一拦牲口。',
+      cost: { wood: 3 },
+      geo: { parts: [
+        { k: 'box', w: 0.10, h: 0.95, d: 0.10, x: -0.45, y: 0.48, c: 0x6b4a2f },
+        { k: 'box', w: 0.10, h: 0.95, d: 0.10, x: 0.45, y: 0.48, c: 0x6b4a2f },
+        { k: 'box', w: 1.00, h: 0.09, d: 0.06, y: 0.72, c: 0x7d5a3a },
+        { k: 'box', w: 1.00, h: 0.09, d: 0.06, y: 0.42, c: 0x7d5a3a }
+      ] }
+    },
+    hut: {
+      id: 'hut', name: '木屋', tag: 'live', w: 1.0, h: 1.8,
+      desc: '一间能住人的小木屋。得建在平整的台地上（山地先整平）。',
+      cost: { wood: 12, stone: 4 },
+      geo: { parts: [
+        { k: 'box', w: 0.86, h: 0.72, d: 0.86, y: 0.36, c: 0x8a6a45 },
+        { k: 'cone', r: 0.72, h: 0.62, y: 1.03, c: 0x7a4a34 },
+        { k: 'box', w: 0.18, h: 0.34, d: 0.06, y: 0.17, z: 0.44, c: 0x4a3020 }
+      ] }
+    },
     cairn: {
       id: 'cairn', name: '石堆', tag: 'decor', w: 0.9, h: 1.1,
       desc: '几块垒起来的石头。路过的人会加一块，所以它只会越长越高。',
@@ -40433,7 +40672,13 @@ if (GAME.reg) {
     shrine: { g: 'flat', slopeMax: 2.2 },      /* 神龛：最挑地的一段 */
     pontoon: { g: 'water' },
     boat: { g: 'water' },
-    pier: { g: 'coast' }
+    pier: { g: 'coast' },
+    /* v157.18 · 第一批微景观 */
+    tree: { g: 'land', slopeMax: 7.0 },        /* 树根能抓坡 */
+    bush: { g: 'land', slopeMax: 9.0 },        /* 灌木最不挑地 */
+    pond: { g: 'flat', slopeMax: 2.5 },        /* 水面必须端平，不然一边高一边低 */
+    fence: { g: 'land', slopeMax: 6.0 },       /* 栅栏顺着坡走 */
+    hut: { g: 'flat', slopeMax: 2.2 }          /* 屋子最挑地：整平过的台地正好 */
   };
   (function () {
     for (var k in GROUND) {
@@ -40525,7 +40770,9 @@ if (GAME.reg) {
   PL.ver = function () { return _ver; };
   PL.bump = function () { _ver++; return _ver; };
   PL.all = function () { return bucket(false) || {}; };
-  PL.at = function (ci) { var b = bucket(false); return (b && b[ci]) || null; };
+  /* 方格键：与 GAME.terrain **同一套键**（"i,j"），一条链到底 */
+  PL.keyOf = function (i, j) { return (i | 0) + ',' + (j | 0); };
+  PL.at = function (i, j) { var b = bucket(false); return (b && b[PL.keyOf(i, j)]) || null; };
   PL.count = function () { var b = bucket(false), n = 0; if (b) for (var k in b) if (b[k]) n++; return n; };
 
   /* ============================================================
@@ -40535,64 +40782,93 @@ if (GAME.reg) {
    * ============================================================ */
   /* 单格地形档案 —— 判定"这块地能不能盖"的唯一出口。
      slope = 与**邻格的最大高差**（世界单位）；rough = 平均起伏（做"平不平"的手感指标）。*/
-  PL.terrainOf = function (ci) {
-    ci = +ci;
-    var s = GAME.sphere, c = s && s.cells && s.cells[ci];
+  /* 单格地形档案（**按方格**）—— 判定"这块地能不能盖"的唯一出口。
+     slope = 与 4 个邻格的最大高差（世界单位）；rough = 平均起伏。 */
+  PL.terrainOf = function (i, j) {
+    var md = GAME.map3d, s = GAME.sphere;
+    if (!md || !md.gridCellDir || !s || !s.cells) return null;
+    var d = md.gridCellDir(i | 0, j | 0);
+    if (!d) return null;
+    var ci = s.nearestCell ? s.nearestCell(d) : -1;
+    var c = s.cells[ci];
     if (!c) return null;
-    var HSC = s.HSC || 26;
-    var e = (c.e != null) ? +c.e : 0;
-    var adj = s.adj && s.adj[ci], mx = 0, sum = 0, n = 0, wet = 0, dry = 0, i;
-    var selfWet = (e < 0) || (c.type === 'lake');
-    if (adj) {
-      for (i = 0; i < adj.length; i++) {
-        var nc = s.cells[adj[i]];
-        if (!nc || nc.e == null) continue;
-        var ncWet = (+nc.e < 0) || (nc.type === 'lake');
-        if (ncWet) wet++; else dry++;
-        /* ⚠️ 只跟**同一侧**（陆对陆 / 水对水）的邻格比高差。
-           海岸格若跟海底比，坡度会被水深拉爆（实测海岸平原能算出 4~11），
-           于是"海边一小块平地"永远判成陡坡 —— 而它恰恰是最该能盖房子的地方。 */
-        if (ncWet !== selfWet) continue;
-        var d = Math.abs(+nc.e - e);
-        if (d > mx) mx = d;
-        sum += d; n++;
-      }
+    var HSC = s.HSC || 26, TH = GAME.TERRACE_H || 1;
+    /* 高度：已整平 → 台面（折回归一化，与 c.e 同一把尺）；否则格心自然高度 */
+    var lv = (GAME.terrain && GAME.terrain.levelAt) ? GAME.terrain.levelAt(i, j) : null;
+    var terraced = (lv != null);
+    var e = terraced ? (lv * TH / HSC) : (+c.e || 0);
+    var selfWet = (e < 0) || (c.type === 'lake') || (c.type === 'ocean');
+    var NB = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]];
+    var mx = 0, sum = 0, n = 0, wet = 0, dry = 0;
+    for (var q = 0; q < NB.length; q++) {
+      var nd = md.gridCellDir(NB[q][0], NB[q][1]);
+      if (!nd) continue;
+      var nci = s.nearestCell ? s.nearestCell(nd) : -1;
+      var nc = s.cells[nci];
+      if (!nc) continue;
+      /* 邻格也吃整平 —— 两块整到同一层的地，高差必须是 0 */
+      var nlv = (GAME.terrain && GAME.terrain.levelAt) ? GAME.terrain.levelAt(NB[q][0], NB[q][1]) : null;
+      var ne = (nlv != null) ? (nlv * TH / HSC) : (+nc.e || 0);
+      var ncWet = (ne < 0) || (nc.type === 'lake') || (nc.type === 'ocean');
+      if (ncWet) wet++; else dry++;
+      /* 只跟**同一侧**（陆对陆 / 水对水）比高差：海岸格若跟海底比，
+         坡度会被水深拉爆，"海边一小块平地"永远判成陡坡（它恰恰最该能盖房子）。 */
+      if (ncWet !== selfWet) continue;
+      var dd = Math.abs(ne - e);
+      if (dd > mx) mx = dd;
+      sum += dd; n++;
     }
     var type = c.type;
     var nm = c.name || ((s.TYPE_NAME || {})[type] || type || '未知');
-    var water = (e < 0) || type === 'lake';
-    /* 岸线：本格与邻格水陆混杂（本身就是水陆交界）；沼泽也算岸线（湿地能靠船）*/
+    var water = (e < 0) || type === 'lake' || type === 'ocean';
     var coast = (wet > 0 && dry > 0) || type === 'zhaoze';
     return {
-      ci: ci, e: +(+e).toFixed(3), type: type, name: nm,
+      i: i | 0, j: j | 0, ci: ci,
+      e: +(+e).toFixed(3), type: type, name: nm,
       slope: +(mx * HSC).toFixed(2), rough: +(n ? (sum / n) * HSC : 0).toFixed(2),
       water: water, land: !water, coast: coast,
       plain: !water && (type === 'plain' || type === 'caoyuan'),
-      hill: (type === 'hill')
+      hill: (type === 'hill'),
+      terraced: terraced        /* 已整平：人工造地，可建 */
     };
   };
 
-  PL.canPlace = function (ci, itemId) {
-    ci = +ci;
-    if (!(ci >= 0)) return { ok: false, msg: '这儿不是一格地。' };
+  PL.canPlace = function (i, j, itemId) {
+    if (i == null || j == null) return { ok: false, msg: '这儿不是一格地。' };
+    var ci = -1;
     var it = PL.item(itemId);
     if (!it) return { ok: false, msg: '没有这种东西可放。' };
     var SPn = GAME.sphere;
-    if (!SPn || !SPn.cells || !SPn.cells[ci]) return { ok: false, msg: '这儿不是一格地。' };
+    var T0 = PL.terrainOf(i, j);
+    if (!T0) return { ok: false, msg: '这儿不是一格地。' };
+    ci = T0.ci;
     var F = GAME.fog;
-    /* 未探明的格子不许放 —— 否则等于"往没去过的地方空投"，
-       也和 fog 的口径（未探明 = 什么都不知道）冲突。 */
-    if (F && F.get && F.get(ci) < 2) return { ok: false, msg: '这片地还没探明，放不了。' };
+    /* 未探明的格子不许放 —— 否则等于"往没去过的地方空投"。
+       ⛔ v157.38（实机体验自检发现）：门槛原来是 **2 级**，而 fog 的 2 级定义是
+       "扎过营 / 侦查过 / 打下来过"；**站在地表看得见地形只是 1 级**。
+       于是"站在自家城墙外放一棵树"会被拒 —— 提示"这片地还没探明"，
+       玩家看着脚下清清楚楚的地面，完全无法理解。
+       改成 1 级：见过地形（= 你看得见）就能放；0 级（纯黑）仍然拒绝。 */
+    /* ⛔ v157.38（实机体验自检发现，两处叠加）：
+       ① 门槛原来是 2（= 扎过营/侦查过）；站在地表看得见地形只有 1。
+       ② 更根本：`fog.revealAround` 只在**打完仗**时调用，玩家走到自己的地表
+          从来没被点亮过 —— 实测自家城墙外那一格 fog=0。
+       于是"站在地上放一棵树"被拒，提示"这片地还没探明"，玩家看着脚下的地想不通。
+       口径修正：**地表模式 = 你人在那儿、看得见 = 视为已探明**（`M._surf` 为真时豁免）。
+       fog 本身不动（战略视图的未知区仍是未知），只是"放东西"这条不再要求扎过营。 */
+    var _surfHere = !!(GAME.map3d && GAME.map3d._surf);
+    if (F && F.get && F.get(ci) < 1 && !_surfHere) return { ok: false, msg: '这片地还没探明，放不了。' };
     var b = bucket(false);
-    if (b && b[ci]) {
+    var _bk = PL.keyOf(i, j);
+    if (b && b[_bk]) {
       /* v92.246（全面复核补口）：残留的"坏记录"不该继续占位 ——
          物品 id 已从目录删除时它渲染不出来、面板也列不出来（拆不掉），
          却会让这一格永久"已经有东西了"。发现即清，然后当空格处理。 */
-      if (!PL.item(b[ci].i)) { delete b[ci]; _ver++; }
+      if (!PL.item(b[_bk].i)) { delete b[_bk]; _ver++; }
       else return { ok: false, msg: '这格已经有东西了（先拆再放）。' };
     }
     /* ---- 地形/平整度判定（老板：建造要分地形，高山不能盖，船/浮台下水）---- */
-    var T = PL.terrainOf(ci);
+    var T = T0;
     var g = it.ground || 'land';
     if (g === 'water') {
       if (!T.water) return { ok: false, msg: '「' + it.name + '」只能下水 —— 这是' + T.name + '。' };
@@ -40601,9 +40877,10 @@ if (GAME.reg) {
     } else {
       if (T.water) return { ok: false, msg: '水里立不住「' + it.name + '」—— 水面上请用浮台 / 小舟。' };
       if (g === 'flat') {
-        /* 结构类：山地一律不许（"高山不适合建造"），且必须是平原/草原 + 足够平 */
-        if (T.hill) return { ok: false, msg: '山地太陡，「' + it.name + '」盖不上去（换个平地或先改地形）。' };
-        if (!T.plain) return { ok: false, msg: '「' + it.name + '」要建在平地上 —— 这里是' + T.name + '。' };
+        /* 结构类：山地不许 —— **但整平过的例外**（人工削出来的台地就是建设用地）。
+           这是"整平 → 建造"闭环的另一半：否则玩家把山坡削平了还被告知"山地盖不了"。 */
+        if (T.hill && !T.terraced) return { ok: false, msg: '山地太陡，「' + it.name + '」盖不上去（先用 ⛰ 整平削出平台）。' };
+        if (!T.plain && !T.terraced) return { ok: false, msg: '「' + it.name + '」要建在平地上 —— 这里是' + T.name + '（可以先整平）。' };
         var sMax = (it.slopeMax != null) ? it.slopeMax : 3;
         if (T.slope > sMax) {
           return { ok: false, msg: '这块地不够平（起伏 ' + T.slope + '，上限 ' + sMax + '）——「' + it.name + '」立不住。' };
@@ -40620,9 +40897,8 @@ if (GAME.reg) {
   /* ============================================================
    * 5. 放置 / 拆除 / 旋转
    * ============================================================ */
-  PL.add = function (ci, itemId, opt) {
-    ci = +ci;
-    var chk = PL.canPlace(ci, itemId);
+  PL.add = function (i, j, itemId, opt) {
+    var chk = PL.canPlace(i, j, itemId);
     if (!chk.ok) return chk;
     opt = opt || {};
     var b = bucket(true); if (!b) return { ok: false, msg: '世界还没建好。' };
@@ -40630,35 +40906,36 @@ if (GAME.reg) {
       i: itemId,
       y: (opt.yaw != null ? +opt.yaw : 0),
       s: (opt.scale != null ? +opt.scale : 1),
-      t: Date.now()
+      t: Date.now(),
+      ci: (chk.terrain && chk.terrain.ci != null) ? chk.terrain.ci : -1
     };
-    b[ci] = rec;
-    _fire('onPlace', { ci: ci, i: itemId, p: rec });
+    b[PL.keyOf(i, j)] = rec;
+    _fire('onPlace', { i: i, j: j, ci: rec.ci, it: itemId, p: rec });
     _ver++;
     return { ok: true, msg: '', rec: rec };
   };
 
-  PL.remove = function (ci) {
-    ci = +ci;
+  PL.remove = function (i, j) {
     var b = bucket(false);
-    if (!b || !b[ci]) return { ok: false, msg: '这格没东西可拆。' };
-    var rec = b[ci];
-    _fire('onRemove', { ci: ci, i: rec.i, p: rec });
-    delete b[ci];
+    var k = PL.keyOf(i, j);
+    if (!b || !b[k]) return { ok: false, msg: '这格没东西可拆。' };
+    var rec = b[k];
+    _fire('onRemove', { i: i, j: j, ci: rec.ci, it: rec.i, p: rec });
+    delete b[k];
     _ver++;
     return { ok: true, msg: '', rec: rec };
   };
 
   /* 旋转：默认每次 45°。返回新的朝向（度）。 */
-  PL.rotate = function (ci, step) {
-    ci = +ci;
+  PL.rotate = function (i, j, step) {
     var b = bucket(false);
-    if (!b || !b[ci]) return { ok: false, msg: '这格没东西可转。' };
+    var k = PL.keyOf(i, j);
+    if (!b || !b[k]) return { ok: false, msg: '这格没东西可转。' };
     var d = (step != null ? +step : 45);
-    b[ci].y = ((+b[ci].y || 0) + d) % 360;
-    if (b[ci].y < 0) b[ci].y += 360;
+    b[k].y = ((+b[k].y || 0) + d) % 360;
+    if (b[k].y < 0) b[k].y += 360;
     _ver++;
-    return { ok: true, msg: '', yaw: b[ci].y };
+    return { ok: true, msg: '', yaw: b[k].y };
   };
 
   PL.clear = function () {
@@ -40681,10 +40958,17 @@ if (GAME.reg) {
     for (var pid in r) {
       var b = r[pid];
       if (!b || typeof b !== 'object') { delete r[pid]; continue; }
-      for (var ci in b) {
-        var p = b[ci];
-        if (!p || !p.i || !PL.item(p.i)) { delete b[ci]; dropped++; continue; }
-        if (SPn && SPn.cells && !SPn.cells[+ci]) { delete b[ci]; dropped++; continue; }
+      for (var key in b) {
+        var p = b[key];
+        if (!p || !p.i || !PL.item(p.i)) { delete b[key]; dropped++; continue; }
+        /* ⛔ v157.42（实机存档往返发现）：**放置物读档全丢** 的根因就在下一行。
+           v157.18 把格键从"六边形 ci（纯数字）"改成"方格 "i,j"" 之后，
+           这里仍在按 `SPn.cells[+ci]` 校验 —— 而 `+"3,5"` 是 NaN、`cells[NaN]` 恒 undefined，
+           于是**每一条都被判成"这颗星球上不存在的格"删掉**。
+           实测：存 2 件 → 读档 0 件；整平（terrain）没事，因为它不走这条清理。
+           修法：只有**老档的纯数字键**才做 cells 校验；新的 "i,j" 键是切平面坐标，不在球面格集里。 */
+        var _oldStyle = !isNaN(+key);
+        if (_oldStyle && SPn && SPn.cells && !SPn.cells[+key]) { delete b[key]; dropped++; continue; }
         if (p.y == null) p.y = 0;
         if (p.s == null) p.s = 1;
         kept++;

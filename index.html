@@ -2082,6 +2082,34 @@
      地图导航迁入**底部固定导航条**（.bottombar，由 ui.mapHTML 登记、paintBottom 落画），
      改为静态排布、融入条内（条高 46px，v44 的"一行"布局原样保留）。
      历史：v24 收进右下浮标 → v45 浮标内水平居中 → v76 移入底部条。 */
+  /* ============================================================
+   * v157v（老板：「进入建造模式后，在地图内底部…形成一个物品，工具，
+   *        背包等选项栏」）—— 建造栏：贴在画布下沿，不挤压画布。
+   * 只在建造模式显示；战略模式 hidden。
+   * ============================================================ */
+  .build-bar {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    z-index: 7; display: flex; flex-direction: column; gap: 6px;
+    padding: 7px 10px; border-radius: var(--r-md); background: rgba(14,18,24,.86);
+    border: 1px solid var(--line-strong); backdrop-filter: blur(6px);
+    box-shadow: 0 6px 18px rgba(var(--sh-rgb),.45);
+  }
+  .build-bar[hidden] { display: none !important; }
+  .bb-tabs { display: flex; align-items: center; gap: 6px; }
+  .bb-tab { background: transparent; border: 1px solid var(--line-strong); color: var(--text-dim);
+    border-radius: 6px; padding: 2px 10px; font-size: var(--fs-sub); cursor: pointer; line-height: 1.7; }
+  .bb-tab.on { background: rgba(255,207,77,.16); border-color: rgba(255,207,77,.5); color: var(--gold-light); }
+  .bb-hint { margin-left: auto; font-size: var(--fs-sub); color: var(--text-dim); white-space: nowrap; }
+  .bb-slots { display: flex; gap: 6px; }
+  .bb-slot { width: 46px; height: 46px; border-radius: 8px; position: relative;
+    background: rgba(var(--hl-rgb),.05); border: 1px solid var(--line-strong); cursor: pointer; }
+  .bb-slot i { position: absolute; left: 4px; top: 1px; font-size: 10px; color: var(--text-dim); font-style: normal; }
+  .bb-slot:hover { background: rgba(var(--hl-rgb),.12); }
+  /* v157.15：整平工具组 —— 选中的铲子要高亮，层数格是"读数"不是按钮 */
+  .bb-slot.on { background: rgba(255,207,77,.20); border-color: rgba(255,207,77,.62);
+    box-shadow: inset 0 0 0 1px rgba(255,207,77,.45); }
+  .bb-slot.lv { font-size: 17px; font-weight: 700; color: var(--gold-light);
+    display: flex; align-items: center; justify-content: center; }
   .map-dock {
     display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-0) var(--sp-1);
     max-width: 100%;
@@ -4724,9 +4752,9 @@
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=d86a3ef2"></script>
-<script src="js/bundle-core.js?v=d86a3ef2"></script>
-<script src="js/bundle-war.js?v=d86a3ef2"></script>
-<script src="js/bundle-ui.js?v=d86a3ef2"></script>
+<script src="vendor/three.min.js?v=3601a04a"></script>
+<script src="js/bundle-core.js?v=3601a04a"></script>
+<script src="js/bundle-war.js?v=3601a04a"></script>
+<script src="js/bundle-ui.js?v=3601a04a"></script>
 </body>
 </html>

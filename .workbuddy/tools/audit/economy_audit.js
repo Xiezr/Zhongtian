@@ -20,12 +20,18 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = path.resolve(__dirname, '..', '..', '..');   // → E:\Deepseekdb
 const JS = path.join(ROOT, 'js');
 
-/* ---- vm 沙箱：按加载顺序跑模块（与 index.html 同序，跳过 ui/main —— 审计不需要 DOM） ---- */
-const sb = { console, document: undefined, location: undefined };
+/* ---- vm 沙箱：按加载顺序跑模块（与 index.html 同序，跳过 ui/main —— 审计不需要 DOM） ----
+   ⛔ v157.29：这段原来是 `for (const f of ['data','state','questdata',...])` 直接跑源码，
+   两处早已失效：① data.js 首行改成 ESM `import './core.js'` → vm 里 SyntaxError；
+   ② questdata.js 在 v90.92 已退役删除 → ENOENT。
+   这把"经济尺子"因此**一直是坏的**（不在 gate 里，没人发现）。
+   现在：剥掉 import 行 + 去掉已删模块，并补上 rules（数值出口在 core 层）。 */
+const sb = { console: console, document: undefined, location: undefined };
 sb.window = sb;
 vm.createContext(sb);
-for (const f of ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'story', 'portraits']) {
-  vm.runInContext(fs.readFileSync(path.join(JS, f + '.js'), 'utf8'), sb, { filename: f + '.js' });
+for (const f of ['core', 'data', 'rules', 'state', 'systems', 'domain', 'map', 'story', 'portraits']) {
+  const src = fs.readFileSync(path.join(JS, f + '.js'), 'utf8').replace(/^\s*import\s+[^\n]*$/gm, '');
+  vm.runInContext(src, sb, { filename: f + '.js' });
 }
 const G = sb.GAME, D = G.DATA;
 if (!D || !G.newGame) { console.error('✗ 模块加载失败'); process.exit(2); }

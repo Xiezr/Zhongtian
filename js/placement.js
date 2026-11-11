@@ -45,6 +45,66 @@
    * 整件物品的占地宽度 = `w`，高度 = `h`（渲染层用它做视距剔除与幽灵比例）。
    * ============================================================ */
   var ITEMS = {
+    /* ============================================================
+     * v157.18（老板「比如说植物、树木、鱼塘这种」）—— 第一批"活着的"微景观
+     * ------------------------------------------------------------
+     * 全部走**程序化几何**（box/cyl/cone/sphere），不引美术资源：
+     * 想加一件就是加一条目录，重建即生效。
+     * ⚠️ 地表限制**只写在下方 GROUND 表**（唯一出口）——这里不写 ground 字段，
+     *    否则两处定义迟早打架。
+     * ============================================================ */
+    tree: {
+      id: 'tree', name: '大树', tag: 'plant', w: 1.0, h: 3.0,
+      desc: '一棵能遮阴的树。风一吹，树冠会跟着摆。',
+      cost: { wood: 2 },
+      geo: { parts: [
+        { k: 'cyl', r: 0.11, h: 1.30, y: 0.65, c: 0x6b4a2f },
+        { k: 'cone', r: 0.62, h: 1.20, y: 1.70, c: 0x3f7a3c },
+        { k: 'cone', r: 0.46, h: 1.00, y: 2.35, c: 0x4a8a44 },
+        { k: 'cone', r: 0.28, h: 0.72, y: 2.90, c: 0x55984c }
+      ] }
+    },
+    bush: {
+      id: 'bush', name: '灌木', tag: 'plant', w: 0.7, h: 0.9,
+      desc: '低矮的一丛，能结野果。放在路边不挡道。',
+      cost: { wood: 1 },
+      geo: { parts: [
+        { k: 'sphere', r: 0.34, y: 0.30, c: 0x3e6f38 },
+        { k: 'sphere', r: 0.24, y: 0.42, x: 0.18, c: 0x4a7f40 },
+        { k: 'sphere', r: 0.20, y: 0.36, z: -0.16, c: 0x386530 }
+      ] }
+    },
+    pond: {
+      id: 'pond', name: '鱼塘', tag: 'water', w: 1.1, h: 0.5,
+      desc: '挖出来的一汪水。能养鱼，也能当景看。',
+      cost: { stone: 6 },
+      geo: { parts: [
+        { k: 'box', w: 1.15, h: 0.12, d: 1.15, y: 0.06, c: 0x8a8577 },
+        { k: 'box', w: 1.00, h: 0.06, d: 1.00, y: 0.14, c: 0x3d7fa8 },
+        { k: 'box', w: 0.20, h: 0.22, d: 0.20, x: 0.52, z: 0.52, y: 0.11, c: 0x7d7869 }
+      ] }
+    },
+    fence: {
+      id: 'fence', name: '矮栏', tag: 'def', w: 1.0, h: 1.0,
+      desc: '一圈矮木栏。划出院子、拦一拦牲口。',
+      cost: { wood: 3 },
+      geo: { parts: [
+        { k: 'box', w: 0.10, h: 0.95, d: 0.10, x: -0.45, y: 0.48, c: 0x6b4a2f },
+        { k: 'box', w: 0.10, h: 0.95, d: 0.10, x: 0.45, y: 0.48, c: 0x6b4a2f },
+        { k: 'box', w: 1.00, h: 0.09, d: 0.06, y: 0.72, c: 0x7d5a3a },
+        { k: 'box', w: 1.00, h: 0.09, d: 0.06, y: 0.42, c: 0x7d5a3a }
+      ] }
+    },
+    hut: {
+      id: 'hut', name: '木屋', tag: 'live', w: 1.0, h: 1.8,
+      desc: '一间能住人的小木屋。得建在平整的台地上（山地先整平）。',
+      cost: { wood: 12, stone: 4 },
+      geo: { parts: [
+        { k: 'box', w: 0.86, h: 0.72, d: 0.86, y: 0.36, c: 0x8a6a45 },
+        { k: 'cone', r: 0.72, h: 0.62, y: 1.03, c: 0x7a4a34 },
+        { k: 'box', w: 0.18, h: 0.34, d: 0.06, y: 0.17, z: 0.44, c: 0x4a3020 }
+      ] }
+    },
     cairn: {
       id: 'cairn', name: '石堆', tag: 'decor', w: 0.9, h: 1.1,
       desc: '几块垒起来的石头。路过的人会加一块，所以它只会越长越高。',
@@ -198,7 +258,13 @@
     shrine: { g: 'flat', slopeMax: 2.2 },      /* 神龛：最挑地的一段 */
     pontoon: { g: 'water' },
     boat: { g: 'water' },
-    pier: { g: 'coast' }
+    pier: { g: 'coast' },
+    /* v157.18 · 第一批微景观 */
+    tree: { g: 'land', slopeMax: 7.0 },        /* 树根能抓坡 */
+    bush: { g: 'land', slopeMax: 9.0 },        /* 灌木最不挑地 */
+    pond: { g: 'flat', slopeMax: 2.5 },        /* 水面必须端平，不然一边高一边低 */
+    fence: { g: 'land', slopeMax: 6.0 },       /* 栅栏顺着坡走 */
+    hut: { g: 'flat', slopeMax: 2.2 }          /* 屋子最挑地：整平过的台地正好 */
   };
   (function () {
     for (var k in GROUND) {
@@ -290,7 +356,9 @@
   PL.ver = function () { return _ver; };
   PL.bump = function () { _ver++; return _ver; };
   PL.all = function () { return bucket(false) || {}; };
-  PL.at = function (ci) { var b = bucket(false); return (b && b[ci]) || null; };
+  /* 方格键：与 GAME.terrain **同一套键**（"i,j"），一条链到底 */
+  PL.keyOf = function (i, j) { return (i | 0) + ',' + (j | 0); };
+  PL.at = function (i, j) { var b = bucket(false); return (b && b[PL.keyOf(i, j)]) || null; };
   PL.count = function () { var b = bucket(false), n = 0; if (b) for (var k in b) if (b[k]) n++; return n; };
 
   /* ============================================================
@@ -300,64 +368,93 @@
    * ============================================================ */
   /* 单格地形档案 —— 判定"这块地能不能盖"的唯一出口。
      slope = 与**邻格的最大高差**（世界单位）；rough = 平均起伏（做"平不平"的手感指标）。*/
-  PL.terrainOf = function (ci) {
-    ci = +ci;
-    var s = GAME.sphere, c = s && s.cells && s.cells[ci];
+  /* 单格地形档案（**按方格**）—— 判定"这块地能不能盖"的唯一出口。
+     slope = 与 4 个邻格的最大高差（世界单位）；rough = 平均起伏。 */
+  PL.terrainOf = function (i, j) {
+    var md = GAME.map3d, s = GAME.sphere;
+    if (!md || !md.gridCellDir || !s || !s.cells) return null;
+    var d = md.gridCellDir(i | 0, j | 0);
+    if (!d) return null;
+    var ci = s.nearestCell ? s.nearestCell(d) : -1;
+    var c = s.cells[ci];
     if (!c) return null;
-    var HSC = s.HSC || 26;
-    var e = (c.e != null) ? +c.e : 0;
-    var adj = s.adj && s.adj[ci], mx = 0, sum = 0, n = 0, wet = 0, dry = 0, i;
-    var selfWet = (e < 0) || (c.type === 'lake');
-    if (adj) {
-      for (i = 0; i < adj.length; i++) {
-        var nc = s.cells[adj[i]];
-        if (!nc || nc.e == null) continue;
-        var ncWet = (+nc.e < 0) || (nc.type === 'lake');
-        if (ncWet) wet++; else dry++;
-        /* ⚠️ 只跟**同一侧**（陆对陆 / 水对水）的邻格比高差。
-           海岸格若跟海底比，坡度会被水深拉爆（实测海岸平原能算出 4~11），
-           于是"海边一小块平地"永远判成陡坡 —— 而它恰恰是最该能盖房子的地方。 */
-        if (ncWet !== selfWet) continue;
-        var d = Math.abs(+nc.e - e);
-        if (d > mx) mx = d;
-        sum += d; n++;
-      }
+    var HSC = s.HSC || 26, TH = GAME.TERRACE_H || 1;
+    /* 高度：已整平 → 台面（折回归一化，与 c.e 同一把尺）；否则格心自然高度 */
+    var lv = (GAME.terrain && GAME.terrain.levelAt) ? GAME.terrain.levelAt(i, j) : null;
+    var terraced = (lv != null);
+    var e = terraced ? (lv * TH / HSC) : (+c.e || 0);
+    var selfWet = (e < 0) || (c.type === 'lake') || (c.type === 'ocean');
+    var NB = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]];
+    var mx = 0, sum = 0, n = 0, wet = 0, dry = 0;
+    for (var q = 0; q < NB.length; q++) {
+      var nd = md.gridCellDir(NB[q][0], NB[q][1]);
+      if (!nd) continue;
+      var nci = s.nearestCell ? s.nearestCell(nd) : -1;
+      var nc = s.cells[nci];
+      if (!nc) continue;
+      /* 邻格也吃整平 —— 两块整到同一层的地，高差必须是 0 */
+      var nlv = (GAME.terrain && GAME.terrain.levelAt) ? GAME.terrain.levelAt(NB[q][0], NB[q][1]) : null;
+      var ne = (nlv != null) ? (nlv * TH / HSC) : (+nc.e || 0);
+      var ncWet = (ne < 0) || (nc.type === 'lake') || (nc.type === 'ocean');
+      if (ncWet) wet++; else dry++;
+      /* 只跟**同一侧**（陆对陆 / 水对水）比高差：海岸格若跟海底比，
+         坡度会被水深拉爆，"海边一小块平地"永远判成陡坡（它恰恰最该能盖房子）。 */
+      if (ncWet !== selfWet) continue;
+      var dd = Math.abs(ne - e);
+      if (dd > mx) mx = dd;
+      sum += dd; n++;
     }
     var type = c.type;
     var nm = c.name || ((s.TYPE_NAME || {})[type] || type || '未知');
-    var water = (e < 0) || type === 'lake';
-    /* 岸线：本格与邻格水陆混杂（本身就是水陆交界）；沼泽也算岸线（湿地能靠船）*/
+    var water = (e < 0) || type === 'lake' || type === 'ocean';
     var coast = (wet > 0 && dry > 0) || type === 'zhaoze';
     return {
-      ci: ci, e: +(+e).toFixed(3), type: type, name: nm,
+      i: i | 0, j: j | 0, ci: ci,
+      e: +(+e).toFixed(3), type: type, name: nm,
       slope: +(mx * HSC).toFixed(2), rough: +(n ? (sum / n) * HSC : 0).toFixed(2),
       water: water, land: !water, coast: coast,
       plain: !water && (type === 'plain' || type === 'caoyuan'),
-      hill: (type === 'hill')
+      hill: (type === 'hill'),
+      terraced: terraced        /* 已整平：人工造地，可建 */
     };
   };
 
-  PL.canPlace = function (ci, itemId) {
-    ci = +ci;
-    if (!(ci >= 0)) return { ok: false, msg: '这儿不是一格地。' };
+  PL.canPlace = function (i, j, itemId) {
+    if (i == null || j == null) return { ok: false, msg: '这儿不是一格地。' };
+    var ci = -1;
     var it = PL.item(itemId);
     if (!it) return { ok: false, msg: '没有这种东西可放。' };
     var SPn = GAME.sphere;
-    if (!SPn || !SPn.cells || !SPn.cells[ci]) return { ok: false, msg: '这儿不是一格地。' };
+    var T0 = PL.terrainOf(i, j);
+    if (!T0) return { ok: false, msg: '这儿不是一格地。' };
+    ci = T0.ci;
     var F = GAME.fog;
-    /* 未探明的格子不许放 —— 否则等于"往没去过的地方空投"，
-       也和 fog 的口径（未探明 = 什么都不知道）冲突。 */
-    if (F && F.get && F.get(ci) < 2) return { ok: false, msg: '这片地还没探明，放不了。' };
+    /* 未探明的格子不许放 —— 否则等于"往没去过的地方空投"。
+       ⛔ v157.38（实机体验自检发现）：门槛原来是 **2 级**，而 fog 的 2 级定义是
+       "扎过营 / 侦查过 / 打下来过"；**站在地表看得见地形只是 1 级**。
+       于是"站在自家城墙外放一棵树"会被拒 —— 提示"这片地还没探明"，
+       玩家看着脚下清清楚楚的地面，完全无法理解。
+       改成 1 级：见过地形（= 你看得见）就能放；0 级（纯黑）仍然拒绝。 */
+    /* ⛔ v157.38（实机体验自检发现，两处叠加）：
+       ① 门槛原来是 2（= 扎过营/侦查过）；站在地表看得见地形只有 1。
+       ② 更根本：`fog.revealAround` 只在**打完仗**时调用，玩家走到自己的地表
+          从来没被点亮过 —— 实测自家城墙外那一格 fog=0。
+       于是"站在地上放一棵树"被拒，提示"这片地还没探明"，玩家看着脚下的地想不通。
+       口径修正：**地表模式 = 你人在那儿、看得见 = 视为已探明**（`M._surf` 为真时豁免）。
+       fog 本身不动（战略视图的未知区仍是未知），只是"放东西"这条不再要求扎过营。 */
+    var _surfHere = !!(GAME.map3d && GAME.map3d._surf);
+    if (F && F.get && F.get(ci) < 1 && !_surfHere) return { ok: false, msg: '这片地还没探明，放不了。' };
     var b = bucket(false);
-    if (b && b[ci]) {
+    var _bk = PL.keyOf(i, j);
+    if (b && b[_bk]) {
       /* v92.246（全面复核补口）：残留的"坏记录"不该继续占位 ——
          物品 id 已从目录删除时它渲染不出来、面板也列不出来（拆不掉），
          却会让这一格永久"已经有东西了"。发现即清，然后当空格处理。 */
-      if (!PL.item(b[ci].i)) { delete b[ci]; _ver++; }
+      if (!PL.item(b[_bk].i)) { delete b[_bk]; _ver++; }
       else return { ok: false, msg: '这格已经有东西了（先拆再放）。' };
     }
     /* ---- 地形/平整度判定（老板：建造要分地形，高山不能盖，船/浮台下水）---- */
-    var T = PL.terrainOf(ci);
+    var T = T0;
     var g = it.ground || 'land';
     if (g === 'water') {
       if (!T.water) return { ok: false, msg: '「' + it.name + '」只能下水 —— 这是' + T.name + '。' };
@@ -366,9 +463,10 @@
     } else {
       if (T.water) return { ok: false, msg: '水里立不住「' + it.name + '」—— 水面上请用浮台 / 小舟。' };
       if (g === 'flat') {
-        /* 结构类：山地一律不许（"高山不适合建造"），且必须是平原/草原 + 足够平 */
-        if (T.hill) return { ok: false, msg: '山地太陡，「' + it.name + '」盖不上去（换个平地或先改地形）。' };
-        if (!T.plain) return { ok: false, msg: '「' + it.name + '」要建在平地上 —— 这里是' + T.name + '。' };
+        /* 结构类：山地不许 —— **但整平过的例外**（人工削出来的台地就是建设用地）。
+           这是"整平 → 建造"闭环的另一半：否则玩家把山坡削平了还被告知"山地盖不了"。 */
+        if (T.hill && !T.terraced) return { ok: false, msg: '山地太陡，「' + it.name + '」盖不上去（先用 ⛰ 整平削出平台）。' };
+        if (!T.plain && !T.terraced) return { ok: false, msg: '「' + it.name + '」要建在平地上 —— 这里是' + T.name + '（可以先整平）。' };
         var sMax = (it.slopeMax != null) ? it.slopeMax : 3;
         if (T.slope > sMax) {
           return { ok: false, msg: '这块地不够平（起伏 ' + T.slope + '，上限 ' + sMax + '）——「' + it.name + '」立不住。' };
@@ -385,9 +483,8 @@
   /* ============================================================
    * 5. 放置 / 拆除 / 旋转
    * ============================================================ */
-  PL.add = function (ci, itemId, opt) {
-    ci = +ci;
-    var chk = PL.canPlace(ci, itemId);
+  PL.add = function (i, j, itemId, opt) {
+    var chk = PL.canPlace(i, j, itemId);
     if (!chk.ok) return chk;
     opt = opt || {};
     var b = bucket(true); if (!b) return { ok: false, msg: '世界还没建好。' };
@@ -395,35 +492,36 @@
       i: itemId,
       y: (opt.yaw != null ? +opt.yaw : 0),
       s: (opt.scale != null ? +opt.scale : 1),
-      t: Date.now()
+      t: Date.now(),
+      ci: (chk.terrain && chk.terrain.ci != null) ? chk.terrain.ci : -1
     };
-    b[ci] = rec;
-    _fire('onPlace', { ci: ci, i: itemId, p: rec });
+    b[PL.keyOf(i, j)] = rec;
+    _fire('onPlace', { i: i, j: j, ci: rec.ci, it: itemId, p: rec });
     _ver++;
     return { ok: true, msg: '', rec: rec };
   };
 
-  PL.remove = function (ci) {
-    ci = +ci;
+  PL.remove = function (i, j) {
     var b = bucket(false);
-    if (!b || !b[ci]) return { ok: false, msg: '这格没东西可拆。' };
-    var rec = b[ci];
-    _fire('onRemove', { ci: ci, i: rec.i, p: rec });
-    delete b[ci];
+    var k = PL.keyOf(i, j);
+    if (!b || !b[k]) return { ok: false, msg: '这格没东西可拆。' };
+    var rec = b[k];
+    _fire('onRemove', { i: i, j: j, ci: rec.ci, it: rec.i, p: rec });
+    delete b[k];
     _ver++;
     return { ok: true, msg: '', rec: rec };
   };
 
   /* 旋转：默认每次 45°。返回新的朝向（度）。 */
-  PL.rotate = function (ci, step) {
-    ci = +ci;
+  PL.rotate = function (i, j, step) {
     var b = bucket(false);
-    if (!b || !b[ci]) return { ok: false, msg: '这格没东西可转。' };
+    var k = PL.keyOf(i, j);
+    if (!b || !b[k]) return { ok: false, msg: '这格没东西可转。' };
     var d = (step != null ? +step : 45);
-    b[ci].y = ((+b[ci].y || 0) + d) % 360;
-    if (b[ci].y < 0) b[ci].y += 360;
+    b[k].y = ((+b[k].y || 0) + d) % 360;
+    if (b[k].y < 0) b[k].y += 360;
     _ver++;
-    return { ok: true, msg: '', yaw: b[ci].y };
+    return { ok: true, msg: '', yaw: b[k].y };
   };
 
   PL.clear = function () {
@@ -446,10 +544,17 @@
     for (var pid in r) {
       var b = r[pid];
       if (!b || typeof b !== 'object') { delete r[pid]; continue; }
-      for (var ci in b) {
-        var p = b[ci];
-        if (!p || !p.i || !PL.item(p.i)) { delete b[ci]; dropped++; continue; }
-        if (SPn && SPn.cells && !SPn.cells[+ci]) { delete b[ci]; dropped++; continue; }
+      for (var key in b) {
+        var p = b[key];
+        if (!p || !p.i || !PL.item(p.i)) { delete b[key]; dropped++; continue; }
+        /* ⛔ v157.42（实机存档往返发现）：**放置物读档全丢** 的根因就在下一行。
+           v157.18 把格键从"六边形 ci（纯数字）"改成"方格 "i,j"" 之后，
+           这里仍在按 `SPn.cells[+ci]` 校验 —— 而 `+"3,5"` 是 NaN、`cells[NaN]` 恒 undefined，
+           于是**每一条都被判成"这颗星球上不存在的格"删掉**。
+           实测：存 2 件 → 读档 0 件；整平（terrain）没事，因为它不走这条清理。
+           修法：只有**老档的纯数字键**才做 cells 校验；新的 "i,j" 键是切平面坐标，不在球面格集里。 */
+        var _oldStyle = !isNaN(+key);
+        if (_oldStyle && SPn && SPn.cells && !SPn.cells[+key]) { delete b[key]; dropped++; continue; }
         if (p.y == null) p.y = 0;
         if (p.s == null) p.s = 1;
         kept++;

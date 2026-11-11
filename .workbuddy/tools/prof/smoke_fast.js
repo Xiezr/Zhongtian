@@ -128,7 +128,15 @@ function finish() {
     var cen = {};
     try { cen = JSON.parse(fs.readFileSync(cenF, 'utf8')); } catch (e2) { cen = {}; }
     cen.lastSplit = { total: pass + fail + warn + skip, pass: pass, fail: fail, warn: warn, skip: skip,
-      parts: files.length, wallSec: +wall, at: new Date().toISOString().slice(0, 19) };
+      parts: files.length, wallSec: +wall, at: new Date().toISOString().slice(0, 19),
+      /* v157.28：分片记录也绑版本 —— 与 gate 写的 fullSig 同一把尺（md5 前 12 位）。
+         没有它，Q3 会拿"上周的全量"比"这周的分片"，把版本差异报成分片漏段。 */
+      sig: (function () {
+        try {
+          return require('crypto').createHash('md5')
+            .update(fs.readFileSync(path.join(ROOT, 'smoke-test.js'))).digest('hex').slice(0, 12);
+        } catch (e) { return ''; }
+      })() };
     fs.writeFileSync(cenF, JSON.stringify(cen, null, 1));
   } catch (e) { console.log('⚠️ census 写入失败：' + e.message); }
   try {

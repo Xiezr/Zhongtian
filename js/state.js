@@ -2054,6 +2054,9 @@ import './data.js';
    * ============================================================ */
   GAME.cityLvOf = function (city) {
     if (!city) return 1;
+    /* v157f：占领来的名城沿用**占领那一刻定格的档位上限**（见 battle 的 tierCap）。
+       放在最前：哪怕 type 字段后来被别的流程动过，城等级也不该跟着变。 */
+    if (city.tierCap) return city.tierCap;
     var T = DATA.NPC_TIER_LV || {};
     if (city.type && T[city.type] != null) return T[city.type];        /* 名城：档位等级 */
     if (city.type === 'self') {                                        /* 自建城：跟随政务厅 */
@@ -3298,6 +3301,25 @@ import './data.js';
         else if ((R[k] || 0) < cap) GAME.city.add(ct, k, prod[k] * secReal, true);
       }
       /* v89.36：军粮维持耗粮已废除（不再扣粮、不再缺粮计时）。 */
+      /* ============================================================
+       * v157.14（老板「幸存者增长速度似乎存在问题」）—— **批量段漏了幸存者**
+       * ------------------------------------------------------------
+       * 离线补算分两段（见 offlineCatchup）：
+       *   · 前 OFFLINE_EXACT_MAX（3600 秒）逐秒 tickOnce —— 幸存者正常爬升；
+       *   · 超出部分走本函数 —— 资源/体力/队列/历法都补了，**唯独没有幸存者**。
+       * 实测（tools/_pop-probe.js）：simulateBulk(60) 下 pop 增量恰好 0。
+       * 后果：挂机 8 小时只补前 1 小时的人；补满要 14 现实小时的设定，
+       *       在"离线"这条路上永远走不完（玩家观感 = 增长速度不对）。
+       * 口径与 tickOnce 逐字一致：effPopCapOf 封顶、popGrowthOf（人/现实小时）
+       * ÷3600 × 现实秒，且只封增长不削存量。
+       * ============================================================ */
+      var _mxP = GAME.effPopCapOf(ct);
+      var _Rp = GAME.res(ct);
+      _Rp.pop = _Rp.pop || 0;
+      if (_Rp.pop < _mxP) {
+        _Rp.pop = Math.min(_mxP, _Rp.pop + GAME.popGrowthOf(ct) / 3600 * secReal);
+      }
+      ct.maxPop = _mxP;
     });
     /* 英雄体力/精力回满、忠诚（v14.1 同样不随时间衰减，与在线口径一致） */
     (function () {
@@ -4347,9 +4369,10 @@ import './data.js';
     /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
        玩家什么都不做，这个数会变小；这就是"重建"值得做的理由。 */
     if (GAME.village && GAME.village.tick) GAME.village.tick();
-    /* v93.5：城会自己长（棚户 / 出走开垦）也会自己朽（荒废）——
+    /* v93.5：城会自己长（棚户 / 出走开垦）——
        按月推演：按秒会让它变成"数值在跳"，按月才会让玩家某天抬头发现
-       "城墙外怎么多了一片棚子"。 */
+       "城墙外怎么多了一片棚子"。
+       v157.16：不再有"自己朽"（荒废降级已退役，见 growth.js 的 C 段注释）。 */
     if (GAME.growth && GAME.growth.tick) GAME.growth.tick();
     /* 棚户自己种的那点粮（按游戏秒结算，不是按月）——很少，但它让
        "城外的棚子"不是纯负资产，否则玩家只会觉得那是个 bug。 */

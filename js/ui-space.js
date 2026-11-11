@@ -732,6 +732,7 @@ import './ui.js';
        底栏现在只剩"回主城 / 回本城 / 星系 / 前哨 / 建造 / 灰烬城"。 */
     /* v90.99（老板）：地图在看别颗星球时，基于「当前城」的导航（回主城/回本城）与母星专属的
        「灰烬城」**断开** —— 挂 .dim + data-why（点击弹原因，走全局受阻机制），比"点了没反应"直观。 */
+    var _isBuild = !!(GAME.map3d && GAME.map3d.mode === 'build');
     var _onAct99 = ui.mapOnActivePlanet();
     var _cap99 = ui.mapOnActivePlanet(1);
     function _nav99(cls, act, label, on, why) {
@@ -758,16 +759,48 @@ import './ui.js';
         _nav99('', 'map-mycity', '回本城', _onAct99, '本城不在当前地图星球上 —— 回本城需先切回本城所在星球') +
         '<button class="btn sm" data-action="galaxy-open" title="星系总览（太阳 + 各星球绕行 · 点星球进入）">🌌 星系</button>' +
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
-        /* v92.240k：地块放置物 —— 点开物品栏，选一件拿在手上，再点地图上的格子放下。 */
-        '<button class="btn sm" data-action="place-open" title="在地块上放置物体">🧱 建造</button>' +
+        /* ============================================================
+         * v157v（老板：「下方的"建造"按钮改为建造模式、战略模式切换按钮」）
+         * ------------------------------------------------------------
+         * 原来它是"打开放置面板"；现在改成**模式开关**：
+         * 战略模式 = 大地图（六边形：领地/迷雾/城市/行军）；
+         * 建造模式 = 落地施工（只认四边形格，底部出物品/工具/背包栏）。
+         * 放置面板的入口移进建造栏里，不再占底栏。
+         * ============================================================ */
+        '<button class="btn sm' + (_isBuild ? ' gold' : '') + '" data-action="mode-toggle" title="' +
+          (_isBuild ? '回到战略模式（大地图：领地 · 迷雾 · 城市）' : '进入建造模式（四边形建造格 · 物品 / 工具 / 背包）') + '">' +
+          (_isBuild ? '🌐 战略' : '🧱 建造') + '</button>' +
         /* v156.52（老板「提供一个正位按钮（把球体摆正）」）——放在动作区，和回主城/星系同排。
            摆正 = 南北轴竖直 + 视角回初始方位 + 清掉自由视线偏移。 */
         '<button class="btn sm" data-action="map-reset" title="把球体摆正：南北轴竖直、视角复位">◎ 正位</button>' +
+        /* v157e（老板：「出一个按钮"自转"，点击开启或关闭自转」）——
+           默认开启（缓慢自转是这张地图的基础观感），点一下停，再点一下转。
+           落地后星球本来就不转（人站在地上转起来会晕），按钮仍可点，只是没视觉变化。 */
+        '<button class="btn sm' + (GAME.map3d && GAME.map3d.spinOn ? ' gold' : '') + '" data-action="map-spin" title="' +
+          (GAME.map3d && GAME.map3d.spinOn ? '关闭星球自转' : '开启星球自转') + '">' +
+          (GAME.map3d && GAME.map3d.spinOn ? '⏸ 停转' : '🌏 自转') + '</button>' +
         (ui._placeItem ? '<button class="btn sm warn" data-action="place-cancel" title="放下手上的东西">✋ 收工</button>' : '') +
         _nav99('', 'map-capital', '灰烬城', _cap99, '灰烬城在母星 —— 当前地图非母星，不可定位') +
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
+      /* v157v：**建造模式的操作栏**（老板：「在地图内底部…形成一个物品，工具，背包等选项栏」）
+         只在建造模式显示；布局贴在画布下沿，不挤压画布。 */
+      '<div id="build-bar" class="build-bar"' + (_isBuild ? '' : ' hidden') + '>' +
+        '<div class="bb-tabs">' +
+          '<button class="bb-tab on" data-action="bb-tab" data-bbtab="item">🎒 物品</button>' +
+          '<button class="bb-tab" data-action="bb-tab" data-bbtab="tool">🔨 工具</button>' +
+          '<button class="bb-tab" data-action="bb-tab" data-bbtab="bag">📦 背包</button>' +
+          '<span class="bb-hint" id="bb-hint">悬停选格 · 左键放置</span>' +
+        '</div>' +
+        '<div class="bb-slots" id="bb-slots">' +
+          (function () {
+            var h = '';
+            for (var i = 0; i < 8; i++) h += '<button class="bb-slot" data-action="bb-slot" data-idx="' + i + '"><i>' + (i + 1) + '</i></button>';
+            return h;
+          })() +
+        '</div>' +
+      '</div>' +
       /* v91.30：**雷霆大箭头** —— 屏幕内指向今日奇观。
          v91.73（老板「奇观的闪电改成不可点击选择的，老是被选中」）：
          它只是**指路标记**，不再带动作；且 pointer-events/user-select 全关，
@@ -807,6 +840,70 @@ import './ui.js';
       '</div>';
   };
   /* 分级行政检索（级联）：全球 → 省 → 市 → 区；选中即高亮 + 显示下一级边界/首府/名称 */
+  /* ============================================================
+   * v157.15：建造栏的**页签内容**（工具页签 = 整平工具组）
+   * ------------------------------------------------------------
+   * 只重写 #bb-slots 这一块 —— 不能整体重绘 map-wrap（会把 canvas 一起重建，
+   * 3D 场景整个丢掉）。页签切换时由 main.js 的 case 'bb-tab' 调这里。
+   * ============================================================ */
+  ui.renderBuildBar = function (tab) {
+    var host = (document.getElementById && document.getElementById('bb-slots'));
+    if (!host) return;
+    var M = GAME.map3d || {};
+    if (tab === 'tool') {
+      var lv = (M.TERRACE_TARGET == null) ? 8 : M.TERRACE_TARGET;
+      var onT = (M.TOOL === 'terrace');
+      var _bsz = (M.terraceBrushSize ? M.terraceBrushSize() : 1);
+      host.innerHTML =
+        '<button class="bb-slot' + (onT ? ' on' : '') + '" data-action="tool-pick" data-tool="terrace"' +
+          ' title="整平：把地面削平/填平成平台，按住左键在地面拖动">⛰<i>整平</i></button>' +
+        '<button class="bb-slot" data-action="terrace-brush" title="笔刷大小（点一下切换 1 / 7 / 19 格）">◍<i>'
+          + _bsz + '格</i></button>' +
+        '<button class="bb-slot" data-action="terrace-lv" data-d="-1" title="目标层 −1（每层 1 米）">−<i>降</i></button>' +
+        '<button class="bb-slot lv" data-action="terrace-none" title="当前目标层：地面会被削/填到这一层">' + lv + '<i>层</i></button>' +
+        '<button class="bb-slot" data-action="terrace-lv" data-d="1" title="目标层 +1（每层 1 米）">＋<i>升</i></button>' +
+        '<button class="bb-slot" data-action="terrace-clear" title="复原：把走过的格恢复成自然地形">↩<i>复原</i></button>';
+    } else if (tab === 'item') {
+      /* ============================================================
+       * v157.18：物品页签接上**已有的**放置目录（GAME.place）
+       * ------------------------------------------------------------
+       * 放置引擎（placement.js）早就建好了，但入口一直挂在旧的地块面板上，
+       * 建造栏这 8 个槽是空的 —— 等于"引擎有了没方向盘"。
+       * 这里把前 7 件直接做成槽位，第 8 槽给"更多"（完整面板：全部物品 + 已放置清单）。
+       * 图标：目录里没有 emoji 字段，用一张小映射表兜底（没登记的就用方块符号）。
+       * ============================================================ */
+      var PLb = GAME.place;
+      var list = (PLb && PLb.list) ? PLb.list() : [];
+      var curP = ui._placeItem || null;
+      var ICON = {
+        tree: '🌳', bush: '🌿', pond: '🐟', fence: '🪵', hut: '🏠',
+        cairn: '🪨', totem: '🗿', watchtower: '🗼', banner: '🚩', brazier: '🔥',
+        crate: '📦', palisade: '🧱', shrine: '⛩', pontoon: '🛶', boat: '⛵', pier: '🌉'
+      };
+      var h2 = '';
+      for (var k2 = 0; k2 < 7 && k2 < list.length; k2++) {
+        var it2 = list[k2];
+        var on2 = (curP === it2.id);
+        h2 += '<button class="bb-slot' + (on2 ? ' on' : '') + '" data-action="place-pick" data-item="' + U.escape(it2.id) + '"'
+          + ' title="' + U.escape(it2.name + '：' + (it2.desc || '')) + '">'
+          + (ICON[it2.id] || '▪') + '<i>' + U.escape(it2.name) + '</i></button>';
+      }
+      h2 += '<button class="bb-slot" data-action="place-open" title="全部物品 + 已放置清单">⋯<i>更多</i></button>';
+      /* 手上有东西时给一个"收工" —— 成熟建造游戏都有一键放下的出口，
+         不能只靠"再点一次同一件"（玩家记不住）。 */
+      if (curP) {
+        h2 += '<button class="bb-slot" data-action="place-rot-hand" title="旋转 45°（快捷键 R）">↻<i>转'
+          + (M.PLACE_YAW ? (' ' + M.PLACE_YAW + '°') : '') + '</i></button>';
+        h2 += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的东西">✋<i>收工</i></button>';
+      }
+      host.innerHTML = h2;
+    } else {
+      var h = '';
+      for (var i = 0; i < 8; i++) h += '<button class="bb-slot" data-action="bb-slot" data-idx="' + i + '"><i>' + (i + 1) + '</i></button>';
+      host.innerHTML = h;
+    }
+  };
+
   ui.fillAdmSearch = function () {
     /* v90.99：行政检索读的是**地图星球的行政表**（`_settle`，genSettlements 生成）——
        切星球后须**先重绘地图**（重建该星球的 _settle.package table）再读，否则拿到上一颗星球的省市。 */
@@ -992,12 +1089,20 @@ import './ui.js';
       + (keys.length > 12 ? '（只列最近 12 件）' : '') + '</div>';
     if (!keys.length) h += '<div class="mk-lbl">这块地方还没放过东西。</div>';
     for (var j = 0; j < Math.min(12, keys.length); j++) {
-      var ci = keys[j], rec = all[ci], it2 = PLc.item(rec.i);
-      var c = (SPn && SPn.cells) ? SPn.cells[+ci] : null;
-      var pos = c ? (Math.round(c.lon) + '°E ' + Math.round(c.lat) + '°N') : ('格 ' + ci);
+      var key = keys[j], rec = all[key], it2 = PLc.item(rec.i);
+      /* v157.26：新键是方格 "i,j"；旧档是六边形 ci（数字）。
+         两种都要列得出来 —— 旧档的房子不能因为换了坐标系就"看不见、拆不掉"。 */
+      var pos;
+      if (String(key).indexOf(',') > 0) {
+        var pq = String(key).split(',');
+        pos = '方格 (' + pq[0] + ', ' + pq[1] + ')';
+      } else {
+        var c = (SPn && SPn.cells) ? SPn.cells[+key] : null;
+        pos = c ? (Math.round(c.lon) + '°E ' + Math.round(c.lat) + '°N') : ('格 ' + key);
+      }
       h += '<div class="mk-lbl" style="margin:4px 0;"><b>' + U.escape(it2 ? it2.name : rec.i) + '</b>　' + U.escape(pos)
-        + '　<button class="btn sm" data-action="place-rot" data-ci="' + ci + '">转 45°</button>'
-        + '　<button class="btn sm warn" data-action="place-rm" data-ci="' + ci + '">拆除</button></div>';
+        + '　<button class="btn sm" data-action="place-rot" data-key="' + U.escape(String(key)) + '">转 45°</button>'
+        + '　<button class="btn sm warn" data-action="place-rm" data-key="' + U.escape(String(key)) + '">拆除</button></div>';
     }
     h += '</div>';
     h += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';

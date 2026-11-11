@@ -150,6 +150,140 @@ t('marchMenOf：逐兵种求和且向下取整', () => {
   eq(G.battle.marchMenOf(null), 0, 'null 不抛');
 });
 
+/* ============================================================
+ * ⑥ 调参护栏（v157.29 · 调参自检第 3 轮）
+ * ------------------------------------------------------------
+ * 来历：3 轮自检里，"尺子口径错了"出现两次 ——
+ *   · ladder_audit 把"需 7.2 座城"判成走不通（多城推进是设计内路径）；
+ *   · 造价扫描把 Lv13 的**12 级循环**判成"时间回退"（v89.128 明确设计）。
+ * 所以这里锁的不是"某个数等于多少"（那是平衡，会变），
+ * 而是**调参时必须成立的关系**；改设计就得改断言，改不了就说明改错了。
+ * ============================================================ */
+const BIDS = Object.keys(DATA.BUILDINGS).filter(function (id) { return !!DATA.BUILDINGS[id].levelCost; });
+
+t('建造时间：升到 1..12 级逐级不降，且 12 级是全程最长（循环重置点在 13）', () => {
+  /* lv 参数 = **升级前等级**：time(lv) 是"升到 lv+1 级"的时长。
+     0..10 → 升到 1..11；11 → 升到 12（本档最长）。lv=12 起进入新循环，
+     所以这里不拿 11 和 12 比 —— 那是设计，不是回退。 */
+  BIDS.forEach(function (id) {
+    const seq = [];
+    for (let lv = 0; lv <= 11; lv++) seq.push(DATA.buildTimeSec(id, lv));
+    for (let i = 1; i < seq.length; i++) {
+      if (!(seq[i] >= seq[i - 1])) throw new Error(id + ' 第 ' + i + '→' + (i + 1) + ' 档：' + seq[i - 1] + 's → ' + seq[i] + 's');
+    }
+    const max = Math.max.apply(null, seq);
+    if (seq[11] !== max) throw new Error(id + ' 12 级不是最长：' + seq[11] + 's < ' + max + 's');
+  });
+});
+
+t('建造时间：12 级循环恒等（lv 与 lv+12 同长 · v89.128 口径）', () => {
+  BIDS.forEach(function (id) {
+    for (let lv = 0; lv < 33; lv++) {
+      const a = DATA.buildTimeSec(id, lv), b = DATA.buildTimeSec(id, lv + 12);
+      if (a !== b) throw new Error(id + ' Lv' + lv + '=' + a + 's 但 Lv' + (lv + 12) + '=' + b + 's');
+    }
+  });
+});
+
+t('建造造价：1→12 级每种资源不降（改表时最常见的"越升越便宜"）', () => {
+  BIDS.forEach(function (id) {
+    const b = DATA.BUILDINGS[id];
+    /* lv=0 是"新建"，造价走 buildCost 而不是 levelCost（返回 null）—— 从 1 起比 */
+    for (let lv = 1; lv < 12; lv++) {
+      const a = b.levelCost(lv), c = b.levelCost(lv + 1);
+      if (!a || !c) throw new Error(id + ' Lv' + lv + '/Lv' + (lv + 1) + ' 造价缺失');
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+        const av = a[k] || 0, cv = c[k] || 0;
+        if (cv > 0 && cv < av * 0.999) throw new Error(id + ' Lv' + lv + '→' + (lv + 1) + ' ' + k + '：' + Math.round(av) + '→' + Math.round(cv));
+      });
+    }
+  });
+});
+
+t('等级数组必须覆盖 MAX_LEVEL_ABS（短了 = 上限 undefined/NaN）', () => {
+  const ABS = DATA.MAX_LEVEL_ABS;
+  const bad = [];
+  Object.keys(DATA.BUILDINGS).forEach(function (id) {
+    const b = DATA.BUILDINGS[id];
+    ['pop', 'cap', 'speed'].forEach(function (k) {
+      if (Array.isArray(b[k]) && b[k].length < ABS) bad.push(id + '.' + k + '=' + b[k].length);
+    });
+  });
+  if (bad.length) throw new Error('不足 ' + ABS + ' 档：' + bad.join(' · '));
+});
+
+t('RANK_BONUS 不含 buildCap（唯一出口 = rankBuildCapOf，防第二份口径回潮）', () => {
+  const hit = (DATA.RANK_BONUS || []).filter(function (b) { return Object.prototype.hasOwnProperty.call(b, 'buildCap'); });
+  if (hit.length) throw new Error('又有 ' + hit.length + ' 档写回了 buildCap —— 调它不会生效');
+});
+
+t('兵种造价四资源齐全且为正（缺项 = 白嫖）', () => {
+  Object.keys(DATA.TROOPS).forEach(function (id) {
+    const c = DATA.TROOPS[id].cost || {};
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      if (!(c[k] > 0)) throw new Error(id + ' 的 cost.' + k + ' = ' + c[k]);
+    });
+  });
+});
+
+/* ============================================================
+ * ⑦ 旧币去路（v157.30 · 老板「增加旧币去路」）
+ * ------------------------------------------------------------
+ * 旧币是唯一"玩家层级通用"的资源，通胀只能靠**去处**消化。
+ * 这里锁三条关系，防"看着有去处、其实免费/无效"：
+ *   ① Lv9-12 的营造旧币是钉死过的护栏（一字不许动）；
+ *   ② Lv13+ 必须严格递增（后期一座城的营造旧币不能和 12 级一个价）；
+ *   ③ 挂在名城选项上的旧币出口必须有价、有冷却，且兵种 id 真实存在。
+ * ============================================================ */
+t('营造旧币：Lv9~12 = 3000/6000/12000/24000（前期护栏不许动）', () => {
+  const want = [3000, 6000, 12000, 24000];
+  want.forEach((v, i) => {
+    const got = DATA.buildGoldAt(9 + i);
+    if (got !== v) throw new Error('Lv' + (9 + i) + '：期望 ' + v + '，实得 ' + got);
+  });
+  if (DATA.buildGoldAt(8) !== 0) throw new Error('Lv8 应为 0（保前期流畅）');
+});
+
+t('营造旧币：Lv13 起严格递增，Lv24 ≥ 100 万且不超上限', () => {
+  const G0 = DATA.BUILD_GOLD;
+  for (let lv = 13; lv <= 24; lv++) {
+    const a = DATA.buildGoldAt(lv - 1), b = DATA.buildGoldAt(lv);
+    if (!(b > a)) throw new Error('Lv' + lv + ' 没有比 Lv' + (lv - 1) + ' 更贵：' + a + '→' + b);
+    if (G0.cap && b > G0.cap) throw new Error('Lv' + lv + ' 超上限：' + b + ' > ' + G0.cap);
+  }
+  if (DATA.buildGoldAt(24) < 1000000) throw new Error('Lv24 营造旧币只有 ' + DATA.buildGoldAt(24) + '，后期等于免费');
+});
+
+t('旧币出口：每个 gold 类名城选项都有价 + 有冷却（防免费无限刷）', () => {
+  (DATA.CITY_OPTS || []).forEach((o) => {
+    const g = (o.cost || {}).gold || 0;
+    if (g <= 0) return;                       /* 非旧币选项不在此列 */
+    if (!(o.cdDays >= 1)) throw new Error(o.id + ' 没有冷却日（可无限刷）');
+  });
+});
+
+t('旧币出口：雇佣民壮的兵种 id 必须真实存在（写错 = 空雇佣）', () => {
+  const o = (DATA.CITY_OPTS || []).filter((x) => x.id === 'hire')[0];
+  if (!o) throw new Error('缺 hire 选项');
+  const tp = o.troops || {};
+  const ids = Object.keys(tp);
+  if (!ids.length) throw new Error('hire 没写 troops');
+  ids.forEach((id) => { if (!DATA.TROOPS[id]) throw new Error('兵种不存在：' + id); });
+});
+
+t('旧币出口：收珠的珠宝 id 必须真实存在，且选项 id 不重复', () => {
+  const ids = {};
+  (DATA.CITY_OPTS || []).forEach((o) => {
+    if (ids[o.id]) throw new Error('选项 id 重复：' + o.id);
+    ids[o.id] = 1;
+  });
+  const j = (DATA.CITY_OPTS || []).filter((x) => x.id === 'jewelbuy')[0];
+  if (!j) throw new Error('缺 jewelbuy 选项');
+  (j.jewelPool || []).forEach((id) => {
+    if (!(DATA.ITEM_BY_ID || {})[id]) throw new Error('珠宝不存在：' + id);
+  });
+});
+
 /* ============================================================ */
 const dt = Date.now() - t0;
 console.log('\n结果：' + PASS + ' 通过 / ' + FAIL + ' 失败　（' + dt + ' 毫秒）');

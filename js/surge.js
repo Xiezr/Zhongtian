@@ -39,6 +39,13 @@
    * 你把家搬到哪，圈就围着哪收。这让"搬家"变成一个有意义的选择。
    * ============================================================ */
   SG.centerOf = function () {
+    /* ⛔ v157.41（设定深挖发现的死设定）：原来这里每次返回**所有城的质心** ——
+       圈永远以你自己为中心收缩，所以无论 minR 调多少都追不上你。
+       实测：快进 25 年，圈缩到 minR=14 就停，而首城距圈心恒为 0，`inCloud` 永远 false。
+       改成：**圈心在第一次计算时钉死**（= 开局时你家的位置），之后不再移动。
+       于是"守中心 vs 扩张"第一次成为真选择：跑到 55 格外就会被云追上。 */
+    var st = GAME.state;
+    if (st && st.surgeCenter && st.surgeCenter.n) return st.surgeCenter;
     var arr = (GAME.city && GAME.city.all ? GAME.city.all() : []);
     var n = 0, sx = 0, sy = 0;
     for (var i = 0; i < arr.length; i++) {
@@ -47,7 +54,9 @@
       sx += c.x; sy += c.y; n++;
     }
     if (!n) return { x: 0, y: 0, n: 0 };
-    return { x: sx / n, y: sy / n, n: n };
+    var got = { x: sx / n, y: sy / n, n: n };
+    if (st) st.surgeCenter = { x: got.x, y: got.y, n: got.n };
+    return got;
   };
 
   /* 当前收缩进度：已经收缩了几个月（跳过停歇期） */

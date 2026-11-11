@@ -1,26 +1,27 @@
 /* ============================================================
- * growth.js — 城会自己长，也会自己朽
+ * growth.js — 城会自己长
  * ------------------------------------------------------------
  * 老板 2026-10-22：「你做的是一整个废土……从大处着眼」。
  *
  * 这个项目里所有的城都是**死的容器**：
  *   · 48 个格子等你规划，你不建就永远空着；
- *   · 人口只会在上限前停住，不会自己找地方住；
- *   · 建筑造好就永远在那，不会塌。
+ *   · 人口只会在上限前停住，不会自己找地方住。
  * 于是"建城"这件事只有"我摆什么"，没有"它自己变成什么样"。
- * 但真实的废土不是这样 —— **人会在你没想到的地方住下来，
- * 没人管的房子会塌。**
+ * 但真实的废土不是这样 —— **人会在你没想到的地方住下来。**
  *
- * 这个模块只做两件事，一长一朽：
+ * 这个模块只做"世界自己在动"的那部分：
  *   A. **棚户**：人口顶到居所上限，多出来的人不会凭空消失 ——
  *      他们在城墙外自己搭棚子住。产出不多，但会带来拥挤、火、疫。
- *   B. **荒废**：人口长期远低于居所容量的城，建筑会一级一级掉回去。
+ *   B. **棚户代价 / 出走开垦**：寒潮疫病先死棚户、挤不下的人自己走远建村。
  *
  * ⚠️ 刻意不做的事：
  *   · **不占那 48 格**。玩家的规划区是玩家的地方，居民不能偷偷占掉一格 ——
  *     那是"抢你的操作"，不是"世界在长"。
  *   · 不给棚户正收益。它是**症状**，不是新资源池；想解决就去建居所。
- *   · 荒废只掉建筑等级，**不毁城、不删建筑**。下限 1 级，永远能修回来。
+ *   · **不动玩家已建的东西**（v157.16 / v157.19 删干净）：旧的"荒废降级"
+ *     （人口 < 两成连续 3 个月 → 每月塌掉一座建筑的 1 级）**连同配置字段一起删除**。
+ *     理由：人口只能靠等或出去找，拿"时间没到"去倒扣玩家花资源建起来的等级，
+ *     是惩罚而不是世界演化。
  * ============================================================ */
 (function () {
   'use strict';
@@ -60,15 +61,15 @@
    * ============================================================ */
   GR.tick = function (force) {
     var st = GAME.state;
-    if (!st) return { spawned: 0, decayed: 0, moved: 0 };
+    if (!st) return { spawned: 0, moved: 0 };
     var m = GR.monthNow();
     var has = (st.growthMonth != null);
-    if (!force && has && st.growthMonth === m) return { spawned: 0, decayed: 0, moved: 0 };
-    if (!has) { st.growthMonth = m; return { spawned: 0, decayed: 0, first: true }; }
+    if (!force && has && st.growthMonth === m) return { spawned: 0, moved: 0 };
+    if (!has) { st.growthMonth = m; return { spawned: 0, first: true }; }
     st.growthMonth = m;
 
     var d = D();
-    var spawned = 0, decayed = 0, burned = 0, moved = 0;
+    var spawned = 0, burned = 0, moved = 0;
 
     (st.cities || []).forEach(function (c) {
       if (!c || c.npc) return;
@@ -157,39 +158,9 @@
         }
       }
 
-      /* ---------- C. 荒废：没人住的房子会塌 ---------- */
-      /* ⚠️ **连续三个月**才塌，不是一低就塌。
-         起因：第一版当月就掉级，e2e 里一个刚造好的作坊因为人口还没涨上来
-         直接掉了一级，器械面板随之打不开（§229c-e② 器械卡消失）。
-         空城要空一段时间才叫"没人住" —— 一个月人口没跟上只是还在长。 */
-      var deadAt = d.abandonAt == null ? 0.2 : d.abandonAt;
-      if (ratio < deadAt) {
-        c.abandonMonths = (c.abandonMonths | 0) + 1;
-      } else {
-        c.abandonMonths = 0;
-      }
-      if (ratio < deadAt && (c.abandonMonths | 0) >= (d.abandonNeedMonths == null ? 3 : d.abandonNeedMonths)) {
-        /* 连 20% 都住不满 —— 这座城已经名存实亡。
-           每月掉一座建筑的 1 级（只掉 1 座，给玩家足够时间回来管）。 */
-        var cand = (c.cells || []).filter(function (cc) {
-          return cc && cc.build && cc.build.id && cc.build.lvl > 1;
-        });
-        if (c.wall && c.wall.build && c.wall.build.lvl > 1) cand.push(c.wall);
-        if (cand.length) {
-          /* 确定性挑一座（同月同城永远同一座，便于复盘），不从最低的开始掉 */
-          var idx = Math.floor((GAME.invasionRoll ? GAME.invasionRoll('decay|' + c.id + '|' + m) : 0.5) * cand.length) % cand.length;
-          var victim = cand[idx];
-          victim.build.lvl -= 1;
-          decayed++;
-          if (GAME.log && GAME.log.war) {
-            GAME.log.war('🏚 ' + c.name + ' 没人住：' + ((GAME.DATA.BUILDINGS[victim.build.id] || {}).name || victim.build.id)
-              + ' 塌了一部分（Lv' + (victim.build.lvl + 1) + ' → Lv' + victim.build.lvl + '）。');
-          }
-        }
-      }
     });
 
-    return { spawned: spawned, decayed: decayed, burned: burned, moved: moved, month: m };
+    return { spawned: spawned, burned: burned, moved: moved, month: m };
   };
 
   /* ============================================================

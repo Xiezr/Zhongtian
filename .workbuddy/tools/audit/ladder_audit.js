@@ -27,7 +27,11 @@ const DATA_JS = path.join(ROOT, 'js', 'data.js');
 const sb = { console, document: undefined };
 sb.window = sb; sb.GAME = {};
 vm.createContext(sb);
-vm.runInContext(fs.readFileSync(DATA_JS, 'utf8'), sb, { filename: 'data.js' });
+/* v157.29：data.js 首行是 ESM `import './core.js'`，vm 里直接跑会 SyntaxError ——
+   这把"阶梯尺子"因此长期是坏的（不在 gate 里，没人发现）。
+   剥掉 import 行即可（data.js 自己 `window.GAME = window.GAME || {}`，不依赖 core）。 */
+const _src = fs.readFileSync(DATA_JS, 'utf8').replace(/^\s*import\s+[^\n]*$/gm, '');
+vm.runInContext(_src, sb, { filename: 'data.js' });
 const D = sb.GAME.DATA;
 if (!D) { console.error('✗ 拿不到 DATA'); process.exit(2); }
 
@@ -105,18 +109,29 @@ const plainsRatio = (D.TERRAIN_WEIGHTS && D.TERRAIN_WEIGHTS.plain) || 0.2;
 const mapTiles = (D.MAP_W || 0) * (D.MAP_H || 0);
 const plainTiles = Math.round(mapTiles * plainsRatio);
 const maxCities = plainTiles;                  // 每块平原理论上都能筑一城（实际受资源与时间限制）
+/* v157.29：**第二道闸 —— 威望能管几座城**。
+   原来只比地图平原（几万块，永远够），等于没判；
+   而玩家真正的硬上限是 `DATA.RANK[i].city`（幸存者 9 座 … 最高 30 座）。
+   两条同时满足才算"走得通"。 */
+const rankCityCap = (D.RANK || []).reduce(function (m, r) { return Math.max(m, r.city || 1); }, 0);
 const needMax = steps[steps.length - 1].cities;
-const reachable = needMax <= maxCities;
+const okLand = needMax <= maxCities;
+const okRank = rankCityCap > 0 && needMax <= rankCityCap;
 
 L.push('');
 L.push('=== ⑤ 判定 ===');
-L.push(`  野外城池：单城满级可出 ${fmt(one)} 步兵，最高档（Lv10）守军 ${fmt(fortTotal(10))} → ` +
-  (one >= fortTotal(10) ? '✅ 单城可平推' : '❌ 需多城'));
-L.push(`  名城扩张：靠「平原筑城」扩城（无城池数量上限）`);
-L.push(`  打灰烬城需 ${needMax.toFixed(1)} 座满级城；地图平原约 ${fmt(plainTiles)} 块（上限代理）→ ` +
-  (reachable ? '✅ 数量够' : '❌ 地图放不下'));
-L.push(`  结论：${reachable && one >= fortTotal(10) ? '✅ 阶梯走得通 —— 卡点只有「时间」，不是「无解」' : '❌ 存在走不通的环节'}`);
+/* 单城能不能平推最高档 —— **信息行，不是判据**。
+   v157.29：旧判据把它 AND 进结论（one >= fortTotal(10)），于是"需要 7.2 座城"
+   被报成"❌ 存在走不通的环节"，而多城推进本来就是设计内路径 ——
+   尺子天天喊狼来了，等于没有尺子。 */
+L.push(`  单城参考：单城满级可出 ${fmt(one)} 步兵，最高档（Lv10）守军 ${fmt(fortTotal(10))}`
+  + `（单城 ${one >= fortTotal(10) ? '可平推' : '打不下 —— 需 ' + needMax.toFixed(1) + ' 座'}，多城是设计内路径）`);
+L.push(`  名城扩张：靠「平原筑城」扩城（无城池数量上限，受威望管理数约束）`);
+L.push(`  打灰烬城需 ${needMax.toFixed(1)} 座满级城 / 威望可管 ${rankCityCap} 座 → ` + (okRank ? '✅ 管得下' : '❌ 威望上限不够'));
+L.push(`  地图平原约 ${fmt(plainTiles)} 块（上限代理）→ ` + (okLand ? '✅ 放得下' : '❌ 地图放不下'));
+L.push(`  结论：${okRank && okLand ? '✅ 阶梯走得通 —— 卡点只有「时间」，不是「无解」' : '❌ 存在走不通的环节'}`
+  + (okRank && okLand ? '' : `（城数 ${needMax.toFixed(1)}：威望 ${rankCityCap} · 平原 ${fmt(plainTiles)}）`));
 L.push('  ⚠️ 本表以「守军总数」为所需兵力上界代理（偏保守，真实所需更低）');
 
 console.log(L.join('\n'));
-process.exit(reachable && one >= fortTotal(10) ? 0 : 1);
+process.exit(okRank && okLand ? 0 : 1);

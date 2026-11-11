@@ -31696,19 +31696,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     };
 
     console.log('  --- ② S1：建筑营造金（Lv9 起）---');
-    /* v89.192 报告 S1 拍板值：Lv9=3000 / Lv10=6000 / Lv11=12000 / Lv12+=24000；
-       Lv1-8 零金 = 保前期流畅的**护栏**（防误伤）。 */
-    check('§194② 营造金五档：升 Lv9/10/11/12+ = 3000/6000/12000/24000 · Lv1-8 零金', (function () {
+    /* v89.192 报告 S1 拍板值：Lv9=3000 / Lv10=6000 / Lv11=12000 / Lv12=24000；
+       Lv1-8 零金 = 保前期流畅的**护栏**（防误伤）。
+       ⚠️ v157.30（老板「增加旧币去路」）**规则变更**：Lv13 起不再封顶 24,000 ——
+          旧都要塞能盖到 24 级，后期一级 24,000 等于免费，旧币没处花。
+          新口径 = 每级 ×1.45、单级封顶 300 万。**Lv9~12 四个值一字未动。**
+          所以本条从"越档恒等"重写为"13 起递增"：原来允许 Lv13+ 与 Lv12 同价，
+          现在要求它**必须更贵**，且保留上限不失控（不是放宽，是换口径）。 */
+    check('§194② 营造金：升 Lv9/10/11/12 = 3000/6000/12000/24000 · Lv1-8 零金 · Lv13 起递增（v157.30）', (function () {
       var g = function (bid, lv) { var c = DATA.BUILDINGS[bid].levelCost(lv); return c && c.gold ? c.gold : 0; };
       return g('guanfu', 7) === 0 && g('guanfu', 8) === 3000
         && g('guanfu', 9) === 6000 && g('guanfu', 10) === 12000
-        && g('guanfu', 11) === 24000 && g('guanfu', 12) === 24000 && g('guanfu', 20) === 24000
+        && g('guanfu', 11) === 24000
+        && g('guanfu', 12) > 24000 && g('guanfu', 20) > g('guanfu', 12)
         && g('minfang', 8) === 3000 && g('chengqiang', 8) === 3000
         && (G.extBuildCost('farm', 8).gold || 0) === 0;
     })());
-    check('§194② 唯一出口 DATA.buildGoldAt（低档 0 / 越档封顶）', (function () {
+    check('§194② 唯一出口 DATA.buildGoldAt（低档 0 · 13 起递增 · 上限 300 万 · v157.30）', (function () {
       return DATA.buildGoldAt(8) === 0 && DATA.buildGoldAt(9) === 3000
-        && DATA.buildGoldAt(99) === 24000;
+        && DATA.buildGoldAt(13) > DATA.buildGoldAt(12)
+        && DATA.buildGoldAt(99) === DATA.BUILD_GOLD.cap
+        && DATA.buildGoldAt(99) === 3000000;
     })());
     check('§194② 真调支付/退款链：canAffordIn 按金判 · payCostIn 扣金 · refundCert 退还', (function () {
       var bk = G.state;
@@ -36288,13 +36296,234 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          断言跟着改值，语义不变（仍是「缩放出口唯一、可查」）。 */
       /* v156.50：贴地下限改由**离地高度**决定（CAM_MIN_AGL），ZOOM_MIN 退回纯兜底 1.02R。
          语义变了：它不再是「实际能贴多近」，而是「地形数据取不到时的保险」。 */
-      c243('§243① map3d 缩放出口在册（ZOOM_MIN=1.02R 兜底 / CAM_MIN_AGL 离地下限 / MAX=50R + zoomFrac/setZoom 唯一换算）',
-        /M\.ZOOM_MIN = R \* 1\.02/.test(m243) && /M\.CAM_MIN_AGL = 30/.test(m243) && /M\.ZOOM_MAX = R \* 50/.test(m243)
+      /* v157b：老板要「最近地面时转为平行于地平面」—— CAM_MIN_AGL=30 那种
+         「强制离地 30 米」正是"怎么拉都俯视"的根源，已退役。
+         新口径：ZOOM_MIN 放到 0.95R（只做兜底），真正的贴地下限 =
+         `R + 周边平均地形高 + 眼高`（SURF_EYE），模式由 d 与 AGL_SURF 派生。
+         断言语义不变：仍然是「缩放出口唯一、上下限可查」——
+         只是查的对象从"一个固定离地值"换成"三个新常量"。 */
+      /* v157.32（老板「缩小放大之后位置跳变」）：ZOOM_MIN 从 0.95R 改成 `R + 眼高` ——
+         旧值比相机真实下限（R+眼高）还低 16.7，滑块底部 1.4% 是死区、
+         松手 thumb 还会弹回去（看着像"缩到底跳一下"）。断言随口径改，仍然只查"上下限可查"。 */
+      c243('§243① map3d 缩放出口在册（ZOOM_MIN=R+眼高 与真实下限对齐 / SURF_EYE 眼高 + AGL_SURF 分档 / MAX=50R + zoomFrac/setZoom 唯一换算）',
+        /M\.ZOOM_MIN = R \+ M\.SURF_EYE/.test(m243) && /M\.SURF_EYE = 1\.7/.test(m243)
+        && /M\.AGL_SURF = \d+/.test(m243) && /M\.ZOOM_MAX = R \* 50/.test(m243)
         && /M\.zoomFrac = function/.test(m243) && /M\.setZoom = function/.test(m243));
       /* v92.242：相机**不得再有任何贴地支点** —— 支点会黏在前传人物那一格上，
          前传结束后也不撒手（老板看到的就是"支点变成开局那个人物"）。 */
       c243('§243①b 相机无支点（placeCamera 只绕球心，不再用 M._focus 当轨道中心）',
         !/var f = M\._focus \|\| \[0, 0, 0\]/.test(m243) && !/cam\.lookAt\(f\[0\], f\[1\], f\[2\]\)/.test(m243));
+
+      /* ============================================================
+       * v157.31（老板：「相机高度还是不要随地形变化什么平均值而变化了，
+       *   就是固定一个相机与地心之间的高度」「高空那个右键的视角转换功能丢失了」）
+       * ------------------------------------------------------------
+       * 锁两条，都是"位置不许被地形碰"的反面证据：
+       *   ① 半径下限必须是常量 `R + 眼高`，**不得**再出现 `R + 地形高 + 眼高`；
+       *   ② 模式判定必须读海拔 `_rAlt`（= d − R），不读 agl（含地形）。
+       * 另加一条正面证据：轨道分支只在"刚离开地表"那一帧清 lookYaw/lookPitch ——
+       * 之前的写法是每帧清零，右键写进去的值当帧就被抹掉（高空视角转换失效的根因）。
+       * ============================================================ */
+      c243('§243①c 相机半径不随地形（v157.31/32）：下限=常数 R+眼高 · 模式读海拔 _rAlt · 外滚不吃地形下限',
+        /var _minD = R \+ \(M\.SURF_EYE/.test(m243)
+        && /var _lo = \(_step < 1\) \? _floor : Math\.min\(_floor, camO\.dist\)/.test(m243)
+        && !/R \+ _elev0 \+ \(M\.SURF_EYE/.test(m243)
+        && /var _rAlt = d - R/.test(m243)
+        && /_rAlt < _aglOut/.test(m243));
+      c243('§243①d 轨道右键不被每帧清零（v157.31 · 高空视角转换）',
+        /if \(_wasSurfV\) \{ camO\.lookYaw = 0; camO\.lookPitch = 0; \}/.test(m243));
+
+      /* ============================================================
+       * v157.34（S1~S3 · 计划 20261110-相机统一模型）
+       * ------------------------------------------------------------
+       * 三条都在钉同一件事：**每帧的相机代码不许读地形**。
+       *   S1：派生量（模式/俯角/淡出）只读半径或海拔，不读含地形的 agl；
+       *   S2：没有"无人操作时自己动"的自动抬头（停手后画面必须静止）；
+       *   S3：约束层（camFloorAt）只出现在输入事件与自检里，placeCamera 里不许出现。
+       * 这一组是"架构收敛"的判据 —— 下次同类问题若还要改这几行，说明骨架没建对。
+       * ============================================================ */
+      (function () {
+        var _a = m243.indexOf('function placeCamera');
+        var _b = m243.indexOf('M.render = function', _a);
+        var _body = (_a >= 0 && _b > _a) ? m243.slice(_a, _b) : '';
+        c243('§243①e 每帧相机不读地形（placeCamera 内无 elevAvgAt / groundHAt / camFloorAt · v157.34）',
+          !!_body && !/elevAvgAt\s*\(/.test(_body)
+          && !/groundHAt\s*\(/.test(_body) && !/camFloorAt\s*\(/.test(_body));
+      })();
+      c243('§243①f 没有"无人操作时自己动"的自动抬头（v157.34）',
+        /* 只查代码符号 M._settleN，不查裸词 —— 墓碑注释里会提到这个名字，
+           按裸词判会把"已退役"误判成"还在"（本轮就是这么红的）。 */
+        !/M\._settleN/.test(m243) && !/自动抬头：只在/.test(m243)
+        && /var _lookD = lookDistAt\(_rAlt\)/.test(m243));
+
+      /* v157.35（P0-A1 · 老板「p0 p1可以」）：
+         地表淡出判据 = **海拔 − 快照地形高**。
+         锁三件事：① 派生量是 `_altN - _fadeGround`；② 不许再拿裸 `_rAlt` 当离地高度；
+         ③ 快照只在输入时更新（滚轮 / 滑块 / 进地表）—— 平移期间冻结，否则又回到"走过山忽实忽虚"。
+         背景：裸 _rAlt 是绝对海拔，站上 25 米丘陵时判据算出 26.7 米 → 地表 31% 透明（实测 0.689）。
+         v157.35 后同一位置 0.965。 */
+      c243('§243①g 地表淡出判据 = 海拔 − 快照地形高（v157.35）',
+        /var _altN = \(M\._rAlt != null\) \? M\._rAlt : \(M\._agl \|\| 0\)/.test(m243)
+        && /Math\.max\(0, _altN - \(M\._fadeGround \|\| 0\)\)/.test(m243)
+        && !/var agl = \(M\._rAlt != null\) \? M\._rAlt/.test(m243)
+        && /M\._fadeGround = M\._groundAt\(\)/.test(m243)
+        && /if \(on && M\._groundAt\) M\._fadeGround = M\._groundAt\(\)/.test(m243));
+
+      /* v157.36（P0-A2）· 阈值必须收在"地表模式区间"内：
+         · FAR ≤ AGL_SURF(55) + 滞后(7) = 62 —— 否则地面在切模式后才淡完，
+           会出现"看不见地面却还在地表模式"的怪状态（原来 FAR=55 就是这个问题）；
+         · NEAR ≥ 30 —— 原来 10 米就开始淡，30~50 米这段地面一直半透明
+           （实测 36.6 米时 fade 仅 0.423，截图上是"蒙了一层灰"）。
+         同时用反向证据钉死旧值，防"调参调回去"。 */
+      c243('§243①h 地表淡出阈值收在模式区间内（v157.36 · NEAR 40 / FAR 62 = 55+滞后 7）',
+        /M\.SURF_FADE_NEAR = 40/.test(m243)
+        && /M\.SURF_FADE_FAR = 62/.test(m243)
+        && !/M\.SURF_FADE_NEAR = 10/.test(m243)
+        && !/M\.SURF_FADE_FAR = 55/.test(m243));
+
+      /* v157.37（老板：「战略只出现六边形、建造只显示方形，现在全混到一起」）：
+         三态必须互斥，锁两条反向证据：
+           ① 近地面不许再出现**六边形操作**（悬停不得高亮六边形格）；
+           ② 六边形图层（_markers 色块 / _flags 符号）在地表必须退场 ——
+              它们是几十米一格的面片，叠在 2 米地砖上就是"方形格线上浮着六边形色块"。 */
+      c243('§243①i 近地面无六边形操作（v157.37 · 悬停不再高亮六边形格）',
+        /if \(M\._surf\) \{ M\.surfHighlight\(-1\); ui2\.tipHide\(\); return; \}/.test(m243)
+        && !/if \(M\._surf\) \{ M\.surfHighlight\(ci1, false\)/.test(m243));
+      c243('§243①j 六边形图层在地表退场（v157.37 · _markers 仍是 !M._surf）',
+        /if \(M\._markers\) M\._markers\.visible = !M\._surf;/.test(m243)
+        && !/if \(M\._markers\) M\._markers\.visible = true;/.test(m243));
+
+      /* v157.41（设定深挖发现的死设定）· 收缩圈圈心必须固定。
+         原来 `SG.centerOf` 每次返回**所有城的质心** —— 圈永远以你自己为中心收缩，
+         minR 调多少都追不上。实测快进 25 年：圈缩到 14 就停，首城距圈心恒 0，
+         `inCloud` 永远 false，"时间压力"这一整条设定等于不存在。
+         修后：圈心在第一次计算时钉死（= 开局时家的位置），扩张到圈外才会进云。 */
+      (function () {
+        var _sg = '';
+        try { _sg = require('fs').readFileSync(require('path').join(__dirname, 'js', 'surge.js'), 'utf8'); } catch (eS) { }
+        c243('§243①k 收缩圈圈心固定（v157.41）：必须记住 surgeCenter，不得每次返回城的质心',
+          !!_sg && /st\.surgeCenter = \{ x: got\.x/.test(_sg)
+          && /if \(st && st\.surgeCenter && st\.surgeCenter\.n\) return st\.surgeCenter;/.test(_sg));
+      })();
+      /* ============================================================
+       * §243②（2026-11-08 老板：「统一所有转向效果」「联动要区分不同场景」）
+       * ------------------------------------------------------------
+       * 转向符号被反复改坏（一次改一处，左右键互相打架），所以锁成一张表：
+       *   · 表里的 4 组符号必须一字不差
+       *   · 调用处**必须**从 TURN 表取号，不许再写死 `camO.yaw -= dx` 这类
+       * 这条断言的目的是：以后任何人（包括我）改手感都必须先改表，
+       * 而改表会立刻红 —— 逼着把 4×2 矩阵重跑一遍。
+       * ============================================================ */
+      /* v157i（老板：「左键揪住地面一点…右键 360° 自由转向」）：
+         左键改成**抓取**（射线求交 + 两点旋转），右键保留符号表。
+         断言锁三件事：① 左键是 grab；② 右键两组符号；③ 右键水平 ±180° 环绕。 */
+      c243('§243⑪ 转向契约：左键=grab（射线求交两点旋转）· 右键 lookYaw 两场景 -1 / lookPitch 轨道 -1 地表 +1',
+        /left:\s*'grab'/.test(m243)
+        && /lookYaw:\s*\{\s*orbit:\s*-1,\s*surf:\s*-1\s*\}/.test(m243)
+        && /lookPitch:\s*\{\s*orbit:\s*-1,\s*surf:\s*\+1\s*\}/.test(m243)
+        && /intersectObject\(_tgtG/.test(m243)
+        && /setFromUnitVectors\(_P1, _P0\)/.test(m243));
+      c243('§243⑪b 右键符号只从 TURN 表取（调用处不得写死正负号）· 水平 ±180° 环绕可连转一圈',
+        /* v157.25：地表改成自由视线后，轨道分支从表里取值的写法变为 `TURN.lookPitch.orbit`；
+           判据只要求"符号确实来自 TURN 表"，点号/下标两种写法都算 */
+        /camO\.lookYaw \+ TURN\.lookYaw(\.|\[)/.test(m243)
+        && /camO\.lookPitch \+ TURN\.lookPitch(\.|\[)/.test(m243)
+        && /Math\.PI \* 2/.test(m243)
+        && !/camO\.yaw -= dx/.test(m243) && !/camO\.pitch -= dy/.test(m243));
+      /* v157o（老板：「那还是正方形持续适配好一点」）
+         —— 方形建造网格。崩溃点不是"画不画得出格子"，而是**坐标能不能存档**：
+            基向量若取自当前中心格，人一走整套方格就转一点，建筑立刻错位。
+         所以这里锁的不是视觉效果，是**三条不变量**：
+            ① 坐标由世界方向唯一决定（正反两侧用同一个指数映射，必须互逆）
+            ② 重锚必须吸到整数格点 + 平行移动（编号连续、方格不转）
+            ③ 有全局偏移（重锚会让局部坐标平移，不累加偏移则编号全废）
+         另锁：自检必须带**下限**（没重锚也算通过 = 白测）。 */
+      c243('§243⑫ 方形建造网格坐标不变量（指数映射互逆 · 重锚吸整数格点 + 平行移动 · 全局偏移 · 自检有下限）',
+        /M\.GRID_ANCHOR_MAX = \d+/.test(m243)
+        && /function _gridTransport/.test(m243)
+        && /var _gridOrigin = \{ i: 0, j: 0 \}/.test(m243)
+        && /_gridOrigin\.i \+= si; _gridOrigin\.j \+= sj/.test(m243)
+        && /function _gridUVOf/.test(m243) && /function _gridDirOf/.test(m243)
+        && /i: Math\.round\(uv\[0\] \/ CELL\) \+ _gridOrigin\.i/.test(m243)
+        && /var si = Math\.round\(uv\[0\] \/ CELL\)/.test(m243)
+        && /_gridDirOf\(si \* CELL, sj \* CELL, A\)/.test(m243)
+        && /M\.gridSelfCheck = function/.test(m243)
+        && /reanchors < 1/.test(m243));
+      /* v157p（老板：「高空还是以六边形分解」）：格子是**战术层**语言，
+         拉远该退场。这条锁方向，不锁具体数值 —— 以后可以调参，但不许反过来。 */
+      /* v157q（老板：「有时候会穿模（相机跑到地形下了）」）：
+         锁的是"平滑基线 + 硬下限"这个结构本身 —— 只留平滑会被山顶埋，
+         只留硬下限会晃（v157b 已否掉）。两条都得在。 */
+      /* v157r（老板：「高度下降时有一个场景突变…能不能平滑过渡，由虚转实」）：
+         锁的是"渐入渐出 + 淡完才拆"这个结构 —— 少了延迟销毁，
+         拉远时地表层又会瞬间消失（另一半的突变）。 */
+      /* v157s/t（老板：「点击小旗子发现未占领」「近地面线条交错乱得很」）：
+         ① 旗子抬升 1.5 米、只跟地面求交 → 点旗子等于点它背后那格；
+         ② 地砖按格调色 → 相邻格一深一浅，边界自己浮出来，再叠描边就是三层线。 */
+      /* v157u（老板：「旗子还是原来大小就行，置于地块中间，目前飞起一大片」）：
+         `flagSprite` 的 `userData.asp`（宽高比）被整体覆盖 → 缩放退回默认 5.3（真值 0.73）
+         → 宽度膨胀 7 倍。这条锁两件事：**按字段写 userData** + **底部锚点**。 */
+      /* v157v/w（老板：「区分战略模式和建造模式…不再捡取六边形地块数据，
+         而改识别四边形地块数据」）：两条坐标系必须**分流**，
+         而且地表模式不能拿"命中 _collider"当前置条件（贴地平视打不到）。 */
+      c243('§243⑱ 战略/建造双模式分流（M.mode · 建造只认四边形 · 地表不依赖 _collider 命中）',
+        /M\.MODE_STRATEGY = 'strategy'/.test(m243) && /M\.MODE_BUILD = 'build'/.test(m243)
+        && /M\.setMode = function/.test(m243)
+        && /M\.pickGroundPoint = function/.test(m243)
+        && /M\.gridCellAt = function/.test(m243)
+        && /M\.gridHighlight = function/.test(m243)
+        && /if \(M\.mode === M\.MODE_BUILD\) \{/.test(m243)
+        && /if \(!h1\.length && !M\._surf\)/.test(m243)
+        && /if \(!hit\.length && !M\._surf\)/.test(m243)
+        && /M\.mode === M\.MODE_BUILD\) \? 35 : M\.SURF_FADE_NEAR/.test(m243));
+      c243('§243⑰ 旗子尺寸与落地（userData 按字段写不覆盖 asp · 锚点在底部 · 离地 ≤1 米）',
+        /spr\.userData\.ci = ci;/.test(m243)
+        && /spr\.userData\.kind = 'flag';/.test(m243)
+        && !/spr\.userData = \{ ci: ci/.test(m243)
+        && /spr\.center\.set\(0\.5, 0\.0[0-9]\);/.test(m243)
+        && /, lift = 0\.4;/.test(m243));
+      c243('§243⑯ 占领地块可辨识且点击对得上（整格涂色 · sprite 带 ci · pickAt 先打旗子）',
+        /var _tintOwn = \{\}/.test(m243)
+        && /spr\.userData\.ci = ci;/.test(m243)
+        && /_tintOwn\[ci\] = _hex2rgb\(colorHex\)/.test(m243)
+        && /for \(var _ok in _tintOwn\) \{ _tint\[_ok\] = _tintOwn\[_ok\]; _ownN\+\+; \}/.test(m243)
+        && /intersectObject\(M\._flags, true\)/.test(m243)
+        && /if \(_fci >= 0\) \{ ci = _fci;/.test(m243));
+      c243('§243⑯b 近景只剩一套坐标语言（地砖色差收敛 MIX≥0.9 · 方格在场时六边形描边 = 0）',
+        /var NEUT = \[198, 184, 142\], MIX = 0\.9[0-9];/.test(m243)
+        && /opacity: M\.BUILD_GRID \? 0\.0 : 0\.38/.test(m243));
+      c243('§243⑮ 地表层由虚转实（fade 绑离地高度 · 全组材质乘系数 · 余影淡完才拆 · 探针入口立即到位）',
+        /var _surfFade = 0;/.test(m243)
+        && /function _surfApplyAlpha/.test(m243)
+        && /function _tickSurfFade/.test(m243)
+        && /_surfFade \+= \(t - _surfFade\) \* k;/.test(m243)
+        && /t = 1 - Math\.min\(1, Math\.max\(0, \(agl - f0\) \/ \(f1 - f0\)\)\);/.test(m243)
+        && /_surfKillPending = true;/.test(m243)
+        && /_surfKillPending && _surfFade <= 0\.005 && !M\._surf/.test(m243)
+        && /_surfFade = on \? 1 : 0;/.test(m243));
+      /* v157.31（老板「相机高度不要随地形平均值变，固定球心距离」+「高空右键失效」）：
+         旧断言钉的是"地形硬下限 + 限速跟随"——那正是老板要废掉的行为
+         （限速只是把"跳"摊成"缓缓漂"，本质仍是相机跟地形走）。
+         新口径换成两条**反向**证据：
+           ① 半径恒定：固定 camO.dist，96 个方位渲染出的 |pos| 必须一样（差 ≤ 0.01）；
+           ② 滚轮下限：camFloorAt 必须挡住"滚到底钻进山里"，且只在滚轮那一次用。
+         这是收紧：旧版允许"半径随方位变"（还有个正的下限就行），新版要求"不许变"。 */
+      c243('§243⑭ 相机半径恒定（地形不参与 · 96 方位差 ≤0.01）+ 滚轮落地一次校准（v157.31）',
+        /M\.camFloorAt = function/.test(m243)
+        && /camO\.dist = Math\.max\(_lo, Math\.min\(M\.ZOOM_MAX/.test(m243)
+        && /M\.camGuardCheck = function/.test(m243)
+        && /for \(var w = 0; w < 20; w\+\+\) placeCamera\(\);/.test(m243)
+        && /if \(!\(n >= 96\)\)/.test(m243)
+        && /if \(!\(spread <= 0\.01\)\)/.test(m243)
+        && /if \(badFloor > 0\)/.test(m243));
+      c243('§243⑬ 高空格线"越远越淡"（远距离系数为负，防止退回 v152 的越远越亮）',
+        /var near = R \* 1\.\d+, far = R \* 2\.\d+/.test(m243)
+        && /var o = 0\.\d+ - 0\.\d+ \* Math\.min\(1, Math\.max\(0, \(camO\.dist - near\) \/ \(far - near\)\)\)/.test(m243)
+        && /if \(tiles\) tiles\.visible = _oFin > 0\.012/.test(m243));
+      /* v157t：从"退到 0.14 以下"收紧为"**必须为 0**" —— 实测 0.08 时仍有几条
+         斜穿画面的六边形边跟方格打架，地表已经有方格做坐标，不需要它。 */
+      c243('§243⑫b 两套网格不抢戏（用方格时六边形描边 = 0，彻底退场）',
+        /opacity: M\.BUILD_GRID \? 0\.0 : 0\.38/.test(m243));
       /* v92.245（老板：「星空中物体应有体积，并可点击」）
          —— 石块从 0.5~3.4 提到 2.2~13（按 R/300 等比）、关掉 InstancedMesh 的视锥剔除、
             pickAt 认陨石带、点中出信息卡。 */
@@ -36600,9 +36829,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     try {
       c250('§250① flagSprite 出口在册（canvas→sprite · flag 标记）',
         /function flagSprite\(colorHex\)/.test(m250) && /userData = \{ asp: w \/ h, flag: true \}/.test(m250));
-      c250('§250② buildFlags 读地图星球分片：己方据点(琥珀)+野地(绿)',
+      /* v157s：据点色 琥珀 → 蓝 —— 原 #ffcf4d 与「营地·待交涉」[255,200,87] 几乎同色，
+         玩家分不出"这格是营地还是我的前哨"。判据仍是"读分片 + 两处 place 调用"，
+         只把期望的颜色换成新值（严格度不变，反而多了"颜色必须可区分"的理由）。 */
+      c250('§250② buildFlags 读地图星球分片：己方据点(蓝 #4aa8ff)+野地(绿)',
         /function buildFlags\(\)/.test(m250) && /sl\.forts/.test(m250) && /sl\.wilds/.test(m250)
-        && /place\(fo\[k\], '#ffcf4d'\)/.test(m250) && /place\(w, '#7bd88f'\)/.test(m250));
+        && /place\(fo\[k\], '#4aa8ff'\)/.test(m250) && /place\(w, '#7bd88f'\)/.test(m250));
       c250('§250③ 挂载点齐：rebuild 链 buildFlags + 版本键 _flVer + scaleLabels 归一',
         /buildMarkers\(\); buildFlags\(\);/.test(m250) && /_flVer !== M\._flVer/.test(m250)
         && /\[M\._labels, M\._hl, M\._flags/.test(m250));   /* v91.30：数组尾部追加奇观标签，故只匹前缀 */
@@ -40398,23 +40630,28 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return '每游戏小时约 +' + G.growth.shantyYieldOf(grCtx.c).toFixed(2) + ' 粮';
     })());
 
-    check('§308⑩ 荒废：长期没人住 → 建筑会塌（下限 1 级）', (function () {
+    /* ============================================================
+     * v157.16（老板「去掉幸存者长期不足时建筑等级下降」）——
+     * 这条从"会塌"正着反转成"**不许塌**"：
+     *   把人口压到一成、硬跑 10 个月，等级必须**一级都不掉**。
+     * ⚠️ 判据要带"真的跑过"的下限（月数 ≥ 10），否则"tick 没执行"也能算通过。
+     * ============================================================ */
+    check('§308⑩ 反退化：人口长期不足也不再掉建筑等级（荒废降级已退役）', (function () {
       var c = grCtx.c;
-      /* 给城塞一座 Lv5 的建筑，再把人口压到一成 */
       c.cells = c.cells || [];
       var cell = c.cells.filter(function (x) { return !x.build; })[0];
       if (!cell) return false;
       cell.build = { id: 'nongtian', lvl: 5 };
       G.res(c).pop = Math.round(G.effPopCapOf(c) * 0.05);
       var lv0 = cell.build.lvl;
-      for (var i = 100; i < 110; i++) grRunMonth(i);
+      var ran = 0;
+      for (var i = 100; i < 120; i++) { grRunMonth(i); ran++; }
       var lv1 = cell.build.lvl;
-      /* 掉过级，但没掉到 0 */
-      return lv1 < lv0 && lv1 >= 1;
+      return ran >= 10 && lv1 === lv0;
     })(), (function () {
       var c = grCtx.c;
       var cell = (c.cells || []).filter(function (x) { return x.build && x.build.id === 'nongtian'; })[0];
-      return cell ? ('农垦 Lv' + cell.build.lvl) : '?';
+      return cell ? ('农垦 Lv' + cell.build.lvl + '（20 个月未降）') : '?';
     })());
 
     console.log('\n===== 309. v93.6 别人也在做决定（性格 · 恩怨 · 意图）=====');
@@ -47411,6 +47648,365 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§593③ 反退化：不再把 smoothstep 直接乘在 fbm 的 alpha 上',
       seg.length > 0 && !/a \*= smoothstep\(/.test(seg),
       '旧写法 `a *= smoothstep(...)` 已不存在');
+  })();
+
+  /* ============================================================
+   * §594 离线批量段的幸存者增长（v157.14 · 老板「增长速度似乎存在问题」）
+   * ------------------------------------------------------------
+   * 病灶：offlineCatchup 把离线拆成「前 1 小时逐秒 + 其余走 simulateBulk」，
+   *       而 simulateBulk 里**根本没有幸存者那一段** —— 挂 8 小时只涨前 1 小时，
+   *       于是"14 现实小时补满"在离线路径上永远走不完。
+   * 实测（tools/_pop-probe.js）：修前 simulateBulk(60) 的 Δpop 恰好 0。
+   *
+   * 钉四件事：
+   *   ① 批量段确实按声明速率增长（期望值 = min(缺口, growth×小时)）
+   *   ② 反平凡解：增长必须 > 0（否则"两边都是 0"也能算相等 —— 本项目踩过）
+   *   ③ 封顶不越界（超长离线不许把人灌过有效上限）
+   *   ④ 静态：批量段里必须出现 popGrowthOf/effPopCapOf（防有人把这段删了）
+   * ============================================================ */
+  (function () {
+    withFreshState('离线幸存者增速', function (st) {
+      var c = (st.cities || []).filter(function (x) { return x.id === st.mainCityId; })[0] || (st.cities || [])[0];
+      if (!c) { check('§594① 离线批量段补幸存者', false, '新局无城，无法判定'); return; }
+      var R = GAME.res(c);
+      var g = GAME.popGrowthOf(c);
+      var cap = GAME.effPopCapOf(c);
+      R.pop = Math.max(1, Math.min(100, cap * 0.1));
+      var p0 = R.pop;
+      GAME.simulateBulk(3600 * 8);
+      var d = R.pop - p0;
+      var expect = Math.min(Math.max(0, cap - p0), g * 8);
+      check('§594① 离线批量段按声明速率补人（8 现实小时）',
+        Math.abs(d - expect) < Math.max(0.05, expect * 0.001),
+        'Δ=' + d.toFixed(2) + ' · 期望=' + expect.toFixed(2) + ' · 速率=' + g.toFixed(2) + '/时');
+      check('§594② 反平凡解：增长不为 0（下限 0.5 人）', d > 0.5,
+        'Δ=' + d.toFixed(3));
+      /* ③ 超长离线：封顶不越界 */
+      GAME.simulateBulk(3600 * 200);
+      var over = R.pop - GAME.effPopCapOf(c);
+      check('§594③ 超长离线封顶不越界', over <= 1e-6,
+        'pop=' + R.pop.toFixed(2) + ' · cap=' + GAME.effPopCapOf(c) + ' · 溢出=' + over.toFixed(4));
+    });
+    /* ④ 静态守卫：批量段里必须出现这两个唯一出口 */
+    var fsP = require('fs'), pP = require('path');
+    var srcS = fsP.readFileSync(pP.join(__dirname, 'js', 'state.js'), 'utf8');
+    var iB = srcS.indexOf('GAME.simulateBulk = function');
+    var segB = iB < 0 ? '' : srcS.slice(iB, iB + 9000);
+    check('§594④ 批量段写幸存者走唯一出口（effPopCapOf + popGrowthOf）',
+      /GAME\.effPopCapOf\(ct\)/.test(segB) && /GAME\.popGrowthOf\(ct\)/.test(segB),
+      '两个出口在 simulateBulk 内');
+  })();
+
+  /* ============================================================
+   * §595 地面整平（v157.15 · 老板「增加一个地面平整功能」）
+   * ------------------------------------------------------------
+   * 钉四件会真的毁存档/毁画面的：
+   *   ① 层号往返一致（写 7 读 7）
+   *   ② 台面高度 = 层 × 层高（单位换算别又踩"米 vs 归一化"的坑）
+   *   ③ 上下限钳制（否则玩家能填到天上 / 挖穿星球）
+   *   ④ 清除后回到自然地形（老档零迁移的前提：没记录 = 自然）
+   * 外加静态守卫：地表层三个几何全走 groundHAt，不许漏一处再写 sphElev
+   *   （漏一处的表现是"砖抬上去了、方格还埋在坡里"）。
+   * ============================================================ */
+  (function () {
+    withFreshState('整平数据', function (st) {
+      var T = GAME.terrain;
+      /* v157.26：键从六边形 ci 换成**方格 (i,j)** —— 与地砖/放置同一套坐标 */
+      check('§595① 整平层号往返一致（方格键）', T.setLevel(3, 4, 7) === 7 && T.levelAt(3, 4) === 7,
+        '写 7 读 ' + T.levelAt(3, 4) + ' · 键 ' + T.keyOf(3, 4));
+      var H = GAME.TERRACE_H || 1;
+      check('§595② 台面高度 = 层 × 层高', Math.abs((T.heightAt(3, 4) || 0) - 7 * H) < 1e-9,
+        'heightAt=' + T.heightAt(3, 4) + ' · 期望 ' + (7 * H));
+      var hi = T.setLevel(5, 4, 9999), lo = T.setLevel(6, 4, -9999);
+      check('§595③ 层号上下限钳制', hi === GAME.TERRACE_MAX && lo === GAME.TERRACE_MIN,
+        hi + ' / ' + lo + '（边界 ' + GAME.TERRACE_MAX + ' / ' + GAME.TERRACE_MIN + '）');
+      T.clearAt(3, 4); T.clearAt(5, 4); T.clearAt(6, 4);
+      check('§595④ 清除后回到自然地形（无记录=自然）',
+        T.levelAt(3, 4) === null && T.count() === 0, 'count=' + T.count());
+      /* 方格键必须**逐格独立**：写 (0,0) 不许影响 (0,1)/(1,0) ——
+         这一条是"建造只认方格"的最小证据（六边形时代一格会连带邻格）。 */
+      T.setLevel(0, 0, 9);
+      check('§595④b 方格键逐格独立（不串格）',
+        T.levelAt(0, 0) === 9 && T.levelAt(0, 1) === null && T.levelAt(1, 0) === null,
+        '(' + [T.levelAt(0, 0), T.levelAt(0, 1), T.levelAt(1, 0)].join(' / ') + ')');
+      T.clearAt(0, 0);
+    });
+    var fsQ = require('fs'), pQ = require('path');
+    var srcQ = fsQ.readFileSync(pQ.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var segT = srcQ.slice(srcQ.indexOf('function _surfTerrainGeo'), srcQ.indexOf('function _surfPlateGeo'));
+    var segP = srcQ.slice(srcQ.indexOf('function _surfPlateGeo'), srcQ.indexOf('v157.15：台面边缘'));
+    check('§595⑤ 地形层走 groundHAt、地砖走方格台面（同一套 groundHAt 口径）',
+      /groundHAt\(d\)/.test(segT) && /_terrHOfIJ\(i, j\)/.test(segP),
+      'terrain→groundHAt · plate→_terrHOfIJ');
+  })();
+
+  /* ============================================================
+   * §600 地表左键 = **平移相机**；右键 = **360° 自由转**
+   *      （v157.24 · 老板「左键应该移动相机本身，粘起一个点它不动」+
+   *        「右键希望 360 度无死角」）
+   * ------------------------------------------------------------
+   * 判据都盯"顺序"和"硬闸有没有被拆掉"，因为这两处最容易改一半：
+   *   ① 平移分支必须在抓球代码之前 return；
+   *   ② 平移必须真的改 camO.dir（改的是相机位置，不是朝向）；
+   *   ③ 地表俯仰不许再有 ±90° 闸（有就永远到不了身后）。
+   * ============================================================ */
+  (function () {
+    var fsV = require('fs'), pV = require('path');
+    var mV = fsV.readFileSync(pV.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var iS = mV.indexOf('if (M._surf && M._panDrag) {');
+    var iG = mV.indexOf('var _rcG = canvas.getBoundingClientRect();');
+    check('§600① 地表左键平移分支在抓球代码之前',
+      iS > 0 && iG > iS, '平移@' + iS + ' · 抓球@' + iG);
+    var seg600 = (iS > 0 && iG > iS) ? mV.slice(iS, iG) : '';
+    check('§600② 平移真的改相机位置（camO.dir / dist）',
+      /camO\.dir = \[/.test(seg600) && /camO\.dist = _nl/.test(seg600) && /_panA/.test(seg600),
+      '段长 ' + seg600.length);
+    check('§600③ 地表右键转的是自由视线（不夹 ±90°、不用 lookPitch 折回）',
+      /_dS\.applyAxisAngle\(_rS, -TURN\.lookPitch\.surf \* _dy \* M\.TURN_K_SURF\)/.test(mV)
+        && !/Math\.max\(-Math\.PI \/ 2, Math\.min\(Math\.PI \/ 2/.test(mV)
+        && !/camO\.lookPitch = _wp/.test(mV),
+      'lookDrag 的地表分支');
+    check('§600④ 地表右键放开、轨道仍限 ±89°',
+      /if \(M\._surf\) \{[\s\S]{0,400}?M\._surfHold = true/.test(mV)
+        && /Math\.max\(-1\.55, Math\.min\(1\.55, _lp\)\)/.test(mV),
+      'lookDrag 分支');
+  })();
+
+  /* ============================================================
+   * §599 笔刷 + 朝向（v157.22）
+   * ------------------------------------------------------------
+   * ① 整平有 1/7/19 三档笔刷，且**一次落笔遍历整张笔刷表**
+   *    （只改 UI 不改写入 = 点"7 格"实际只刷 1 格，属于假功能）
+   * ② 朝向贯通：幽灵能接收 yaw、落位把 yaw 写进记录
+   * ============================================================ */
+  (function () {
+    var fsW = require('fs'), pW = require('path');
+    var mW = fsW.readFileSync(pW.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    check('§599① 整平三档笔刷且写入按整张表遍历（v157.26 起按方格邻域）',
+      /M\.TERRACE_BRUSH = 0/.test(mW)
+        && /terraceBrushSize/.test(mW)
+        && /var list = _brushList\(g\.i, g\.j\)/.test(mW)
+        && /for \(var k = 0; k < list\.length; k\+\+\) \{[\s\S]{0,140}?terrain\.paint/.test(mW),
+      'brush 分支');
+    check('§599② 朝向贯通：幽灵接收 (i,j,yaw) + 落位写入 yaw',
+      /M\.ghost = function \(itemId, i, j, yaw\)/.test(mW)
+        && /place\.add\(_gP\.i, _gP\.j, GAME\.ui\._placeItem, \{ yaw: M\.PLACE_YAW \|\| 0 \}\)/.test(mW),
+      'yaw 链路');
+  })();
+
+  /* ============================================================
+   * §598 建造三件套（v157.21 · 老板「物品栏/放置/整平很不稳定」）
+   * ------------------------------------------------------------
+   * 三条都是"以前根本没走通"的路径，钉住顺序与出口：
+   *   ① 建造模式下点地图 → 手里有物品就先落位（不能再被"选格"截胡）
+   *   ② 物品落座走 groundHAt + 砖厚（否则台地上埋进土里/浮在半空）
+   *   ③ 整平写入拒绝水面（水面按 type 画，抬起来还是蓝的）
+   * ============================================================ */
+  (function () {
+    var fsZ = require('fs'), pZ = require('path');
+    var mZ = fsZ.readFileSync(pZ.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var b0 = mZ.indexOf('if (M.mode === M.MODE_BUILD) {');
+    var b1 = mZ.indexOf('if (M.TOOL === M.TOOL_TERRACE)', b0);
+    var segZ = (b0 >= 0 && b1 > b0) ? mZ.slice(b0, b1) : '';
+    check('§598① 建造模式点击：先判"手里有物品"，再判"整平铲"',
+      segZ.length > 500 && /_placeItem/.test(segZ) && /place\.add/.test(segZ),
+      '段长 ' + segZ.length);
+    var seat = mZ.slice(mZ.indexOf('function seatProp'), mZ.indexOf('function buildPlacements'));
+    check('§598② 物品落座 = groundHAt + 砖厚（含整平台面）',
+      /groundHAt\(d\)/.test(seat) && /SURF_PLIFT/.test(seat),
+      'seatProp ' + seat.length + ' 字符');
+    var dZ = fsZ.readFileSync(pZ.join(__dirname, 'js', 'domain.js'), 'utf8');
+    check('§598③ 整平拒绝水面（水面按 type 画，抬起来仍是蓝的）',
+      /rejected: 'water'/.test(dZ) && /type === 'lake'/.test(dZ),
+      'domain.paint 水面分支');
+  })();
+
+  /* ============================================================
+   * §603 泥土有厚度（v157.27 · 老板「目前泥土没有厚度」）
+   * ------------------------------------------------------------
+   * 症结：地砖是"表面"——顶面 + 一圈零厚度的皮。抬高的台地从侧面看只有一条边。
+   * 三条改法各挡一个"看不出来"：
+   *   ① **土层剖面**：墙的上沿（草根土）与下部（底土）顶点色必须不同；
+   *   ② **土沿 LIP**：墙顶高出台面（从上方看得出边棱）；
+   *   ③ **压深 DIG**：墙底低于邻格面（墙插进地里，不会露悬空缝）。
+   * ⚠️ 另加一条单位守卫：LIP/DIG 是"米"，而 es[] 是归一化高度，
+   *    必须 `/ HSC` —— 忘除会把 8 厘米变成 2 米（整块地翘边，踩过）。
+   * ============================================================ */
+  (function () {
+    var fsS = require('fs'), pS = require('path');
+    var mS = fsS.readFileSync(pS.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var s0 = mS.indexOf('function _surfPlateGeo');
+    var s1 = mS.indexOf('function _surfScatter', s0);
+    var seg = (s0 >= 0 && s1 > s0) ? mS.slice(s0, s1) : '';
+    check('§603① 侧壁有土层剖面（上沿 / 底土两套顶点色）',
+      /_wcTop\[0\]/.test(seg) && /_wcBot\[0\]/.test(seg)
+        && /col\.push\(_wcTop\[0\], _wcTop\[1\], _wcTop\[2\]\)/.test(seg)
+        && /col\.push\(_wcBot\[0\], _wcBot\[1\], _wcBot\[2\]\)/.test(seg),
+      '段长 ' + seg.length);
+    check('§603② 土沿 LIP + 压深 DIG，且按 HSC 做了单位换算',
+      /LIP = 0\.08 \/ \(HSC \|\| 26\)/.test(seg)
+        && /DIG = 0\.25 \/ \(HSC \|\| 26\)/.test(seg)
+        && /es\[k\] \+ LIP/.test(seg)
+        && /e0 - DIG/.test(seg),
+      'LIP/DIG');
+    check('§603③ 顶面有逐格微差（整片纯色像塑料板）',
+      /_jit = 0\.97 \+/.test(seg),
+      'jit');
+  })();
+
+  /* ============================================================
+   * §602 建造只认**方格**（v157.26 · 老板「建造对地面的操作不是依赖正方形网格，
+   *      而是六边形网格，跟设想有差别」）
+   * ------------------------------------------------------------
+   * 上一版：地砖按**六边形 cell** 一块六边形、整平按 cell 写 → "点一块 2 米方砖，
+   * 动的是它所在那 5.25 米的大六边形"。现在一条链到底都是 (i,j)。
+   * 四条判据各挡一种"只改一半"：
+   *   ① 地砖必须**按方格双重循环**生成（不是遍历六边形 cells）；
+   *   ② 高度查询走方格键 `_terrHOfIJ`；
+   *   ③ 放置引擎的键是 `"i,j"`、落座用 `gridCellDir`；
+   *   ④ 整平入口走 `M.gridAt`（不再 nearestCell）。
+   * ============================================================ */
+  (function () {
+    var fsG = require('fs'), pG = require('path');
+    var mG = fsG.readFileSync(pG.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var pg0 = mG.indexOf('function _surfPlateGeo');
+    var pg1 = mG.indexOf('function _surfScatter', pg0);
+    var segP = (pg0 >= 0 && pg1 > pg0) ? mG.slice(pg0, pg1) : '';
+    check('§602① 地砖按方格双重循环生成（不再遍历六边形 cell）',
+      /for \(var i = g0\.i - RANGE; i <= g0\.i \+ RANGE; i\+\+\)/.test(segP)
+        && /for \(var j = g0\.j - RANGE; j <= g0\.j \+ RANGE; j\+\+\)/.test(segP)
+        && !/for \(var li = 0; li < list\.length; li\+\+\)/.test(segP),
+      '段长 ' + segP.length);
+
+    var hi0 = mG.indexOf('function _terrHOfIJ');
+    var hi1 = mG.indexOf('M.elevNatAt', hi0);
+    var segH = (hi0 >= 0 && hi1 > hi0) ? mG.slice(hi0, hi1) : '';
+    check('§602② 台面高度查询用方格键（不是六边形 ci）',
+      /\+',' \+ \(j \| 0\)/.test(segH) || /'\+' \+ \(j \| 0\)/.test(segH),
+      '段长 ' + segH.length);
+
+    var pJ = fsG.readFileSync(pG.join(__dirname, 'js', 'placement.js'), 'utf8');
+    check('§602③ 放置键是 "i,j" + 落座用 gridCellDir',
+      /PL\.keyOf = function \(i, j\)/.test(pJ)
+        && /b\[PL\.keyOf\(i, j\)\] = rec/.test(pJ)
+        && /M\.gridCellDir\(i, j\)/.test(mG),
+      'placement 键 ' + (/PL\.keyOf/.test(pJ) ? 'ok' : 'missing'));
+
+    check('§602④ 整平入口走 M.gridAt（不再 nearestCell）',
+      /M\.gridAt = function \(p\)/.test(mG)
+        && /var g = M\.gridAt\(p\);/.test(mG)
+        && !/M\.terracePaintAt = function \(p, lv\) \{[\s\S]{0,200}?nearestCell/.test(mG),
+      'gridAt 入口');
+  })();
+
+  /* ============================================================
+   * §597 地表相机基向量（v157.20 · 老板「往地面去，相机 180 度扭转」）
+   * ------------------------------------------------------------
+   * 翻 180° 的根因是 **up 与视线共线**（lookAt 退化）。修法是把两者写成
+   * 同一个俯仰角 p 的参数化：
+   *      lookV = head·cos p − radial·sin p
+   *      up    = radial·cos p + head·sin p
+   * ① 先验这条恒等式在 p ∈ [-90°, 90°] 上**恒正交**（这是"不可能再翻"的数学保证）；
+   * ②③ 再钉住源码：航向必须取自上一帧真实相机、滚动期间俯仰必须锁死。
+   * ============================================================ */
+  (function () {
+    var worst = 0, nP = 0;
+    for (var pd = -90; pd <= 90; pd += 5) {
+      var r = pd * Math.PI / 180, c = Math.cos(r), s2 = Math.sin(r);
+      /* head=(1,0,0)、radial=(0,1,0) 张成的平面里算点积 */
+      var look = [c, -s2, 0], up = [s2, c, 0];
+      var d = look[0] * up[0] + look[1] * up[1] + look[2] * up[2];
+      if (Math.abs(d) > worst) worst = Math.abs(d);
+      nP++;
+    }
+    check('§597① 视线与画面上方向恒正交（含 p=±90°，退化即翻 180°）',
+      nP >= 30 && worst < 1e-12, '采样 ' + nP + ' 个俯仰角 · max|dot|=' + worst);
+
+    var fsY = require('fs'), pY = require('path');
+    var srcY = fsY.readFileSync(pY.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var a0 = srcY.indexOf('if (_surfNow) {');
+    var a1 = srcY.indexOf('cam.lookAt(', a0);
+    var segY = (a0 >= 0 && a1 > a0) ? srcY.slice(a0, a1) : '';
+    check('§597② 地表航向取自上一帧真实相机（不再用陈旧的 camO.yaw 重建）',
+      segY.length > 1500
+        && /applyQuaternion\(cam\.quaternion\)/.test(segY)
+        && !/_yawEff/.test(segY) && !/_upMix/.test(segY),
+      '段长 ' + segY.length + ' · 仍有 _yawEff/_upMix：'
+        + (/_yawEff/.test(segY) || /_upMix/.test(segY)));
+    check('§597③ 地表用"自由视线向量"（_surfDir + 契约 right），不是俯仰角',
+      /_surfDir/.test(segY) && /_surfRightOf\(_d0, _upV\)/.test(segY)
+        && /crossVectors\(_right, _d0\)/.test(segY)
+        && !/_surfPit/.test(segY),
+      '段长 ' + segY.length);
+  })();
+
+  /* ============================================================
+   * §601 360° 无死角（v157.25 · 老板「右键到 270 度就到平行地面，
+   *      没办法 360 度无死角」）
+   * ------------------------------------------------------------
+   * 上一版用**一个俯仰角**驱动，数学上能转满 2π，但 up 跟着一起翻 →
+   * 过天顶画面倒转、倒转后手感错乱，玩家体感就是"卡在 270 度"。
+   * 现在改成自由视线向量。四条硬约束缺一条都会退回到"转不动"：
+   *   ① right 必须是**契约向量**（先投影，不每帧叉乘 —— 天顶附近叉乘退化，
+   *      实测每帧乱跳导致旋转自我抵消，卡在 −86.9°）；
+   *   ② 水平旋转时 right 要跟着一起绕径向转（否则转几次后不再正交）；
+   *   ③ 垂直方向不许夹（轨道模式才夹 ±89°）；
+   *   ④ up = right × d 对整圈恒正交（这条是"画面不会翻"的数学保证）。
+   * ============================================================ */
+  (function () {
+    var fsB = require('fs'), pB = require('path');
+    var m = fsB.readFileSync(pB.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var f0 = m.indexOf('function _surfRightOf'), f1 = m.indexOf('M.surfRightOf = _surfRightOf');
+    var segR = (f0 >= 0 && f1 > f0) ? m.slice(f0, f1) : '';
+    /* v157.34：契约向量多了"已经垂直就原样返回"（修浮点累积漂移），
+       旧断言用 /只投影/ 这个注释词判，会把新实现判红。语义不变：
+       **仍然只认契约向量、不每帧叉乘现算**，并额外要求容差早退存在（否则 0.0686°/3.6s）。 */
+    check('§601① right 是契约向量（不每帧叉乘现算 · 已垂直时不重复投影 · v157.34）',
+      /M\._surfRight \? M\._surfRight\.clone\(\)/.test(segR)
+      && /Math\.abs\(r\.dot\(d\)\) < 1e-4/.test(segR)
+      && /addScaledVector\(d, -r\.dot\(d\)\)/.test(segR),
+      '段长 ' + segR.length);
+    check('§601② 水平旋转时 d 与 right 同步绕径向转',
+      /M\._surfRight\.applyAxisAngle\(_radS, _aY\)/.test(m), 'lookDrag 水平分支');
+    check('§601③ 地表垂直旋转无夹紧（可越过天顶）',
+      !/Math\.max\(-1\.15, Math\.min\(1\.15/.test(m)
+        && !/Math\.max\(-Math\.PI \/ 2, Math\.min\(Math\.PI \/ 2/.test(m),
+      '不能留任何俯仰限幅');
+    /* 纯数学：绕固定 right 转 d 一整圈，up=r×d 恒 ⟂ d —— "不会翻"的保证 */
+    var worst2 = 0, n2 = 0, r0 = [1, 0, 0];
+    for (var a = 0; a < 360; a += 15) {
+      var t = a * Math.PI / 180;
+      var d2 = [Math.cos(t), Math.sin(t), 0];
+      var u2 = [r0[1] * d2[2] - r0[2] * d2[1], r0[2] * d2[0] - r0[0] * d2[2], r0[0] * d2[1] - r0[1] * d2[0]];
+      var dot2 = d2[0] * u2[0] + d2[1] * u2[1] + d2[2] * u2[2];
+      if (Math.abs(dot2) > worst2) worst2 = Math.abs(dot2);
+      n2++;
+    }
+    check('§601④ up = right × d 对整圈恒正交（含越过天顶）',
+      n2 >= 24 && worst2 < 1e-12, '采样 ' + n2 + ' 个角 · max|dot|=' + worst2);
+  })();
+
+  /* ============================================================
+   * §596 荒废降级已**彻底**删除（v157.19 · 老板「目前降级还是自动降级，
+   *      去除这条相关的规定，比如说人口长时间低于多少要降级」）
+   * ------------------------------------------------------------
+   * §308⑩ 锁的是"行为"（20 个月不掉级）；这里锁"**东西真的没了**"——
+   * 只删逻辑、把阈值字段留在配置里，下一个人读代码会以为规则还在
+   * （v157.16 就是这么留的，被老板抓了个正着）。
+   * ============================================================ */
+  (function () {
+    var gG = (GAME.DATA && GAME.DATA.GROWTH) || {};
+    check('§596① 荒废降级的阈值字段已删除（不是留占位）',
+      !('abandonAt' in gG) && !('abandonNeedMonths' in gG),
+      'GROWTH 键：' + Object.keys(gG).join(','));
+    var fsX = require('fs'), pX = require('path');
+    var gsX = fsX.readFileSync(pX.join(__dirname, 'js', 'growth.js'), 'utf8');
+    var decayHits = (gsX.match(/\.lvl\s*-=/g) || []).length
+      + (gsX.match(/decayed/g) || []).length
+      + (gsX.match(/abandonMonths/g) || []).length;
+    check('§596② growth.js 里没有任何降级语句/计数器',
+      gsX.length > 2000 && decayHits === 0,
+      'growth.js ' + gsX.length + ' 字符 · 降级痕迹 ' + decayHits + ' 处');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

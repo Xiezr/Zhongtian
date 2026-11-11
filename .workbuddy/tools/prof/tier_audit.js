@@ -48,6 +48,17 @@ function readIf(p) {
 function readJson(p) {
   try { return JSON.parse(readIf(p) || 'null'); } catch (e) { return null; }
 }
+/* v157.28：census 必须**绑定版本**才能比对。
+   来历：2026-11-10 门禁被 Q3 锁死 —— 全量基线是 11-08 01:30 的（4425 条），
+   分片是 11-09 05:11 的（4447 条），而 smoke-test.js 已在 11-10 01:19 改过。
+   两份分母来自三个版本，"缺 3 条"是版本差异，不是分片漏段。
+   没有版本签名的集合比对 = 用旧尺子量新代码。 */
+function smokeSig() {
+  try {
+    const crypto = require('crypto');
+    return crypto.createHash('md5').update(fs.readFileSync(R('smoke-test.js'))).digest('hex').slice(0, 12);
+  } catch (e) { return null; }
+}
 function daysSince(iso) {
   if (!iso) return null;
   const t = Date.parse(iso + (iso.length === 10 ? 'T00:00:00' : ''));
@@ -210,10 +221,30 @@ function q3_coverage() {
     return { ratio: null };
   }
   const ratio = census.lastSplit.total / census.full;
+  /* ── 版本绑定（v157.28）────────────────────────────────────────
+     三份签名任一不同 = 跨版本，条数与标题集合都不可比。
+     门禁（GATE_SCOPE=1）跑的是**串行全量**，分片只服务内环加速 ——
+     所以"分片缺段"在门禁里不该是红：它审的对象与门禁的判据不是同一条链。
+     内环（人工跑 smoke_fast）仍然红，因为那时分片结果就是唯一结论。 */
+  const curSig = smokeSig();
+  const fullSig = census.fullSig || null;
+  const splitSig = census.lastSplit.sig || null;
+  const unknownSig = !!(curSig && (!fullSig || !splitSig));
+  const crossVersion = !!(curSig && ((fullSig && fullSig !== curSig)
+    || (splitSig && splitSig !== curSig)
+    || (fullSig && splitSig && fullSig !== splitSig)));
+  const incomparable = unknownSig || crossVersion;
+  const GATE_SCOPE = process.env.GATE_SCOPE === '1';
+  /* 门禁里 Q3 一律降为提醒：它审的是分片覆盖，而门禁跑串行全量。
+     内环（无 GATE_SCOPE）才可能判红 —— 那时分片结果就是唯一结论。 */
+  const q3Level = (GATE_SCOPE || incomparable) ? 'warn' : 'red';
   const bad = ratio < LIMIT.coverage;
-  add('Q3', bad ? 'red' : 'ok',
-    `分片 ${census.lastSplit.total} 条 / 全量 ${census.full} 条 = ${(ratio * 100).toFixed(1)}%（下限 ${(LIMIT.coverage * 100)}%，可略多）`,
-    bad ? '分片漏跑了段 —— 分片结果不可信，回退串行' : null);
+  add('Q3', bad ? q3Level : 'ok',
+    `分片 ${census.lastSplit.total} 条 / 全量 ${census.full} 条 = ${(ratio * 100).toFixed(1)}%（下限 ${(LIMIT.coverage * 100)}%，可略多）`
+      + (curSig ? `　签名 全量 ${fullSig || '无'} / 分片 ${splitSig || '无'} / 当前 ${curSig}` : ''),
+    bad ? (incomparable
+      ? '记录缺版本签名或跨版本，比条数也不可比 —— 重跑一次 smoke_fast 重建同版本分母'
+      : (GATE_SCOPE ? '分片缺段：只影响内环加速，不阻断串行门禁' : '分片漏跑了段 —— 分片结果不可信，回退串行')) : null);
 
   /* 反向：分片**明显多于**串行也是坏信号 ——
      说明各份自带开局后走到了串行走不到的分支（世界状态不同），
@@ -236,10 +267,23 @@ function q3_coverage() {
     add('Q3', 'warn', '没有标题集合比对结果 —— 只能靠条数（弱判据）',
       '跑一次 smoke_fast（它会读取 smoke-titles-full.json 做集合比对）');
   } else if (ti.missing > 0) {
-    add('Q3', 'red',
-      `分片漏跑 ${ti.missing} 条断言（集合比对：全量 ${ti.full} / 分片 ${ti.split}）`,
-      '这几条在分片模式下从未执行 —— 列出标题见 smoke_fast 的输出');
-    (ti.missingTitles || []).slice(0, 6).forEach((t) => add('Q3', 'info', '  · ' + t));
+    /* v157.28：分三级 —— 跨版本/缺签名（不可比）< 门禁（对象不在这条链上）< 内环（真缺段）。 */
+    if (incomparable) {
+      add('Q3', 'warn',
+        `分片漏跑 ${ti.missing} 条断言（集合比对：全量 ${ti.full} / 分片 ${ti.split}）—— 但记录缺版本签名或跨版本，不可比`,
+        '全量/分片/当前三份 smoke-test.js 签名不一致 —— 重跑 smoke_fast 重建同版本基线');
+      (ti.missingTitles || []).slice(0, 3).forEach((t) => add('Q3', 'info', '  · ' + t));
+    } else if (GATE_SCOPE) {
+      add('Q3', 'warn',
+        `分片漏跑 ${ti.missing} 条断言（不阻断：门禁跑串行全量，分片只服务内环加速）`,
+        '这几条只在内环 smoke_fast 里从未执行 —— 修分片覆盖，别让内环结论冒充回归裁判');
+      (ti.missingTitles || []).slice(0, 3).forEach((t) => add('Q3', 'info', '  · ' + t));
+    } else {
+      add('Q3', 'red',
+        `分片漏跑 ${ti.missing} 条断言（集合比对：全量 ${ti.full} / 分片 ${ti.split}）`,
+        '这几条在分片模式下从未执行 —— 列出标题见 smoke_fast 的输出');
+      (ti.missingTitles || []).slice(0, 6).forEach((t) => add('Q3', 'info', '  · ' + t));
+    }
   } else {
     add('Q3', 'ok',
       `标题集合：全量 ${ti.full} / 分片 ${ti.split}，缺 0 条（多 ${ti.extra} 条属各份世界差异）`);

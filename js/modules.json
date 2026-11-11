@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "900e4b5d49191302",
+ "sourceHash": "313a36b864018e20",
  "layout": {
   "order": [
    "core",
@@ -318,7 +318,7 @@
   {
    "name": "battle",
    "file": "js/battle.js",
-   "lines": 5071,
+   "lines": 5081,
    "bundle": "war",
    "duty": "battle.js  回合制战斗（真实数值版）",
    "deps": [
@@ -481,7 +481,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7320,
+   "lines": 7351,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -527,7 +527,7 @@
   {
    "name": "domain",
    "file": "js/domain.js",
-   "lines": 9559,
+   "lines": 9704,
    "bundle": "core",
    "duty": "domain.js  核心业务逻辑（真实数值版）",
    "deps": [
@@ -545,6 +545,7 @@
     "fog",
     "camp",
     "tower",
+    "map3d",
     "ruin",
     "story",
     "ui-city",
@@ -737,9 +738,9 @@
   {
    "name": "growth",
    "file": "js/growth.js",
-   "lines": 271,
+   "lines": 242,
    "bundle": "core",
-   "duty": "growth.js — 城会自己长，也会自己朽",
+   "duty": "growth.js — 城会自己长",
    "deps": [
     "state",
     "data",
@@ -796,7 +797,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4073,
+   "lines": 4240,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -808,8 +809,9 @@
     "ui-view",
     "ui-craft",
     "ui-exped",
-    "ui-planet",
+    "map3d",
     "ui-space",
+    "ui-planet",
     "systems",
     "ui-battle",
     "ui",
@@ -824,11 +826,10 @@
     "cities",
     "ui-build",
     "ui-army",
-    "map3d",
     "ui-bag",
-    "placement",
     "faction",
     "colony",
+    "placement",
     "prologue",
     "delve",
     "ui-core",
@@ -872,7 +873,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 4375,
+   "lines": 7491,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -880,14 +881,16 @@
     "map",
     "ui",
     "prologue",
+    "domain",
     "ui-space",
     "gltf",
     "fog",
     "state",
-    "domain",
-    "village",
-    "data",
+    "ui-fx",
     "placement",
+    "data",
+    "village",
+    "main",
     "ui-exped",
     "camp",
     "ruin",
@@ -895,8 +898,6 @@
     "faction",
     "ui-mapui",
     "ui-delve",
-    "ui-fx",
-    "main",
     "memorial",
     "ui-shell",
     "ui-config",
@@ -950,13 +951,15 @@
   {
    "name": "placement",
    "file": "js/placement.js",
-   "lines": 462,
+   "lines": 548,
    "bundle": "core",
    "duty": "placement.js — 地块放置物引擎（P1：纯放置，组件接口预留）",
    "deps": [
     "state",
-    "sphere",
+    "domain",
+    "map3d",
     "fog",
+    "sphere",
     "data"
    ]
   },
@@ -1152,7 +1155,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6351,
+   "lines": 6374,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [
@@ -1432,7 +1435,7 @@
   {
    "name": "ui-city",
    "file": "js/ui-city.js",
-   "lines": 482,
+   "lines": 488,
    "bundle": "ui",
    "duty": "ui-city.js　城市 · 新手引导 / 城市操作栏 / 侧栏驻军与资源",
    "deps": [
@@ -1714,7 +1717,7 @@
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1239,
+   "lines": 1344,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [
@@ -1735,10 +1738,10 @@
     "items",
     "sphere",
     "ui-shell",
+    "main",
     "ui-mapui",
     "belt",
     "ui",
-    "main",
     "ui-exped",
     "ui-city"
    ]

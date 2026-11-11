@@ -392,6 +392,126 @@ import './state.js';
   };
 
   /* ============================================================
+   * v157.15（老板「增加一个地面平整功能，参考我的世界 / 现实世界」）
+   * ------------------------------------------------------------
+   * 目标：把一片起伏的地**削平或填平**成一个水平台面，台面可以有高有低
+   *   （这一片 6 米、隔壁 8 米或 4 米），建筑才有地方站。
+   *
+   * 为什么以**六边形格**（ci）为单位，而不是建造的四边形 (i,j)：
+   *   地面砖本来就是六边形（40962 格 · 边长 5.25 米），一格一块砖。
+   *   若按 2 米四边形整平，一块六边形砖会被切成"半个台半个坡"，
+   *   必须在砖内部做硬边 + 逐砖拆面 —— 那是重写整个地表层。
+   *   按 ci 整平则是 1:1 替换：这格要么是自然坡面，要么是一块平顶，
+   *   拓扑不变、邻接不变、描边去重逻辑全部沿用。
+   *   建造格（2 米×2 米）的高度 = 它所在六边形的高度，天然对齐。
+   *
+   * 存储：`state.terrain[ci] = 层号`（整数）。**没记录 = 自然地形**，
+   *   所以老档零迁移、平原不会被批量写满，存档体积只随"玩家真的整过的格"增长。
+   * 层高：`GAME.TERRACE_H`（米）。层号 × 层高 = 该格台面高度（米）。
+   * ============================================================ */
+  GAME.TERRACE_H = 1.0;                 /* 一层多高（米）—— 整平的最小刻度 */
+  GAME.TERRACE_MIN = -8;                /* 层号下限（往下挖 8 米） */
+  GAME.TERRACE_MAX = 60;                /* 层号上限（往上填 60 米） */
+
+
+  /* ============================================================
+   * v157.26（老板：「建造对地面的操作不是依赖正方形网格，而是六边形网格，
+   *          这跟我们的设想有差别」）—— 地表层全面切到**方格坐标**
+   * ------------------------------------------------------------
+   * 存储：`state.terrain["i,j"] = 层号`，i/j 是**全局方格编号**
+   *       （由 map3d 的切平面锚给出；重锚时带全局偏移，所以全球唯一、不漂）。
+   * 语义：**没记录 = 自然地形**（老档零迁移）。
+   *
+   * 为什么必须换：高度按六边形（5.25 米）存、格子按方形（2 米）画，
+   * 就会出现"点一块方砖、动的是它所在的那一大块六边形"——
+   * 台面边界是六边形、切面不是方的，玩家一眼看出错位。
+   * 现在一条链到底：地砖、侧壁、方格线、整平、放置，全部走 (i,j)。
+   *
+   * ⚠️ 存档键从 `ci`（六边形格号）换成 `"i,j"`：旧档里的整平记录读不到，
+   *    等同"回到自然地形"。这是格式变更，不是 bug。
+   * ============================================================ */
+  GAME.terrain = {
+    /* 取表（惰性建；没 state 时返回 null，渲染侧据此走"纯自然"快路径） */
+    map: function () {
+      var s = GAME.state;
+      if (!s) return null;
+      if (!s.terrain || typeof s.terrain !== 'object') s.terrain = {};
+      return s.terrain;
+    },
+    keyOf: function (i, j) { return (i | 0) + ',' + (j | 0); },
+    levelAt: function (i, j) {
+      var m = this.map();
+      if (!m || i == null || j == null) return null;
+      var v = m[this.keyOf(i, j)];
+      return (v == null) ? null : (v | 0);
+    },
+    /* 写一格。层号钳到 [MIN, MAX]；传 null 表示恢复自然地形 */
+    setLevel: function (i, j, lv) {
+      var m = this.map();
+      if (!m || i == null || j == null) return null;
+      var k = this.keyOf(i, j);
+      if (lv == null) { delete m[k]; return null; }
+      var v = Math.round(lv);
+      v = Math.max(GAME.TERRACE_MIN, Math.min(GAME.TERRACE_MAX, v));
+      m[k] = v;
+      return v;
+    },
+    clearAt: function (i, j) {
+      var m = this.map();
+      if (m && i != null && j != null) delete m[this.keyOf(i, j)];
+    },
+    /* 已整平的格数（界面提示 / 自检的"下限"用：0 就是什么都没做） */
+    count: function () {
+      var m = this.map();
+      if (!m) return 0;
+      var n = 0; for (var k in m) if (m.hasOwnProperty(k)) n++;
+      return n;
+    },
+    /* 台面高度（米）。未整平返回 null —— 调用方自己回落到自然地形。 */
+    heightAt: function (i, j) {
+      var lv = this.levelAt(i, j);
+      return lv == null ? null : lv * GAME.TERRACE_H;
+    },
+    /* ============================================================
+     * v157.18：整平**规则**留在这一层（渲染层只算坐标、标脏）：
+     *   STEP_MAX（单次削填上限）· 基准层选择 · 钳制与写表
+     * ============================================================ */
+    STEP_MAX: 6,
+    /* 该格中心处的**自然地形**层号（无记录时的基准） */
+    naturalLevelAt: function (i, j) {
+      var md = GAME.map3d;
+      if (!md || !md.gridCellDir) return 0;
+      var d = md.gridCellDir(i | 0, j | 0);
+      if (!d) return 0;
+      var e = (md.elevNatAt ? md.elevNatAt(d) : 0) || 0;
+      var hsc = (GAME.sphere && GAME.sphere.HSC) || 26;
+      return Math.round(e * hsc / (GAME.TERRACE_H || 1));
+    },
+    /* 方格中心是不是水（水面按 type 画，抬起来还是蓝的 → 不接整平） */
+    waterAt: function (i, j) {
+      var md = GAME.map3d, sp = GAME.sphere;
+      if (!md || !md.gridCellDir || !sp || !sp.cells) return false;
+      var d = md.gridCellDir(i | 0, j | 0);
+      if (!d) return false;
+      var ci = sp.nearestCell(d);
+      var c = sp.cells[ci];
+      return !!(c && (c.type === 'lake' || c.type === 'ocean'));
+    },
+    /* 刷一铲：返回 { i, j, level, base, want, clamped }。**唯一**写入入口。 */
+    paint: function (i, j, target) {
+      if (i == null || j == null) return null;
+      if (this.waterAt(i, j)) return { i: i, j: j, rejected: 'water' };
+      var cur = this.levelAt(i, j);
+      var base = (cur != null) ? cur : this.naturalLevelAt(i, j);
+      var want = Math.round(target == null ? base : target);
+      var applied = Math.max(base - this.STEP_MAX, Math.min(base + this.STEP_MAX, want));
+      this.setLevel(i, j, applied);
+      return { i: i, j: j, level: applied, base: base, want: want, clamped: (applied !== want) };
+    }
+  };
+
+
+  /* ============================================================
    * v89.126（老板需求 2）→ v89.189（老板 3）：**劳作占用**唯一出口组 ——
    *   除居所外的建筑按等级占用幸存者，该部分**不可征兵**。
    *   老板 v89.189 口径：「建筑占据幸存者太少了 —— 一间居所的幸存者可以照看
@@ -586,6 +706,10 @@ import './state.js';
        非主城恒为 0，所以"别城照旧被政务厅总闸卡住"这条行为一字未变。 */
     var lift = GAME.rankBuildCapOf ? GAME.rankBuildCapOf(city) : 0;
     var cap = base + GAME.cityBuildBonus(city) + lift;
+    /* v157f：占领来的名城**保住原档位上限**（首府 20 / 旧都 24 …）。
+       老板：「初始等级上限不随被占领而改变」。这里只做**下限**：
+       玩家侧的加成照样能把上限往上抬，但绝不会把它压回 12。 */
+    if (city.tierCap && city.tierCap > cap) cap = city.tierCap;
     /* v68 · 逐步探索：建筑（含围墙）等级**不得超过政务厅等级**。
        - 政务厅自身、以及"没有政务厅的城"（异常数据/测试构造）不受此闸；
        ⛔ v89.235（老板）：「城外资源建筑等级也不能超过政务厅等级」——
@@ -8768,6 +8892,27 @@ import './state.js';
     } else if (optId === 'summon') {
       city.def = (city.def || 0) + 3;
       gain = '城防 +3（现 ' + GAME.cityDefense(city) + '）';
+    } else if (optId === 'hire') {
+      /* v157.30（老板「增加旧币去路」）：旧币换兵 —— 兵不产钱、会耗粮会死，纯消耗型出口 */
+      var _tp = opt.troops || {}, _addN = 0;
+      for (var _tid in _tp) {
+        var _n = Math.floor(_tp[_tid] || 0);
+        if (!(_n > 0)) continue;
+        var _o = {}; _o[_tid] = _n;
+        GAME.city.armyAdd(city, _o);
+        _addN += _n;
+      }
+      var _tot = 0;
+      for (var _k in (city.army || {})) _tot += Math.max(0, Math.floor(city.army[_k] || 0));
+      gain = '民壮 ' + U.fmt(_addN) + ' 入城驻防（本城兵力 ' + U.fmt(_tot) + '）';
+    } else if (optId === 'jewelbuy') {
+      /* 珠宝进 s.items（与 `jewelNeedOf` 读同一本账）—— 只给材料，不产钱 */
+      var _pool = opt.jewelPool || [];
+      var _jid = _pool[Math.floor(Math.random() * _pool.length)] || '';
+      var _it = (DATA.ITEM_BY_ID || {})[_jid];
+      if (!_jid) { gain = '没有可收的货'; }
+      else if (GAME.items && GAME.items.add) { GAME.items.add(_jid, 1); gain = '珠宝「' + ((_it && _it.name) || _jid) + '」×1'; }
+      else { gain = '背包未就绪（珠宝没入账）'; }
     } else {
       gain = '已执行';
     }

@@ -427,8 +427,14 @@ import './ui.js';
          悬停给增速来源分解（与募兵面板 pop-3 同一份 popSourcesOf）。 */
       (function () {
         var popNow = Math.floor(s.res.pop || 0);
-        var grow = Math.floor(GAME.popGrowthOf(c));
-        if (popNow >= maxPop) grow = 0;
+        /* ============================================================
+         * v157.14（老板「增长速度似乎存在问题」）—— 这里原来有 `Math.floor`：
+         * 增速 < 1 人/时的城会被截成 0，界面显示「+0/时」而实际在涨
+         * （小城 / 民心被压到很低时很常见）。增速直接传原值，
+         * 由 U.perHourText 统一决定档位（<10 保留 1 位小数）。
+         * ============================================================ */
+        var growRaw = GAME.popGrowthOf(c);
+        var grow = (popNow >= maxPop) ? 0 : growRaw;
         var popSrc = '';
         try {
           (GAME.popSourcesOf(c) || []).forEach(function (x) {

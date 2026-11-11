@@ -1584,6 +1584,122 @@ import './ui.js';
         var r = GAME.setskill ? GAME.setskill.arm(el.getAttribute('data-sid')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
+      /* ============================================================
+       * v157v（老板：「应该区分战略模式和建造模式…下方的"建造"按钮改为
+       *        建造模式、战略模式切换按钮」）
+       * ------------------------------------------------------------
+       * 模式是**显式状态**（M.mode），不跟相机高度绑定：
+       *   战略 = 六边形坐标，悬停出地块情报；
+       *   建造 = 四边形坐标，只铺方格，底部出物品/工具/背包栏。
+       * 切换后只改按钮文字 + 栏的显隐，不整页重绘（重绘会打断相机）。
+       * ============================================================ */
+      case 'mode-toggle': (function () {
+        var m3 = GAME.map3d;
+        if (!m3 || !m3.setMode) { ui.toast('地图未就绪'); return; }   /* ⚠️ IIFE 内不能 break */
+        var next = (m3.mode === 'build') ? 'strategy' : 'build';
+        var got = m3.setMode(next);
+        var isB = (got === 'build');
+        var bEl = document.querySelector('[data-action="mode-toggle"]');
+        if (bEl) {
+          bEl.textContent = isB ? '🌐 战略' : '🧱 建造';
+          bEl.classList.toggle('gold', isB);
+          bEl.title = isB ? '回到战略模式（大地图：领地 · 迷雾 · 城市）'
+                          : '进入建造模式（四边形建造格 · 物品 / 工具 / 背包）';
+        }
+        var barEl = document.getElementById('build-bar');
+        if (barEl) barEl.hidden = !isB;
+        /* v157.18：进建造模式时把物品页签真正填满（原来这 8 个槽是空的） */
+        if (isB && ui.renderBuildBar) ui.renderBuildBar('item');
+        ui.toast(isB ? '🧱 建造模式 · 只认四边形格（悬停选格）' : '🌐 战略模式 · 六边形地块');
+      })(); break;
+      case 'bb-tab': (function () {
+        var tb = el.closest ? el.closest('[data-action="bb-tab"]') : el;
+        var tab = tb ? (tb.getAttribute('data-bbtab') || 'item') : 'item';
+        var all = document.querySelectorAll('.bb-tab');
+        for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === tb);
+        var hEl = document.getElementById('bb-hint');
+        if (hEl) hEl.textContent = (tab === 'item' ? '选一件物品拿在手上'
+          : (tab === 'tool' ? '工具：点 ⛰ 整平，然后按住左键在地面拖动' : '背包：已放置物一览'));
+        /* v157.15：工具页签换成整平工具组（只重写 #bb-slots，不动 canvas） */
+        if (ui.renderBuildBar) ui.renderBuildBar(tab);
+      })(); break;
+      /* ============================================================
+       * v157.15：整平工具（老板「增加一个地面平整功能」）
+       *   tool-pick      选中/收起整平铲子
+       *   terrace-lv     目标层 ±1（1 层 = TERRACE_H 米）
+       *   terrace-none   显示当前层
+       *   terrace-clear  切到"复原"刷（走过的格恢复自然地形）
+       * ============================================================ */
+      case 'tool-pick': (function () {
+        var M = GAME.map3d;
+        if (!M || !M.setTool) return;
+        var tb = el.closest ? el.closest('[data-tool]') : el;
+        var tool = tb ? (tb.getAttribute('data-tool') || '') : '';
+        var next = (M.TOOL === tool) ? M.TOOL_NONE : tool;
+        M.setTool(next);
+        /* 同理：拿铲子 = 放下物品（否则点下去到底是刷地还是放置，说不清） */
+        if (next !== M.TOOL_NONE && ui._placeItem) {
+          ui._placeItem = null;
+          if (M.clearGhost) { M.clearGhost(); M._ghostCi = -1; M._ghostIJ = null; }
+          if (ui.renderBuildBar) ui.renderBuildBar('item');
+        }
+        M._terraceErase = false;
+        if (ui.renderBuildBar) ui.renderBuildBar('tool');
+        var h1 = document.getElementById('bb-hint');
+        if (h1) h1.textContent = (next === M.TOOL_TERRACE)
+          ? ('整平：按下的那一格决定台面高度（' + M.TERRACE_TARGET + ' 层）· 按住左键拖动，走过的格自动削/填平')
+          : '工具：点 ⛰ 整平，然后按住左键在地面拖动';
+        ui.toast(next === M.TOOL_TERRACE ? '⛰ 整平已启用 —— 目标第 ' + M.TERRACE_TARGET + ' 层' : '已收起整平工具');
+      })(); break;
+      case 'terrace-lv': (function () {
+        var M = GAME.map3d;
+        if (!M || !M.terraceLevel) return;
+        var b = el.closest ? el.closest('[data-action="terrace-lv"]') : el;
+        var d = b ? Number(b.getAttribute('data-d') || 0) : 0;
+        M.terraceLevel(d);
+        M._terraceErase = false;
+        if (ui.renderBuildBar) ui.renderBuildBar('tool');
+        var h2 = document.getElementById('bb-hint');
+        if (h2) h2.textContent = '整平目标：第 ' + M.TERRACE_TARGET + ' 层（' + M.TERRACE_TARGET + ' 米）· 拖动地面刷平';
+      })(); break;
+      case 'terrace-none': (function () {
+        var M = GAME.map3d;
+        if (!M) return;
+        ui.toast('目标层：第 ' + M.TERRACE_TARGET + ' 层（每层 ' + (GAME.TERRACE_H || 1) + ' 米）· 已整平 '
+          + ((GAME.terrain && GAME.terrain.count) ? GAME.terrain.count() : 0) + ' 格');
+      })(); break;
+      case 'terrace-brush': (function () {
+        var M = GAME.map3d;
+        if (!M) return;
+        M.TERRACE_BRUSH = (((M.TERRACE_BRUSH | 0) + 1) % 3);
+        if (ui.renderBuildBar) ui.renderBuildBar('tool');
+        var _bs = (M.terraceBrushSize ? M.terraceBrushSize() : 1);
+        var hb = document.getElementById('bb-hint');
+        if (hb) hb.textContent = '整平笔刷：' + _bs + ' 格（' +
+          (M.TERRACE_BRUSH === 0 ? '单格，修边用' : (M.TERRACE_BRUSH === 1 ? '1 环，推平一块地' : '2 环，大范围推平')) + '）';
+        ui.toast('◍ 笔刷 ' + _bs + ' 格');
+      })(); break;
+      case 'place-rot-hand': (function () {
+        var M = GAME.map3d;
+        if (!M || !ui._placeItem) return;
+        M.PLACE_YAW = ((M.PLACE_YAW || 0) + 45) % 360;
+        if (M._ghostIJ && M.ghost) M.ghost(ui._placeItem, M._ghostIJ[0], M._ghostIJ[1], M.PLACE_YAW);
+        if (ui.renderBuildBar) ui.renderBuildBar('item');
+        ui.toast('↻ 朝向 ' + M.PLACE_YAW + '°');
+      })(); break;
+      case 'terrace-clear': (function () {
+        var M = GAME.map3d;
+        if (!M) return;
+        M.setTool(M.TOOL_TERRACE);
+        M._terraceErase = true;
+        if (ui.renderBuildBar) ui.renderBuildBar('tool');
+        var h3 = document.getElementById('bb-hint');
+        if (h3) h3.textContent = '复原：按住左键拖过要还原的格子（恢复自然地形）';
+        ui.toast('↩ 复原刷 —— 拖过的格恢复自然地形');
+      })(); break;
+      case 'bb-slot':
+        ui.toast('建造格还没接物品：下一步做"选物品 → 点格落地"');
+        break;
       /* v92.240k：地块放置物 —— 物品栏 / 拿在手上 / 收工 / 旋转 / 拆除。
          落位本身在 M.pickAt（map3d.js）：手上拿着东西时点格 = 放下。 */
       case 'place-open': ui.openPlacePanel(); break;
@@ -1591,7 +1707,14 @@ import './ui.js';
         var _pid2 = el.getAttribute('data-item');
         if (!GAME.place || !GAME.place.item(_pid2)) { ui.toast('没有这种东西可放'); break; }
         ui._placeItem = (ui._placeItem === _pid2) ? null : _pid2;    /* 再点一次同一件 = 放下 */
-        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; }
+        /* 一只手只能拿一样：拿物品就把铲子收起来，否则会出现"拿着树苗拖整平" */
+        if (ui._placeItem && GAME.map3d && GAME.map3d.setTool) {
+          GAME.map3d.setTool(GAME.map3d.TOOL_NONE);
+          GAME.map3d._terraceErase = false;
+        }
+        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; GAME.map3d._ghostIJ = null; }
+        /* 选中态必须**当场重绘**：不重绘的话槽位看不出"哪件在手上"（实测 on=0） */
+        if (ui.renderBuildBar) ui.renderBuildBar('item');
         var _nm2 = GAME.place.item(_pid2).name;
         ui.toast(ui._placeItem ? ('🧱 手上拿着「' + _nm2 + '」—— 点地图上的格子放下') : '已放下手上的东西');
         ui.closeModal();
@@ -1600,19 +1723,25 @@ import './ui.js';
       }
       case 'place-cancel': {
         ui._placeItem = null;
-        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; }
+        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; GAME.map3d._ghostIJ = null; }
         if (ui.renderMapCanvas) ui.renderMapCanvas();
         break;
       }
       case 'place-rot': {
-        var _rotR = GAME.place.rotate(+el.getAttribute('data-ci'), 45);
+        var _kR = String(el.getAttribute('data-key') || '').split(',');
+        var _rotR = (_kR.length === 2)
+          ? GAME.place.rotate(+_kR[0], +_kR[1], 45)
+          : { ok: false, msg: '这条是老存档的记录，先拆掉重放即可。' };
         ui.toast(_rotR.ok ? ('已转向 ' + _rotR.yaw + '°') : _rotR.msg);
         if (ui.renderMapCanvas) ui.renderMapCanvas();
         ui.openPlacePanel();
         break;
       }
       case 'place-rm': {
-        var _rmR = GAME.place.remove(+el.getAttribute('data-ci'));
+        var _kD = String(el.getAttribute('data-key') || '').split(',');
+        var _rmR = (_kD.length === 2)
+          ? GAME.place.remove(+_kD[0], +_kD[1])
+          : { ok: false, msg: '这条是老存档的记录，先拆掉重放即可。' };
         ui.toast(_rmR.ok ? '已拆除' : _rmR.msg);
         if (ui.renderMapCanvas) ui.renderMapCanvas();
         ui.openPlacePanel();
@@ -1735,6 +1864,19 @@ import './ui.js';
       /* v156.52（老板「提供一个正位按钮（把球体摆正）」）：视角复位 = 南北轴竖直、
          北极在上、东南俯视，并清掉自由相机的视线偏移（否则球正了视线还歪着）。 */
       case 'map-reset': if (GAME.map3d && GAME.map3d.resetView) { GAME.map3d.resetView(); ui.toast('◎ 视角已摆正'); } break;
+      /* v157e：自转开关。按钮就地改字（底栏不会因为状态变化整块重绘）。 */
+      case 'map-spin':
+        if (GAME.map3d && GAME.map3d.setSpin) {
+          var _sp = GAME.map3d.setSpin(!GAME.map3d.spinOn);
+          var _spb = document.querySelector('[data-action="map-spin"]');
+          if (_spb) {
+            _spb.textContent = _sp ? '⏸ 停转' : '🌏 自转';
+            if (_sp) _spb.classList.add('gold'); else _spb.classList.remove('gold');
+            _spb.title = _sp ? '关闭星球自转' : '开启星球自转';
+          }
+          ui.toast(_sp ? '🌏 自转已开启' : '⏸ 自转已停止');
+        }
+        break;
       /* v89.195（老板 1）：前哨放手 —— 确认窗 → 红键一击执行（v89.156 口径：
          "弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了"）。 */
       case 'fort-abandon-ask': ui.openFortAbandonAsk(Number(el.dataset.ci)); break;
@@ -3810,6 +3952,18 @@ import './ui.js';
         e.preventDefault();
         return;
       }
+      /* v157.22：R = 旋转手上的东西（成熟建造游戏的通用键位） */
+      if ((e.key === 'r' || e.key === 'R') && !e.shiftKey) {
+        var _M22 = GAME.map3d;
+        if (_M22 && ui._placeItem && _M22.mode === _M22.MODE_BUILD) {
+          _M22.PLACE_YAW = ((_M22.PLACE_YAW || 0) + 45) % 360;
+          if (_M22._ghostIJ && _M22.ghost) _M22.ghost(ui._placeItem, _M22._ghostIJ[0], _M22._ghostIJ[1], _M22.PLACE_YAW);
+          if (ui.renderBuildBar) ui.renderBuildBar('item');
+          ui.toast('↻ 朝向 ' + _M22.PLACE_YAW + '°');
+          e.preventDefault();
+          return;
+        }
+      }
       var _n207 = parseInt(e.key, 10);
       if (e.key && e.key.length === 1 && _n207 >= 1 && _n207 <= 9) {
         var _vi207 = ['city', 'ext', 'map', 'generals', 'marches', 'tasks', 'shop', 'bag', 'collection'];
@@ -4025,7 +4179,20 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v156.0';
+  /* ============================================================
+   * v157.0（2026-11-08，老板「我看版本号没变」）
+   * ------------------------------------------------------------
+   * 从 v156.0 起这行就**没人动过**了：一整套 v157 地表建设（地表层、
+   * 相机自动切换、迷雾压暗、自转开关、双键转向契约、描边去重）
+   * 全在跑，但设置页永远显示 v156.0 —— 老板无法确认交付是否生效。
+   * 注意两套东西分工不同，别搞混：
+   *   · `?v=`（index.html）由 build_bundle.py 按**内容 hash** 自动改，
+   *     负责击穿浏览器缓存，不需要手写；
+   *   · `GAME.VERSION`（本行）是**给人看的语义版本**，必须随发版手动递进。
+   * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
+   * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
+   * ============================================================ */
+  GAME.VERSION = 'v157.27';
   function boot() {
     fitAppSize();
     try {

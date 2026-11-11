@@ -1,27 +1,22 @@
 {
- "full": 4425,
+ "full": 4475,
  "fullDetail": {
-  "pass": 4415,
+  "pass": 4461,
   "fail": 0,
-  "warn": 9,
+  "warn": 13,
   "skip": 1
  },
- "fullAt": "2026-11-08T01:30:15",
+ "fullAt": "2026-11-10T23:25:09",
  "lastSplit": {
-  "total": 4427,
-  "pass": 4409,
-  "fail": 13,
-  "warn": 5,
+  "total": 4447,
+  "pass": 4437,
+  "fail": 0,
+  "warn": 10,
   "skip": 0,
   "parts": 4,
-  "wallSec": 220,
-  "at": "2026-11-01T23:31:17"
+  "wallSec": 261,
+  "at": "2026-11-09T05:11:48"
  },
- "titles": {
-  "full": 4420,
-  "split": 4420,
-  "missing": 0,
-  "missingTitles": [],
-  "extra": 0
- }
+ "titles": null,
+ "fullSig": "e576d41953a0"
 }

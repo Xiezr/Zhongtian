@@ -91,3 +91,8 @@ _*.txt
 # v156.40：分片标题清单（各分片中间态）与全量标题清单（414KB 生成物，随代码变）
 .tmp_titles_*.json
 .workbuddy/smoke-titles-full.json
+
+# v157 期间的一次性探针与缓存（不进库；tools/_*.js 全部未跟踪）
+tools/_*.js
+.workbuddy/tools/git/__pycache__/
+*.bak
