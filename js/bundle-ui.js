@@ -7177,17 +7177,20 @@
   }
   function lmMesh(kind) {
     var g = new THREE.Group();
+    /* ⛔ 用 MeshBasicMaterial（无光照），不是 Lambert：这一层地表的其余部分
+       （地砖/草/树）都是无光照平色，场景里没有够亮的光源 —— 实测 Lambert
+       渲出来是**近黑**的一块，像贴了个洞。平色反而和周围一致。 */
     var mk = function (geo, col, x, y, z) {
-      var m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: col }));
+      var m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col }));
       m.position.set(x || 0, y || 0, z || 0);
       g.add(m);
       return m;
     };
     if (kind === 'ruin') {
       /* 断柱 + 斜梁：一眼看出"这是旧世界留下的"，不是玩家放的 */
-      mk(new THREE.CylinderGeometry(0.26, 0.34, 2.6, 7), 0x9aa0a6, -0.55, 1.3, 0);
-      mk(new THREE.CylinderGeometry(0.24, 0.30, 1.4, 7), 0x8b9198, 0.52, 0.70, 0.18);
-      mk(new THREE.BoxGeometry(1.9, 0.22, 1.1), 0x6f767c, 0, 0.11, 0.55);
+      mk(new THREE.CylinderGeometry(0.26, 0.34, 2.6, 7), 0xb3b9bf, -0.55, 1.3, 0);
+      mk(new THREE.CylinderGeometry(0.24, 0.30, 1.4, 7), 0x9aa0a6, 0.52, 0.70, 0.18);
+      mk(new THREE.BoxGeometry(1.9, 0.22, 1.1), 0x848b91, 0, 0.11, 0.55);
     } else if (kind === 'village') {
       /* 草屋：圆墙 + 锥顶，和玩家的"木屋"区分开（那道是方屋） */
       mk(new THREE.CylinderGeometry(0.86, 0.96, 0.86, 8), 0x8d6e4b, 0, 0.43, 0);
@@ -7222,7 +7225,9 @@
     }
     cand.sort(function (a, b) { return b.dot - a.dot; });
     var range = (M.SURF_GRID_RANGE == null ? 22 : M.SURF_GRID_RANGE);
-    var sc = propScale();
+    /* ⛔ 不套 `propScale()`：那是给**物品 prefab** 用的（它的部件只有 0.3~0.6 米，
+       乘 4.2 倍才到 1.5~2.5 米）。地标几何是按**米**建的（断柱 2.6 米），
+       再乘 4.2 就成了 11 米巨物 —— 实测相机直接钻进模型里，画面一片黑。 */
     var grp = new THREE.Group();
     grp.name = 'surfLandmarks';
     var made = 0;
@@ -7242,7 +7247,9 @@
       if (Math.abs(gpos.i) > range || Math.abs(gpos.j) > range) continue;
       var mesh = lmMesh(c.kind);
       if (!seatProp(mesh, gpos.i, gpos.j, 0)) { disposeTree(mesh); continue; }
-      mesh.scale.setScalar(sc);
+      /* 几何按米建模；1.3 倍是"看清"与"不突兀"之间的折中
+         （实测 1.0 在 15 米外只剩一小块灰，和草丛分不开）。 */
+      mesh.scale.setScalar(1.3);
       mesh.userData.ci = c.ci;
       mesh.userData.kind = c.kind;
       grp.add(mesh);
