@@ -19812,8 +19812,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return !!DATA.DISBAND && DATA.DISBAND.popReturn === 1
         /* v89.126：base/minPerHour 退役 → fillHours（现实小时补满） */
         /* v99（老板「自然增长率降低」）：2 → 14 现实小时补满。
-           原来两小时补满，"人"永远不稀缺，探索/战后/流民全都没意义。 */
-        && !!DATA.POP_CFG && DATA.POP_CFG.fillHours === 14 && DATA.POP_CFG.govCap === 0.5
+           原来两小时补满，"人"永远不稀缺，探索/战后/流民全都没意义。
+           v157.49（老板「人口很久都没满」）：14 → 4 —— 14 小时在单次会话里
+           根本看不出进度（详见 data.js 同字段注释）。 */
+        && !!DATA.POP_CFG && DATA.POP_CFG.fillHours === 4 && DATA.POP_CFG.govCap === 0.5
         /* v89.113：全战斗俘虏（8% · cap 3000 · kinds 含野地与防御战） */
         && !!DATA.CAPTIVE && DATA.CAPTIVE.rate === 0.08
         && DATA.CAPTIVE.kinds.join(',') === 'wild,fort,city,defense';
@@ -41714,20 +41716,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var st = G.state, c = G.currentCity();
     if (!st || !c || !G.muster) return;
 
-    /* ① 自然增长真的慢了（公式反比：fillHours 越大，每小时越少） */
-    check('§321① 人口自然增长慢 7 倍（fillHours 2 → 14，增速按反比）', (function () {
+    /* ① 自然增长真的慢了（公式反比：fillHours 越大，每小时越少）
+       v157.49：现口径 4 小时补满（14 → 4，见 data.js）；断言**不钉死档位**，
+       只验"与 fillHours 严格成反比"——以后再调参数不会假红。 */
+    check('§321① 人口自然增长与 fillHours 成反比（现 4 小时补满 · 原 14/2 小时）', (function () {
       var cfg = G.DATA.POP_CFG || {};
-      if (cfg.fillHours !== 14) return false;
+      if (cfg.fillHours !== 4) return false;
       var bak = cfg.fillHours;
-      var g14;
-      try { g14 = G.popGrowthOf(c); } finally { }
+      var gCur = G.popGrowthOf(c);
       cfg.fillHours = 2;
       var g2 = G.popGrowthOf(c);
       cfg.fillHours = bak;
-      /* 14 小时的增速应该是 2 小时的 1/7（同城同加成） */
-      return g2 > 0 && Math.abs(g14 / g2 - 2 / 14) < 1e-6;
+      /* 现值增速应该是 2 小时的 bak/2 分之一（同城同加成） */
+      return g2 > 0 && Math.abs(gCur / g2 - 2 / bak) < 1e-6;
     })(), (function () {
-      return '补满 14 小时（原 2 小时）';
+      return '补满 4 小时（原 14 小时 · 再早 2 小时）';
     })());
 
     /* ② 流民概率吃天灾人祸（不是纯随机） */

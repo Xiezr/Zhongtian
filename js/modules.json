@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "313a36b864018e20",
+ "sourceHash": "0f317f2a4486faa9",
  "layout": {
   "order": [
    "core",
@@ -481,7 +481,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7351,
+   "lines": 7358,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -797,7 +797,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4240,
+   "lines": 4243,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -873,7 +873,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 7491,
+   "lines": 7871,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -884,16 +884,16 @@
     "domain",
     "ui-space",
     "gltf",
-    "fog",
     "state",
+    "fog",
     "ui-fx",
     "placement",
     "data",
     "village",
-    "main",
-    "ui-exped",
     "camp",
     "ruin",
+    "main",
+    "ui-exped",
     "belt",
     "faction",
     "ui-mapui",
@@ -951,15 +951,15 @@
   {
    "name": "placement",
    "file": "js/placement.js",
-   "lines": 548,
+   "lines": 567,
    "bundle": "core",
    "duty": "placement.js — 地块放置物引擎（P1：纯放置，组件接口预留）",
    "deps": [
     "state",
     "domain",
     "map3d",
-    "fog",
     "sphere",
+    "fog",
     "data"
    ]
   },
@@ -1155,7 +1155,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6374,
+   "lines": 6401,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [
@@ -1236,12 +1236,12 @@
   {
    "name": "surge",
    "file": "js/surge.js",
-   "lines": 180,
+   "lines": 189,
    "bundle": "core",
    "duty": "surge.js — 会收缩的圈（v94.1 · 构想 E「大逃杀收缩圈」）",
    "deps": [
-    "village",
     "state",
+    "village",
     "sphere",
     "cities",
     "data",
@@ -1355,25 +1355,27 @@
   {
    "name": "ui-bag",
    "file": "js/ui-bag.js",
-   "lines": 752,
+   "lines": 853,
    "bundle": "ui",
    "duty": "ui-bag.js　行囊 · 背包 / 装备 / 分页排序",
    "deps": [
     "data",
     "ui-view",
+    "state",
     "ui-craft",
     "ui-report",
-    "state",
+    "taint",
     "domain",
     "ui-planet",
     "ui",
+    "cities",
     "icons",
     "prologue",
-    "cities",
     "systems",
     "ui-army",
     "ui-shell",
     "ui-build",
+    "unrest",
     "ui-modal"
    ]
   },

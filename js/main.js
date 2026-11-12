@@ -3997,10 +3997,13 @@ import './ui.js';
         ui._tickPaint = true;
         try {
         /* v89.193（老板 3）：时间跳变？→ 补算（静默）；正常 → 每秒 1 tick。
-           缺口 ≥ toastSec 给一条轻提示（分钟级小跳变补完即静默）。 */
-        /* v89.199：mode 词表 = none/hidden/skip/catchup/error —— skip（正常 1 秒档）
-           与 error（补算异常已回退锚点）都照常 tickOnce；catchup 已含推进。 */
-        if (_pulse199.mode === 'skip' || _pulse199.mode === 'error') {
+           缺口 ≥ toastSec 给一条轻提示（分钟级小跳变补完即静默）。
+           v89.199：mode 词表 = none/hidden/skip/catchup/error。
+           v157.49（老板「人口很久都没满」）：**skip 的推进已收口到 loopPulse 内部**
+           ——它按真实缺口逐秒走（旧写法在 setInterval 被拖到 2~4 秒一拍时只走 1 秒，
+           真实时间被吞掉，人口/资源/队列一起慢）。这里若再 tickOnce 一次就是双推。
+           error（补算异常已回退锚点）仍兜底一拍，让队列不至于完全停摆。 */
+        if (_pulse199.mode === 'error') {
           GAME.tickOnce();
         } else if (_pulse199.mode === 'catchup' && _pulse199.gap >= _gapToastSec199()) {
           _gapNotify207(_pulse199.gap);   /* v89.207：轻提示 + 大缺口弹「离线纪要」 */
@@ -4192,7 +4195,7 @@ import './ui.js';
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.27';
+  GAME.VERSION = 'v157.49';
   function boot() {
     fitAppSize();
     try {

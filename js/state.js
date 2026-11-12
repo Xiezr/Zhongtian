@@ -3229,7 +3229,34 @@ import './data.js';
   function _gapCatchupOf(gapSec) {
     var gate = (DATA.LOOP_GAP || {}).gapSec;
     if (gate == null) gate = 5;
-    if (!GAME.state || !(gapSec > gate)) return { mode: 'skip', secReal: 0 };
+    if (!GAME.state) return { mode: 'skip', secReal: 0 };
+    /* ============================================================
+     * v157.49（老板「人口很久了都没满，什么计算链出了问题」）
+     * ------------------------------------------------------------
+     * 旧实现：缺口 ≤ gate（5 秒）→ 直接 return skip、**一秒都不推进**，
+     * 推进全靠 main.js 那一拍 `GAME.tickOnce()`（固定 1 秒）。于是：
+     *   · setInterval 名义 1000ms，但主线程一忙（3D 重绘 / 大面板 / 存档），
+     *     实际可能 2~4 秒才来一拍；
+     *   · 每一拍 gap ∈ (1,5] 都判 skip → 只推进 1 秒 → **真实时间被吞掉**
+     *     （间隔 2 秒丢一半，3.4 秒丢七成，实测 20 拍 gap=3.4 人口增量 = 0）；
+     *   · 更狠的一档：`_vis199 === false`（界面被遮住）时 main 连那一句
+     *     tickOnce 都不执行，skip 期间推进 = 0 —— 一秒也不涨。
+     * 因为 `tickOnce` 是全系统唯一的时间刻度（人口/资源/队列/体力都挂在
+     * 它的 dtReal=1 上），这一处丢时间 = 全系统一起慢，玩家最先看出来的
+     * 就是"人口怎么老不满"。
+     * 现在：小缺口由本函数**按真实缺口逐秒推进**（四舍五入到整秒，误差
+     * ≤0.5 秒/拍且不再累积），调用方（main.js）不再补 tickOnce，避免双推。
+     * ============================================================ */
+    if (!(gapSec > gate)) {
+      /* 取整会丢零头（gap=3.4 每拍丢 0.4 秒 = 长期 11.8% 的偏差）——
+         用一个**小数累加器**把零头带到下一拍，长期零漂移。 */
+      var _acc = (GAME._loopSkipAcc || 0) + Math.max(0, gapSec);
+      var _nSkip = Math.floor(_acc + 1e-6);   /* +ε：浮点累加 68.0 会算成 67.99999 */
+      GAME._loopSkipAcc = _acc - _nSkip;
+      if (_nSkip > 0) GAME.simulateSeconds(_nSkip);
+      return { mode: 'skip', secReal: _nSkip };
+    }
+    GAME._loopSkipAcc = 0;
     try {
       GAME.offlineCatchup(gapSec, { silent: true });
     } catch (e) {
