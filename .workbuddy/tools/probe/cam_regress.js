@@ -93,6 +93,62 @@ const ok = (n, c, x) => { c ? (pass++, console.log('  ✅ ' + n + (x ? '  [' + x
   const settle = angq(q0, q1), idle = angq(q1, q2);
   ok('E1 停手 3.6 秒朝向漂移 = 0（无自动抬头 · v157.34）', idle < 0.0005, 'idle=' + idle.toFixed(4) + '° · 落定=' + settle.toFixed(3) + '°');
 
+  /* ============================================================
+   * F 组（v157.50 · 老板「阈值处要全面平滑 + 滚轮按高度取曲线」）
+   * ------------------------------------------------------------
+   * 这三条是那次改动的**行为判据**（不是源码形态）：
+   *   F1 灵敏度曲线：纯函数采样，倍数随高度单调不增、相邻差 < 9%；
+   *   F2 跨阈值视线：62 米上下各取几档，相邻两档视线变化 ≤ 40°（旧实现一格 75°）；
+   *   F3 淡出对齐：rAlt 62（切模式点）时地表层 fade ≈ 0 —— 不该有半透明地形叠着。
+   * ============================================================ */
+  const R0 = await p.evaluate(() => GAME.map3d.R);
+  const f1 = await p.evaluate(() => {
+    const M = GAME.map3d;
+    if (!M._zoomCurveProbe) return null;
+    const rs = [];
+    for (let i = 0; i <= 40; i++) {
+      const agl = 1.7 * Math.pow(8000 / 1.7, i / 40);
+      rs.push(M._zoomCurveProbe(agl, 100) / agl);
+    }
+    let bad = 0, jump = 0;
+    for (let i = 1; i < rs.length; i++) {
+      if (rs[i] > rs[i - 1] + 1e-6) bad++;
+      jump = Math.max(jump, Math.abs(rs[i] - rs[i - 1]));
+    }
+    return { first: rs[0], last: rs[rs.length - 1], bad, jump, mul62: M._handoffMulProbe ? M._handoffMulProbe(62) : null, mul95: M._handoffMulProbe ? M._handoffMulProbe(95) : null };
+  });
+  /* 低空段本来就是倍数变化最快的一段（1.90 → 1.74 → 1.70），阈值取 0.12：
+     旧实现在 120 米处一次跳 0.13 且伴随 dAgl 翻倍，这条能抓住那种硬切。 */
+  ok('F1 滚轮曲线单调不增 · 相邻差 < 12%（按高度、不按滚轮位移）',
+    !!f1 && f1.bad === 0 && f1.jump < 0.12,
+    f1 ? ('贴地×' + f1.first.toFixed(2) + ' → 8000m×' + f1.last.toFixed(3) + ' · maxJump=' + f1.jump.toFixed(3)) : '无探针出口');
+
+  const setAlt = async (agl) => {
+    await p.evaluate(({ agl, R }) => {
+      const M = GAME.map3d;
+      const a = Math.log(M.ZOOM_MIN), b = Math.log(M.ZOOM_MAX);
+      M.setZoom((Math.log(R + agl) - a) / (b - a));
+    }, { agl, R: R0 });
+    await p.waitForTimeout(420);          /* 让 tilt / fade 走完 */
+  };
+  const elAt = async () => p.evaluate(() => {
+    const M = GAME.map3d, u = M._camU();
+    const L = Math.hypot(u.pos[0], u.pos[1], u.pos[2]) || 1;
+    const dot = (u.fwd[0] * u.pos[0] + u.fwd[1] * u.pos[1] + u.fwd[2] * u.pos[2]) / L;
+    return { el: Math.asin(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI, rAlt: +M._rAlt, fade: M._bgOf ? M._bgOf().fade : null, surf: !!M._surf };
+  });
+  await setAlt(50);
+  const seq = [];
+  for (const h of [50, 56, 62, 68, 76, 86, 96]) { await setAlt(h); seq.push(await elAt()); }
+  let maxStep = 0;
+  for (let i = 1; i < seq.length; i++) maxStep = Math.max(maxStep, Math.abs(seq[i].el - seq[i - 1].el));
+  ok('F2 跨 62 米阈值视线连续（相邻档变化 ≤ 40° · 旧实现一格 75°）',
+    maxStep <= 40,
+    'maxStep=' + maxStep.toFixed(1) + '° · el=' + seq.map(x => x.el.toFixed(0)).join('→'));
+  const at62 = seq[2];
+  ok('F3 切模式点地表层已淡完（fade ≈ 0）', at62 && at62.fade != null && at62.fade <= 0.12,
+    at62 ? ('rAlt=' + at62.rAlt + ' fade=' + at62.fade + ' surf=' + at62.surf) : '无读数');
+
   ok('无页面异常', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
   await b.close();

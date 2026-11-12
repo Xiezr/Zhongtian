@@ -13,6 +13,16 @@
   python gate.py --staged       # 只看已暂存的文件（pre-commit 用）
   python gate.py --files a b c  # 指定改动清单（测试用）
 
+v157.51 · 按功能区块分开跑（老板「门禁太长了」）：
+  python gate.py --list              # 看有哪些区块
+  python gate.py --light             # 只跑秒级结构检查（~25 秒）
+  python gate.py --domain=camera     # 相机/3D/地表：L0 + cam_regress（~26 秒）
+  python gate.py --domain=ui         # 界面：L0 + e2e（~5 分钟）
+  python gate.py --domain=battle     # 战斗：L0 + invariants（~30 秒）
+  python gate.py --dry               # 只打印打算跑什么
+分区规则见 .workbuddy/tools/git/domains.json；命中核心文件 / 跨区块 / 未登记代码
+一律回全量（宁可多跑，不可漏跑）。提交钩子自动按暂存文件选区块。
+
 退出码：0 通过 / 1 门禁不通 / 2 环境错误
 """
 import io
@@ -116,6 +126,78 @@ CODE_PATHS = ('index.html', 'js/')
 # ============================================================
 TEST_PATHS = ('smoke-test.js', 'e2e-test.js', 'audit.js',
               'chain-audit.js', 'invariants-test.js', '.workbuddy/tools/git/gate.py')
+
+# ============================================================
+# v157.51（老板「门禁太长了，能不能按功能区块分开」）
+# ------------------------------------------------------------
+# 现状：9 个脚本**本来就并发**，墙钟 = 最慢那个（smoke 8~11 分钟）——
+# 所以"再并发"没有意义，唯一能省的是**根本不跑无关的块**。
+# 分区表在 .workbuddy/tools/git/domains.json：
+#   改动文件 → 区块 → 该区块的 probes/tests（+ 秒级 L0）
+# 保守规则（宁可多跑，不可漏跑）：
+#   · 命中 core 清单 → 全量；
+#   · 改动跨区块 / 命中未知文件 → 全量；
+#   · 只有**全部改动都落在同一区块**才降级跑该区块。
+# ============================================================
+DOMAINS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'domains.json')
+
+
+def load_domains():
+    try:
+        with io.open(DOMAINS_FILE, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _match_any(path, pats):
+    """支持 `js/ui-*.js` 这种简单通配（不用 fnmatch：路径分隔符已被 / 统一）。"""
+    n = path.replace('\\', '/')
+    for pat in pats or []:
+        pat = pat.replace('\\', '/')
+        if pat.endswith('*'):
+            if n.startswith(pat[:-1]):
+                return True
+        elif pat.startswith('*'):
+            if n.endswith(pat[1:]):
+                return True
+        elif '*' in pat:
+            a, b = pat.split('*', 1)
+            if n.startswith(a) and n.endswith(b):
+                return True
+        elif n == pat:
+            return True
+    return False
+
+
+def pick_domain(files, doms):
+    """返回 (域名, 说明) 或 (None, 原因)。命中 core / 跨区 / 未知 → None（走全量）。"""
+    if not doms:
+        return None, '没有分区表'
+    core = (doms.get('core') or {}).get('files') or []
+    reg = doms.get('domains') or {}
+    hit = set()
+    unknown = []
+    for f in files:
+        if _match_any(f, core):
+            return None, '改动命中核心文件 ' + f
+        got = None
+        for name, d in reg.items():
+            if _match_any(f, d.get('files')):
+                got = name
+                break
+        if got:
+            hit.add(got)
+        elif f.startswith('js/') or f == 'index.html':
+            unknown.append(f)          # 代码文件但没登记 → 保守
+    if unknown:
+        return None, '改动含未登记代码文件 ' + unknown[0]
+    if not hit:
+        return None, '改动不在任何区块（docs/tools 等）'
+    if len(hit) > 1:
+        return None, '改动跨 %d 个区块（%s）' % (len(hit), '/'.join(sorted(hit)))
+    return hit.pop(), ''
+
 
 TESTS = [
     ('audit.js',       '结构审计', True),
@@ -519,19 +601,76 @@ def main():
         return 2
     node_path = _find_node_path()
 
+    # v157.51：L0 = 秒级结构检查（约 40 秒，9 个脚本并发 → 实际 ~10 秒）
+    L0 = [TESTS[0], TABLES, DATASET, TROOPCHAIN, GOLDSINK]
+    DOMS = load_domains()
+
+    _domain = None
+    for a in args:
+        if a.startswith('--domain='):
+            _domain = a.split('=', 1)[1].strip()
+
+    if '--list' in args:
+        if not DOMS:
+            print('没有分区表：' + DOMAINS_FILE)
+        else:
+            print('可用区块（--domain=<名>）：')
+            core = DOMS.get('core') or {}
+            print('  %-8s %s' % ('light', '只跑秒级结构检查（audit + 数据表卫生）'))
+            for _n, _d in (DOMS.get('domains') or {}).items():
+                extra = []
+                extra += ['probe:' + os.path.basename(x) for x in (_d.get('probes') or [])]
+                extra += [_x for _x in (_d.get('tests') or [])]
+                print('  %-8s %s' % (_n, _d.get('label', '') + ('  →  ' + ' + '.join(extra) if extra else '')))
+            print('  %-8s %s' % ('full', '全量（' + ' + '.join(x[0] for x in TESTS) + '）'))
+            print('  核心文件（改动即全量）：' + ' '.join(core.get('files') or []))
+        return 0
+
+    _had_code_change = needs_full(files)
     if full:
         plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN, GOLDSINK]
         why = '--full 强制三件套 + 数据表卫生全跑'
-    elif needs_full(files):
-        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN, GOLDSINK]
-        why = '改动了代码（index.html 或 js/**）→ 三件套 + 数据表卫生全跑'
+    elif '--light' in args:
+        plan = list(L0)
+        why = '--light：只跑秒级结构检查（提交前自查用，不做行为验证）'
+    elif _domain:
+        _d = ((DOMS or {}).get('domains') or {}).get(_domain)
+        if not _d:
+            print('✗ 没有这个区块：' + _domain + '（用 --list 看有哪些）', file=sys.stderr)
+            return 2
+        plan = list(L0)
+        for _x in (_d.get('probes') or []):
+            plan.append((_x, '区块探针', False))
+        for _x in (_d.get('tests') or []):
+            _m = [t for t in TESTS if t[0] == _x]
+            plan.append(_m[0] if _m else (_x, '区块测试', False))
+        why = '--domain=%s（%s）→ 只跑该区块' % (_domain, _d.get('label', ''))
+    elif _had_code_change:
+        _auto, _why0 = pick_domain(files, DOMS)
+        if _auto:
+            _d = DOMS['domains'][_auto]
+            plan = list(L0)
+            for _x in (_d.get('probes') or []):
+                plan.append((_x, '区块探针', False))
+            for _x in (_d.get('tests') or []):
+                _m = [t for t in TESTS if t[0] == _x]
+                plan.append(_m[0] if _m else (_x, '区块测试', False))
+            why = ('改动全落在「%s」区块 → 只跑该区块（全量：GATE_FULL=1）' % _d.get('label', _auto))
+        else:
+            plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN, GOLDSINK]
+            why = '改动涉及核心/跨区块（%s）→ 全量' % _why0
     else:
-        plan = [TESTS[0], TABLES, DATASET, TROOPCHAIN, GOLDSINK]
-        why = '未触及代码 → 只跑 audit + 数据表卫生 + dataset 引用（各 1~2 秒兜底）'
+        plan = list(L0)
+        why = '未触及代码 → 只跑秒级结构检查（audit + 数据表卫生 + dataset 引用）'
 
     print(f'━━ 三件套门禁 ━━ {why}')
     if files:
         print(f'   改动 {len(files)} 个文件')
+    if '--dry' in args:
+        print('   计划（不执行）：')
+        for _s, _l, _o in plan:
+            print('     · %-46s %s' % (_s, _l))
+        return 0
 
     # ============================================================
     # v156.39 · **影响面提示**：改这个文件，牵动哪几段断言

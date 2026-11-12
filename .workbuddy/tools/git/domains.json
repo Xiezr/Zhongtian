@@ -1,0 +1,49 @@
+{
+  "note": "门禁分区表：改动文件 → 该区块「能抓到问题」的那组验证。原则是**去掉无关等待，不降低标准**；命中 core 或跨区块一律回全量。",
+  "howto": [
+    "python .workbuddy/tools/git/gate.py --domain=camera   # 显式跑某区块",
+    "python .workbuddy/tools/git/gate.py --light           # 只跑秒级结构检查",
+    "python .workbuddy/tools/git/gate.py --full            # 全量（发布/核心改动）",
+    "GATE_FULL=1 git commit ...                            # 提交时强制全量"
+  ],
+  "core": {
+    "label": "核心（改了就全量）",
+    "files": [
+      "js/state.js", "js/domain.js", "js/core.js", "js/data.js",
+      "js/systems.js", "js/cities.js", "js/main.js", "smoke-test.js", "e2e-test.js",
+      "audit.js", "chain-audit.js", "invariants-test.js",
+      ".workbuddy/tools/git/gate.py"
+    ]
+  },
+  "domains": {
+    "camera": {
+      "label": "相机 / 3D / 地表",
+      "files": ["js/map3d.js", "js/scene3d.js", "js/sphere.js", "js/planetgen.js", "js/land.js"],
+      "probes": [".workbuddy/tools/probe/cam_regress.js"]
+    },
+    "ui": {
+      "label": "界面 / DOM",
+      "files": ["js/ui-*.js", "index.html", "js/gicons.js", "js/icons.js", "js/bitmaps.js"],
+      "tests": ["e2e-test.js"],
+      "note": "界面问题只有真实 DOM 抓得住 —— 这一区必跑 e2e（约 5 分钟）"
+    },
+    "battle": {
+      "label": "战斗 / 兵种 / 策略",
+      "files": ["js/battle.js", "js/battlelog.js", "js/tactic.js", "js/duel.js", "js/duel3d.js",
+                "js/trooplv.js", "js/wonderwar.js", "js/fleet.js", "js/ship.js"],
+      "tests": ["invariants-test.js"]
+    },
+    "space": {
+      "label": "空间站 / 深空",
+      "files": ["js/ui-space.js", "js/colony.js", "js/belt.js", "js/relic.js", "js/ruin.js"],
+      "tests": ["e2e-test.js"],
+      "note": "空间站面板全靠 DOM 渲染，跟 ui 区共用 e2e"
+    },
+    "pop": {
+      "label": "人口 / 经济 / 民生",
+      "files": ["js/growth.js", "js/muster.js", "js/camp.js", "js/village.js", "js/market.js",
+                "js/taint.js", "js/unrest.js", "js/idle.js", "js/climate.js"],
+      "tests": ["invariants-test.js"]
+    }
+  }
+}

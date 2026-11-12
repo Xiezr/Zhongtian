@@ -57,6 +57,18 @@
    node .workbuddy/tools/prof/smoke_fast.js      # 内环：4 分片并行，458s → 222s
    python .workbuddy/tools/git/gate.py --full     # 提交闸门：串行全量 + 全部审计脚本
    ```
+   **v157.51 起门禁可按功能区块跑**（分区 ≠ 分片：分区是"只跑该区块的验证"，
+   不是把 smoke 切碎。smoke 依然不能切 —— 它是共享 state 的剧本）：
+   ```
+   python .workbuddy/tools/git/gate.py --list          # 有哪些区块
+   python .workbuddy/tools/git/gate.py --light         # 秒级结构检查（25 秒）
+   python .workbuddy/tools/git/gate.py --domain=camera # 相机：L0 + cam_regress（26 秒）
+   python .workbuddy/tools/git/gate.py --domain=ui     # 界面：L0 + e2e（5 分钟）
+   python .workbuddy/tools/git/gate.py --dry           # 只打印计划
+   ```
+   规则在 `.workbuddy/tools/git/domains.json`：**改动全部落在同一区块**才降级，
+   命中核心文件（state/domain/core/data/systems/cities/main/测试本体）或跨区块一律回全量。
+   提交钩子按暂存文件自动选；`GATE_FULL=1 git commit` 强制全量。
    分片能跑通的前提是"跨段共享工具都在公共头"（`DC` / `withFreshState` / `withoutEncounter`
    / `withState` / `fsMod`，见 smoke 顶部注释）。**新写的辅助函数别散进某个段** ——
    散进去就把那段钉成了"所有用它的段的前置"，分片必崩。
@@ -146,10 +158,19 @@ node .workbuddy/tools/fast/fast-test.js    # 0.16 秒（14 条数值规则）
 | **smoke（4418 条）** | **8 分钟** |
 | **e2e（1107 条）** | **3 分钟** |
 | `gate.py --full`（上面全部并发） | **~11 分钟** |
+| `gate.py --domain=camera`（L0 + cam_regress） | **25 秒** |
+| `gate.py --light`（L0） | **25 秒** |
+| `gate.py --domain=ui`（L0 + e2e） | **~5 分钟** |
 
 `smoke` 是唯一的大头，而且**不能分片**：它是"有状态的剧本"（各段共享可变的 `GAME.state`），
 实测 4 分片合计 2483 条 vs 全量 4408 条 —— 少跑 1900+ 条且语义不等价。
-所以改一次 js，验证成本的地板就是 8 分钟，除非减少"改 js 的次数"。
+所以**核心文件的改动**，验证成本的地板就是 8 分钟，除非减少"改 js 的次数"。
+
+v157.51 起，**窄区块不必付这个地板**：改 `js/map3d.js` 只跑「L0 + 相机专项」
+（cam_regress 13 项实机行为：半径/右键/地表/96 方位/零漂移/滚轮曲线/跨阈值连续/淡出对齐）。
+这条路的判据是"该区块的行为探针"，不是 smoke 的子集 —— 所以不违反"smoke 不能切"。
+代价也很明确：**它不覆盖 smoke 里那 380 条 `js/map3d.js` 相关源码断言**，
+发版前、或改动触及渲染契约时，用 `--full` 补一次。
 
 `selfcheck --fast` 的初衷是跳过 e2e，但它的 smoke 判据是"0 失败"，
 与基线机制冲突（现有 9 条历史红），**当前必红** → 已不适用于判定收尾。
