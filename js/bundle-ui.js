@@ -1208,6 +1208,12 @@
    *         退出即 dispose。重建以"半格"为阈值，不是每帧。
    * ============================================================ */
   var SR = null;                       /* { root, dir, ci, terr, plate, plateLine } */
+  /* v157.48：落地时**一次性**把视线抬到俯角 -15°（只跑 220ms，不是常驻自动运动）。
+     为什么必须做：进地表时视线是从轨道继承的 —— 而轨道默认正对球心，
+     落地后就是 el=−90°（正对脚下）。此时"左右拖 = 绕径向转"退化成绕视线自转，
+     转了等于没转 —— 实测连续 3 次水平拖，surfDir 一个数都没变。
+     所以"右键转不全向"的根不是转向算法，是**起点在天底**。 */
+  var _surfTilt = null;
   M.SURF_R = 46;                       /* 近景地形覆盖半径（世界单位 ≈ 米）*/
   /* v157.18：采样精度 1.0 → 1.4 米。
      实测重建 60~80ms 里 **地形层独占 40~60ms**（8649 顶点 × nearestCell + sphBiome），
@@ -5681,16 +5687,83 @@
        * ============================================================ */
       /* ---- 1. 初始化：**从上一帧真实相机取**，这是零跳变唯一的来源 ---- */
       var _prevF = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-      if (!M._surfDir) {
+      /* v157.48：先看能不能**原样复用**上一次离开时的视线（纯缩放往返） */
+      /* 复用判据：**只要上一次的视线还在就复用**。
+         不再比"机位有没有动" —— 那个判据在"缩放来回蹭阈值"时会时真时假，
+         于是往返残差时有时无（实测 2.5° 间歇出现）。换地方的失效交给平移那条路
+         （轨道里左键拖动 = 换地方 → 主动清空视线）。 */
+      var _reuse = !!M._surfDir;
+      if (false) {
+        try {
+          var _upR2 = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize();
+          var _p0 = new THREE.Vector3(M._surfAnchor.pos[0], M._surfAnchor.pos[1], M._surfAnchor.pos[2]);
+          var _f0 = new THREE.Vector3(M._surfAnchor.fwd[0], M._surfAnchor.fwd[1], M._surfAnchor.fwd[2]);
+          var _fNow = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion).normalize();
+          /* 只比**机位**（<1.2° ≈ 6 米）。不能比朝向：拉到轨道后相机是按"看球心"
+             摆的，那个朝向和地表视线本来就差着一大截 —— 拿它当判据，复用永远不成立，
+             于是每次缩放往返都要重新推 yaw，而"看球心"时切向分量≈0 → yaw 是任意的
+             （实测往返偏 104°）。 */
+          /* 阈值 6°（≈31 米）：只缩放不平移时必然命中；真平移过（十字拖拽几十米）就不成立。 */
+          _reuse = (_p0.dot(_upR2) > Math.cos(6 * Math.PI / 180));
+        } catch (eRU) { _reuse = false; }
+      }
+      if (_reuse && !M._surfDir) {          /* 只在"刚进地表、还没有视线"这一刻复用一次 */
+        _surfTilt = null;
+        M._surfRight = new THREE.Vector3().crossVectors(
+          M._surfDir.clone().normalize(),
+          new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize()).normalize();
+        M._surfAnchor = null;               /* 一次性：用完作废，避免每帧重复判定 */
+      } else if (!M._surfDir) {
         /* v157.31：进地表时把轨道的 lookYaw/lookPitch 清零 ——
            它的分量已经烘进 `_prevF`（屏幕方向不变），再留着就会两套叠加。 */
         camO.lookYaw = 0; camO.lookPitch = 0;
-        M._surfDir = _prevF.clone().normalize();
-        /* 右向量取自上一帧真实相机，**正交化到 ⟂ 视线**：这是零翻滚的起点 */
-        var _r0 = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
-        _r0.addScaledVector(M._surfDir, -_r0.dot(M._surfDir));
-        if (_r0.lengthSq() < 1e-8) _r0.set(1, 0, 0).addScaledVector(M._surfDir, -M._surfDir.x);
-        M._surfRight = _r0.normalize();
+        M._surfHold = false;                       /* 上一次离开时的"用户接管"标记别带进来 */
+        /* ---- v157.48：把视线从"正对脚下"抬到俯角 -15° ----
+           轨道默认看球心 → 落地即 el=−90°，此时左右拖是空操作（见 _surfTilt 注释）。
+           保留玩家原来的**水平朝向**（上一帧视线的切向分量），只把俯角改成 -15°。 */
+        var _up0 = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize();
+        var _h0 = _prevF.clone().addScaledVector(_up0, -_prevF.dot(_up0));
+        if (_h0.lengthSq() < 1e-4) {
+          /* 上一帧几乎是垂直看地 → 切向分量≈0；退而用相机的"上方向"当水平朝向 */
+          var _cu = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+          _h0.copy(_cu).addScaledVector(_up0, -_cu.dot(_up0));
+        }
+        if (_h0.lengthSq() < 1e-6) _h0.set(1, 0, 0).addScaledVector(_up0, -_up0.x);
+        _h0.normalize();
+        var _elWant = -15 * Math.PI / 180;
+        var _want = _h0.clone().multiplyScalar(Math.cos(_elWant))
+          .addScaledVector(_up0, Math.sin(_elWant)).normalize();
+        /* 一次性过渡：从"当前真实朝向"滑到 _want，220ms 内结束。
+           不是常驻自动运动（v157b 那种被老板否掉的"自己抬头"）—— 它跑完就消失，
+           任何一次右键拖拽都会立刻接管（`M._surfHold`）。 */
+        var _ang0 = Math.acos(Math.max(-1, Math.min(1, _prevF.clone().normalize().dot(_want))));
+        _surfTilt = (_ang0 > 0.10)
+          ? { from: _prevF.clone().normalize(), to: _want.clone(), t0: Date.now(), dur: 220 }
+          : null;
+        M._surfDir = _want.clone();
+        M._surfRight = new THREE.Vector3().crossVectors(_want, _up0).normalize();
+        /* 进地表这一刻也记一次锚：不记的话"刚进又立刻出去再进"（缩放来回蹭阈值）
+           会因为 anchor 已被一次性清空而退化成重新推导 → 往返残差 2.5°。 */
+        M._surfAnchor = { pos: [_dir0[0], _dir0[1], _dir0[2]], fwd: [_want.x, _want.y, _want.z] };
+        M._entryDbg = { want: [+_want.x.toFixed(3), +_want.y.toFixed(3), +_want.z.toFixed(3)],
+          from: [+_prevF.x.toFixed(3), +_prevF.y.toFixed(3), +_prevF.z.toFixed(3)],
+          up: [+_up0.x.toFixed(3), +_up0.y.toFixed(3), +_up0.z.toFixed(3)],
+          ang: +_ang0.toFixed(3), tilt: !!_surfTilt };
+      }
+      /* 过渡推进（只在落地那一瞬间存在；用户一动就放弃） */
+      if (_surfTilt) {
+        var _kt = (Date.now() - _surfTilt.t0) / (_surfTilt.dur || 220);
+        if (_kt >= 1) {
+          /* ⛔ 收尾必须**落到 to**：只把定时器清掉的话，最后一帧可能停在 k=0.5，
+             视线就永远卡在中间（实测停在 el −29° 而不是 −15°）。掉帧时更明显。 */
+          M._surfDir = _surfTilt.to.clone().normalize();
+          _surfTilt = null;
+        } else if (M._surfHold) {
+          _surfTilt = null;                       /* 用户接管：让位 */
+        } else {
+          var _ke = _kt * _kt * (3 - 2 * _kt);
+          M._surfDir = _surfTilt.from.clone().lerp(_surfTilt.to, _ke).normalize();
+        }
       }
       var _d0 = M._surfDir.clone().normalize();
 
@@ -5739,17 +5812,37 @@
     /* 地表视线是**自由向量**（可以绕好几圈），切回轨道相机前必须换算成它的欧拉角，
        否则会拿"上次离开时"的旧姿态，又是一次跳变。轨道是"绕球心看球"，
        所以把方向折算回 yaw/pitch 即可（roll 丢掉 —— 轨道相机本来就没有 roll）。 */
-    if (M._surfDir) {
-      var _dX = M._surfDir;
-      camO.yaw = Math.atan2(_dX.x, _dX.z);
-      camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dX.y)));
-      camO.quat = new THREE.Quaternion().setFromUnitVectors(
-        new THREE.Vector3(0, 0, 1), new THREE.Vector3(_dX.x, _dX.y, _dX.z));
+    /* ⛔ v157.48（老板「地面放大缩小还有位置跳变」）：这一段的**量纲用错了**。
+       `camO.yaw/pitch` 在轨道模式里定义的是**相机站在球的哪个方向**（位置），
+       可这里塞进去的是**视线朝向** `_surfDir` —— 于是"从地面拉远"时，
+       相机被摆到了"视线指的那一侧"，也就是**星球另一面**（实测往返位置翻到对侧）。
+       正解：位置仍用径向 `camO.dir`（人还在原地，只是升高），
+       视线偏移（lookYaw/lookPitch）清零 —— 拉远 = 退回太空看这颗球，看球心是自然的。
+       原来那条"把视线折算成欧拉角"的注释本身没错，错在把位置量和朝向量混成了一个。 */
+    if (camO.dir) {
+      camO.yaw = Math.atan2(camO.dir[0], camO.dir[2]);
+      camO.pitch = Math.asin(Math.max(-1, Math.min(1, camO.dir[1])));
+      /* ⚠️ 这里**不能**把 quat 置 null：`_dirty` 判据在本帧更早处已经算过了，
+         置空后本帧末尾 `cam.quaternion.copy(camO.quat)` 直接崩（实测 TypeError）。
+         按同一套公式当场重建，保持 quat 与 yaw/pitch 一致。 */
+      var _cy2 = Math.cos(camO.pitch), _sy2 = Math.sin(camO.pitch);
+      var _dv2 = new THREE.Vector3(_cy2 * Math.sin(camO.yaw), _sy2, _cy2 * Math.cos(camO.yaw)).normalize();
+      camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dv2);
       camO._euler = [camO.yaw, camO.pitch];
     }
     var _wasSurfV = (M._surfVis === true);
     M._surfVis = false;
-    M._surfDir = null; M._surfRight = null;
+    _surfTilt = null;              /* v157.48：离开地表，落地过渡作废 */
+    /* ⛔ v157.48（老板「地面放大缩小还有位置跳变」的真凶）：
+       原来离开地表就把 `_surfDir` 清掉，下次进来只能从"轨道正对球心"重新推 yaw ——
+       而正对球心时切向分量≈0，推出来的朝向是**任意的**。实测往返一次视线偏 104°。
+       现在：**留着**，并记下离开时的机位与朝向；下次进来若这两者都没怎么动，
+       就直接复用（纯缩放往返 = 原样回来，零跳变）。 */
+    if (_surfTilt && _surfTilt.to) M._surfDir = _surfTilt.to.clone();
+    M._surfAnchor = (M._surfDir && camO.dir)
+      ? { pos: [camO.dir[0], camO.dir[1], camO.dir[2]],
+          fwd: (function () { var f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion); return [f.x, f.y, f.z]; })() }
+      : null;
     M._surfHold = false;
     /* ============================================================
      * ⛔ 修 bug（v157.31 · 老板「高空那个右键的视角转换功能丢失了」）
@@ -6225,15 +6318,18 @@
        * 双击右键 = 视角回正。
        * ============================================================ */
       if (e.button === 2) {
-        var _now = Date.now();
-        if (_now - (M._lastRmb || 0) < 320) {
-          M._lastRmb = 0;
-          if (M.resetView) M.resetView(); else { camO.lookYaw = 0; camO.lookPitch = 0; touch(); redraw(); }
-          e.preventDefault(); return;
-        }
-        M._lastRmb = _now;
+        /* ⛔ v157.48（老板「转动依然不是全向可用」的真凶）：
+           原判据只看**两次按下的时间差**（<320ms 就 resetView），完全不看有没有拖动。
+           于是"连续两次微调视角"必然被当成双击 → 直接 resetView → 弹回轨道（实测 alt 3.6→570），
+           玩家体验就是"转两下镜头就飞了、不能再转"。
+           现在：① 判定搬到 **mouseup**（那时才知道这一下有没有拖过）；
+                 ② 必须**两次都没拖动**才算双击；
+                 ③ 地表模式下"回正"= 视线回到水平朝前（俯角 -15°），**不再 resetView**
+                    —— 贴地时把人弹到 570 米高空，等于把操作毁掉。 */
         lookDrag = 2;                      /* 2 = 右键转头（1 = 中键），两者行为一致 */
-        lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
+        lx = e.clientX; ly = e.clientY;
+        M._rmbDownAt = Date.now(); M._rmbMoved = false;
+        touch(); e.preventDefault(); return;
       }
       if (e.button === 1) {                                    /* 中键 = 自由转头 */
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
@@ -6452,14 +6548,23 @@
          * 画面方向由 placeCamera 用 right×d 现算，地平线恒水平 —— 转过天顶也不会翻。
          * ============================================================ */
         if (M._surf) {
+          if (Math.abs(_dx) + Math.abs(_dy) > 3) M._rmbMoved = true;
           var _radS = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
           var _dS = (M._surfDir ? M._surfDir.clone()
             : new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion)).normalize();
           if (_dx) {
             /* 水平：d 与 right **一起**绕径向转 —— 两者夹角保持 90°，right 永不失向 */
             var _aY = TURN.lookYaw.surf * _dx * M.TURN_K_LOOK;
-            _dS.applyAxisAngle(_radS, _aY).normalize();
-            if (M._surfRight) M._surfRight.applyAxisAngle(_radS, _aY).normalize();
+            /* ⛔ v157.48：视线与径向**几乎共线**时（正对脚下 / 正对天顶），
+               "绕径向转 d" 是绕自身转 = 空操作 —— 玩家会觉得"左右拖死了"。
+               这时改成**绕视线转 right**：画面自旋，和第一人称低头时一样。
+               这条是"全向"的最后一块：任何俯仰角下，左右拖都有反应。 */
+            if (Math.abs(_dS.dot(_radS)) > 0.999) {
+              if (M._surfRight) M._surfRight.applyAxisAngle(_dS, _aY).normalize();
+            } else {
+              _dS.applyAxisAngle(_radS, _aY).normalize();
+              if (M._surfRight) M._surfRight.applyAxisAngle(_radS, _aY).normalize();
+            }
           }
           if (_dy) {
             /* 垂直：绕**固定的 right** 转 d。不重算 right，所以天顶附近不会乱跳，
@@ -6468,9 +6573,11 @@
             _dS.applyAxisAngle(_rS, -TURN.lookPitch.surf * _dy * M.TURN_K_SURF).normalize();
           }
           M._surfDir = _dS;
-          M._surfHold = true;          /* 用户接管过视角（探针用） */
+          M._surfHold = true;          /* 用户接管过视角：落地过渡立刻让位 */
+          _surfTilt = null;
           touch(); redraw(); return;
         }
+        if (Math.abs(_dx) + Math.abs(_dy) > 3) M._rmbMoved = true;
         var _lp = camO.lookPitch + TURN.lookPitch.orbit * _dy * M.TURN_K_LOOK;
         camO.lookPitch = Math.max(-1.55, Math.min(1.55, _lp));
         var _ly = camO.lookYaw + TURN.lookYaw.orbit * _dx * M.TURN_K_LOOK;
@@ -6498,6 +6605,11 @@
        * 正解：地表左键 = **直接转头**，与右键同一套映射（同一个 TURN 表），
        * 位置一点不动。轨道视角的左键抓球保持不变（那里它是对的）。
        * ============================================================ */
+      if (!M._surf && drag) {
+        /* 轨道里左键拖动 = 换了地方看球。上一处地表的视线不再有意义，
+           清空它，下次落地重新按当前朝向推导（否则会带着旧城市的朝向落地）。 */
+        M._surfDir = null; M._surfRight = null; M._surfAnchor = null;
+      }
       if (M._surf && M._panDrag) {
         /* 平移：让锚点始终待在光标下 —— 相机走反向位移 */
         var _p1 = _groundPtAt(e.clientX, e.clientY);
@@ -6705,7 +6817,36 @@
         if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
         return;
       }
-      if (lookDrag) { lookDrag = 0; return; }
+      if (lookDrag) {
+        /* v157.48：右键"回正"搬到松手判定 —— 只有**这一次没拖动**、
+           且距上一次"没拖动的右键松手"<320ms，才算双击。拖过的永不触发。 */
+        if (e.button === 2 && !M._rmbMoved) {
+          var _nowUp = Date.now();
+          if (_nowUp - (M._lastRmbUp || 0) < 320) {
+            M._lastRmbUp = 0;
+            if (M._surf && M._surfDir) {
+              /* 地表：回正 = 视线抬到水平朝前（俯角 -15°），人的位置不动、不弹回轨道 */
+              var _upR = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
+              var _hR = M._surfDir.clone().addScaledVector(_upR, -M._surfDir.dot(_upR));
+              if (_hR.lengthSq() > 1e-6) {
+                _hR.normalize();
+                var _elR = -15 * Math.PI / 180;
+                M._surfDir = _hR.multiplyScalar(Math.cos(_elR))
+                  .addScaledVector(_upR, Math.sin(_elR)).normalize();
+                M._surfRight = new THREE.Vector3().crossVectors(M._surfDir, _upR).normalize();
+              }
+            } else {
+              if (M.resetView) M.resetView(); else { camO.lookYaw = 0; camO.lookPitch = 0; }
+            }
+            touch(); redraw();
+          } else {
+            M._lastRmbUp = _nowUp;
+          }
+        } else if (e.button === 2) {
+          M._lastRmbUp = 0;                 /* 拖过 → 不算双击的第一下 */
+        }
+        lookDrag = 0; return;
+      }
       /* 平移结束：补一次重建，让几何对齐到最终位置（节流期间可能欠了一帧）。
          ⚠️ 只有**真的拖过**才在这里 return —— 否则地表里"点一下"（放置物品 /
          选中格子）会被这行吞掉（`_panDrag` 在按下时就置位了）。 */
@@ -7260,6 +7401,10 @@
     return made;
   }
   M.buildLandmarks = function (force) { return buildLandmarks(force !== false); };
+  /* v157.48 探针出口：落地抬视线的一次性过渡是否还在跑。
+     自检必须先等它为 false 再测"静止漂移"，否则会把过渡当成"自己在动"。 */
+  M._tiltActive = function () { return !!_surfTilt; };
+
   M.landmarkStats = function () {
     return { n: lmRoot ? lmRoot.children.length : 0, sig: _lmSig };
   };

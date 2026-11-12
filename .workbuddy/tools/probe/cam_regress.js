@@ -74,6 +74,16 @@ const ok = (n, c, x) => { c ? (pass++, console.log('  ✅ ' + n + (x ? '  [' + x
      已知：缩放收尾那一帧会有一次 <0.1° 的落定；从第二拍起必须 **0.0000°**。 */
   await p.evaluate(() => GAME.map3d.setZoom(0));
   await p.waitForTimeout(1600);
+  /* ⚠️ 必须先等**落地过渡真的跑完**再开始测"静止漂移"：
+     v157.48 的落地抬视线是 220ms 的一次性过渡，headless 里 rAF 可能几秒才来一帧，
+     若在它还没落地时就采 q0，后面一帧落定就会被误判成"自己在漂"（实测 Δ=0.056°）。 */
+  for (let i = 0; i < 40; i++) {                       /* 最多等 4s */
+    const busy = await p.evaluate(() => !!(GAME.map3d._tiltActive && GAME.map3d._tiltActive()));
+    if (!busy) break;
+    await p.waitForTimeout(100);
+  }
+  await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
+  await p.waitForTimeout(200);
   const q0 = await p.evaluate(() => GAME.map3d._camQ());
   await p.waitForTimeout(600);
   const q1 = await p.evaluate(() => GAME.map3d._camQ());
