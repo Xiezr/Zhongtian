@@ -1009,11 +1009,23 @@
          _applySurf）。于是：贴地 agl ≈ 眼高（多高的地形都一样清晰）；
          平移期间一个数都不动；只有玩家主动缩放才改判据。 */
       var _altN = (M._rAlt != null) ? M._rAlt : (M._agl || 0);
-      var agl = Math.max(0, _altN - (M._fadeGround || 0));
+      var _gh = M._fadeGround || 0;
+      var agl = Math.max(0, _altN - _gh);
       /* 建造模式机位更高（28 米），全实范围必须跟着放宽 ——
          否则一进建造模式地砖就半透明，方格看着发虚。 */
       var f0 = (M.mode === M.MODE_BUILD) ? 35 : M.SURF_FADE_NEAR;
-      var f1 = M.SURF_FADE_FAR;
+      /* ============================================================
+       * v157.50（老板「阈值处要求全面平滑」）—— 淡出的终点必须钉在**切模式的那个高度**上。
+       * ------------------------------------------------------------
+       * 旧口径 f1 = 常数 62（用的是"离地高度"，含快照地形高）。站在 10 米丘陵上时，
+       * 海拔 62 米处 agl 只有 52 → fade 还剩 0.4：**地表层半透明地叠在轨道视角上**，
+       * 切模式那一帧"地形突然换了角度和比例"——这是硬切感的另一半（不只是视线）。
+       * 现在 f1 = 切模式海拔 − 地形高：海拔一到 62（模式切换点），fade 恰好归零，
+       * "地面淡完 → 才变轨道"，两件事不再重叠。
+       * ============================================================ */
+      var _aglOut50 = (M.AGL_SURF || 55) + (M.AGL_HYST == null ? 7 : M.AGL_HYST);
+      var f1 = Math.max(6, Math.min(M.SURF_FADE_FAR, _aglOut50 - _gh));
+      f0 = Math.max(2, Math.min(f0, f1 * 0.72));
       t = 1 - Math.min(1, Math.max(0, (agl - f0) / (f1 - f0)));
       t = t * t * (3 - 2 * t);                    /* smoothstep：两头缓、中间快 */
     }
@@ -1040,6 +1052,17 @@
      * ============================================================ */
     var _prevFade = _surfFade;
     _surfFade += (t - _surfFade) * k;
+    /* v157.50：**退场也加上限**（200ms 必淡完）。指数逼近在快滚时跟不上：
+       连滚三格跨过 62 米只要 0.3 秒，而 K=0.10/帧要 0.3 秒才降到 0.4 ——
+       切模式那一帧还看得见半透明地形，这就是"阈值处不干净"的观感来源。 */
+    if (t < _prevFade) {
+      var _now50 = Date.now();
+      var _dt50 = (M._fadeOutAt == null) ? 16 : Math.min(120, _now50 - M._fadeOutAt);
+      M._fadeOutAt = _now50;
+      var _outMs = (M.SURF_FADE_OUT_MS == null) ? 200 : M.SURF_FADE_OUT_MS;
+      var _minDrop = _dt50 / Math.max(1, _outMs);
+      if (_prevFade - _surfFade < _minDrop) _surfFade = Math.max(t, _prevFade - _minDrop);
+    } else { M._fadeOutAt = 0; }
     if (t > _prevFade) {
       var _now18 = Date.now();
       var _dt18 = (M._fadeLastAt == null) ? 16 : Math.min(120, _now18 - M._fadeLastAt);
@@ -1154,6 +1177,7 @@
          * ============================================================ */
         camO.dist = Math.min(camO.dist, R + e0 + 28);
         camO.quat = null; camO._euler = null;
+        _syncZoom();
         M.BUILD_GRID = true;
         M._hiCi = -1;
         try { M.surfHighlight(-1); } catch (eH) { }
@@ -1174,6 +1198,7 @@
       if (on) camO.dist = R + elevAvgAt(camO.dir || [0, 1, 0]) + (M.SURF_EYE || 1.7) * 1.5;
       else camO.dist = R * 2.9;
     } catch (eD) { }
+    _syncZoom();
     /* 探针/自动化入口 = **立即到位**，不跑过渡动画，
        否则所有截图与自检会拍到半透明中间态（那是玩家路径才需要的）。 */
     _surfFade = on ? 1 : 0;
@@ -1968,7 +1993,7 @@
       if (!c0 || !c0.dir) { out.fails.push('G0/首格无方向'); out.ok = false; return out; }
       var d0 = c0.dir.slice();
       var keepDist = camO.dist;
-      camO.dist = R + 20 + 14; camO.quat = null; camO._euler = null;
+      camO.dist = R + 20 + 14; camO.quat = null; camO._euler = null; _syncZoom();
       M.lookAtDir(d0);
       M.rebuildSurf(d0);
 
@@ -2009,7 +2034,7 @@
         out.fails.push('G3/没重锚: 走 120 米 reanchors=' + out.metrics.reanchors + '（下限 1）— 网格没在"持续适配"');
       }
 
-      camO.dist = keepDist; camO.quat = null; camO._euler = null;
+      camO.dist = keepDist; camO.quat = null; camO._euler = null; _syncZoom();
       try { if (wasSurf) M.surfaceMode(false); } catch (e2) { }
     } catch (e) {
       out.fails.push('G0/异常: ' + (e && e.message));
@@ -2728,7 +2753,7 @@
           camO.quat = null; camO._euler = null;
           /* ① 半径恒定：固定一个"玩家给的"距离，96 个方位渲染出来的 |pos| 必须一样。
              这一条是老板那句"观察窗口不动"的**正面证据** —— 旧版这里每个方位都不同。 */
-          camO.dist = R + 40;
+          camO.dist = R + 40; _syncZoom();
           for (var w = 0; w < 20; w++) placeCamera();
           var camR = Math.sqrt(cam.position.x * cam.position.x +
                                cam.position.y * cam.position.y +
@@ -2751,7 +2776,7 @@
       out.fails.push('C4/异常: ' + (e && e.message));
     } finally {
       camO.yaw = keepYaw; camO.pitch = keepPitch; camO.dist = keepDist;
-      camO.quat = null; camO._euler = null;
+      camO.quat = null; camO._euler = null; _syncZoom();
       try { if (!keepSurf) M.surfaceMode(false); } catch (e2) { }
     }
     var spread = +(rMax - rMin).toFixed(4);
@@ -2894,7 +2919,8 @@
    * ============================================================ */
   M.resetView = function () {
     camO.yaw = 0.8; camO.pitch = 0.42; camO.dist = R * 2.9;
-    camO.quat = null; camO.dir = null; camO._euler = null;   /* 强制 placeCamera 用欧拉角重建 q（丢弃 roll） */
+    camO.quat = null; camO.dir = null; camO._euler = null;
+    _syncZoom();   /* 强制 placeCamera 用欧拉角重建 q（丢弃 roll） */
     camO.lookYaw = 0; camO.lookPitch = 0;
     try { touch(); redraw(); } catch (e) { }
   };
@@ -5339,6 +5365,7 @@
         camO.yaw = Math.atan2(c[0], c[2]);                 /* 水平角 → 首府朝向相机 */
         camO.pitch = Math.max(-1.35, Math.min(1.35, latA));/* 俯角 = 首府纬度 → 首府居中 */
         camO.dist = sel.level === 'district' ? R * 1.8 : sel.level === 'market' ? R * 2.03 : R * 2.3;
+        _syncZoom();
         /* v156.47：自动转视角 = 重新对准球心，视线偏移清零 */
         camO.lookYaw = 0; camO.lookPitch = 0;
       }
@@ -5548,6 +5575,71 @@
     } catch (e) { return null; }
   };
 
+  /* ============================================================
+   * v157.50（老板「鼠标滚轮滚动不能有距离跳变，识别到滚动应根据高度
+   *          采取平滑曲线速度下降，而不是根据滚轮位移下降」）
+   * ------------------------------------------------------------
+   * 实测（tools/_cam-wheel-probe.js）旧实现的两种跳：
+   *   ① 贴地第一格 rAlt 1.7 → 20.4（**×12**，+18.7 米）—— 因为 v157.31 把
+   *      缩放量乘在**球心距离**上（302×1.06 看着只多 6%，落到 agl 上是 12 倍）；
+   *   ② 120 米处灵敏度**硬切**（_K 0.0006 → 0.0012）—— 同一格从 +25 米变 +55 米。
+   *
+   * 现在的口径（三条，缺一不可）：
+   *   · 缩放量乘在**离地高度 agl** 上（不是球心距离）→ 比例处处一致；
+   *   · 灵敏度 `k(agl)` 是一条**连续曲线**（1/(1+agl/6.5) 衰减），没有分段阈值；
+   *   · 滚轮只写**目标高度**，相机每帧朝目标阻尼逼近（τ≈70ms）→ 再快的手指
+   *     也不会让画面瞬移，先滑过去。
+   * 于是"一格"的绝对位移随高度自然增大（近处一两米、远处几百米），而**相对**
+   * 速度随高度平滑下降 —— 这正是老板要的"按高度、不是按滚轮位移"。
+   * ============================================================ */
+  var _zoomTarget = null;        /* 目标海拔（agl，米）；null = 未初始化 */
+  var _zoomLastT = 0;            /* 上一帧时间戳（ms），用来算阻尼系数 */
+  /* 灵敏度曲线：返回"一格（deltaY=100）对应的比例"。连续、单调、无分段。 */
+  function _zoomK(agl) {
+    return 0.045 + 1.05 / (1 + Math.max(0, agl) / 6.5);
+  }
+  /* 把滚轮事件换算成目标 agl（唯一入口：wheel / setZoom / surfaceMode 都走它） */
+  function _zoomStepTo(target, deltaY) {
+    var k = _zoomK(target) * ((deltaY || 0) / 100);
+    var step = Math.exp(k);
+    /* 单次事件封顶：防"甩一下滚轮"横跨整个量程（与旧实现同值，手感保留） */
+    if (step > 1.9) step = 1.9;
+    if (step < 0.53) step = 0.53;
+    return target * step;
+  }
+  /* 「瞬移类」入口（跳城 / 正位 / 读档 / 探针 / 滑块）改完 camO.dist 必须调它：
+     否则下一帧阻尼会把人拽回旧目标 —— 这是这类动画最常见的坑。 */
+  function _syncZoom() { _zoomTarget = camO.dist - R; }
+  M._syncZoom = _syncZoom;
+  /* 探针出口（只读纯函数）：滚轮曲线与交班衰减 —— 给 smoke 断言用，
+     不在别处调用。`_zoomCurveProbe(agl, dy)` 返回"这一格滚到哪"。 */
+  M._zoomCurveProbe = function (agl, dy) { return _zoomStepTo(Math.max(0.6, +agl || 0.6), dy == null ? 100 : dy); };
+  M._handoffMulProbe = function (rAlt) { return _handoffMul(+rAlt || 0); };
+
+  /* ============================================================
+   * v157.50（老板「62 米阈值处视线仍是硬切，要求全面平滑」）
+   * ------------------------------------------------------------
+   * 病根：地表分支的视线是**自由向量**（落地 −15°，为了能左右拖），
+   *   轨道分支的视线是**看球心**（−90°）。切模式那一帧直接换公式，
+   *   实测一格滚轮视线转了 **75°**（−15 → −89.96）。
+   * 修法（**交班**而不是切换）：轨道分支每帧算一次"当前视线和看球心的差"
+   *   `_hEl`，再乘一条**只与高度有关**的衰减（62 米满值 → 95 米归零）——
+   *   于是上行下行共用同一条曲线，天然对称。
+   *   于是：刚出地表时画面**一动不动**（差还在），继续拉远才慢慢回正到看球心；
+   *   反向滚回来时同理 —— 到 62 米视线正好已经是地表那一套，进地表零跳变。
+   * 为什么不在过渡带里直接改 `_surfDir`：那等于"没人操作时程序自己转头"，
+   *   v157.34 已经因为这个被否过一次。交班只发生在**滚轮跨阈值**那一刻，边界清楚。
+   * ============================================================ */
+  function _smoothstep01(a, b, x) {
+    var t = Math.max(0, Math.min(1, (x - a) / Math.max(1e-6, b - a)));
+    return t * t * (3 - 2 * t);
+  }
+  /* 交班衰减窗口：62 米（AGL_SURF+HYST）满值 → 95 米归零。 */
+  function _handoffMul(rAlt) {
+    return 1 - _smoothstep01((M.AGL_SURF || 55) + (M.AGL_HYST == null ? 7 : M.AGL_HYST),
+      95, rAlt);
+  }
+
   function placeCamera() {    /* ============================================================
      * v156.55（老板「右键的相机，我希望是相机绕球心运动，
      *          而不是在视野内摆弄球体」）—— **回到轨道相机**。
@@ -5575,6 +5667,28 @@
      *   这正是"拿手指拨一个实体球"的手感。没有地平线锁定的概念。
      *   yaw/pitch 只在外部写入时（跳城市 / 正位）用来重建 quat。
      * ============================================================ */
+    /* ============================================================
+     * v157.50：**滚轮阻尼**（放在状态读取之前 —— 本帧的 d 就用阻尼后的值）
+     * ------------------------------------------------------------
+     * 滚轮只写 `_zoomTarget`，这里每帧朝它逼近一次：
+     *   agl += (target − agl) × (1 − e^(−dt/τ))，τ = 70ms
+     * 为什么用时间而不是固定系数：掉帧时固定系数会"变慢"，而这里 60fps / 20fps
+     * 都是同样的 70ms 收敛，手感不随帧率变。
+     * 收敛到 0.01 米内直接吸附，避免永远差一点点（滑块读数会一直抖）。
+     * ⚠️ 外部改 camO.dist 的入口（setZoom / surfaceMode / 探针 / 读档）必须同时写
+     *    `_zoomTarget`，否则下一帧会被阻尼拉回旧目标 —— 这是这类动画最常见的坑。
+     * ============================================================ */
+    (function _zoomDamp() {
+      if (_zoomTarget == null) { _zoomTarget = camO.dist - R; return; }
+      var nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      var dtMs = _zoomLastT ? Math.min(120, nowMs - _zoomLastT) : 16;
+      _zoomLastT = nowMs;
+      var agl = camO.dist - R;
+      var kk = 1 - Math.exp(-dtMs / 70);
+      var nAgl = agl + (_zoomTarget - agl) * kk;
+      if (Math.abs(_zoomTarget - nAgl) < 0.01) nAgl = _zoomTarget;
+      camO.dist = R + Math.max(0.6, nAgl);
+    })();
     var _yaw = camO.yaw, _pitch = camO.pitch;
     var _dirty = (!camO.quat || !camO._euler ||
       Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
@@ -5656,7 +5770,11 @@
        agl 里含地形高，走过一片山就会自己跨阈值 → "没滚轮，模式却变了"。
        半径只受滚轮影响，这是原地形判据想达到、但没达到的东西。 */
     var _surfNow = M._surf ? (_rAlt < _aglOut) : (_rAlt < _aglIn);
+    var _enterSurfNow = false;
     if (_surfNow !== M._surf) {
+      /* v157.50：**出地表那一刻记交班**（进地表的接手在下方地表分支里做）。 */
+      /* v157.50：本帧是否"刚进地表"（只在切换这一帧做初始化，之后玩家自由转）。 */
+      _enterSurfNow = (!M._surf && !!_surfNow);
       try { _applySurf(_surfNow); } catch (eAS) { }
     }
     cam.position.set(d * _dir0[0], d * _dir0[1], d * _dir0[2]);
@@ -5707,13 +5825,37 @@
           _reuse = (_p0.dot(_upR2) > Math.cos(6 * Math.PI / 180));
         } catch (eRU) { _reuse = false; }
       }
-      if (_reuse && !M._surfDir) {          /* 只在"刚进地表、还没有视线"这一刻复用一次 */
+      /* ============================================================
+       * v157.50：进地表**一律从"当前真实视线"接手**（不再复用上次的 _surfDir）。
+       * 为什么改：从 62 米滚进来时，画面此刻是"看球心（−90°）"或交班中的角度看，
+       *   而旧逻辑一进门就强设 −15°，等于**落地瞬间被弹了一下**（实测 75°/格）。
+       *   现在"上一帧看到哪，进来就看哪" —— 这是零跳变唯一的来源。
+       * 例外：视线太陡（< −65°，几乎垂直看脚下）时，左右拖会是空操作（v157.48 的
+       *   老问题），此时才抬到 −15°，并保留 220ms 过渡（那是操作必需，不是装饰）。
+       * ============================================================ */
+      var _uE = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize();
+      var _elPrev = Math.asin(Math.max(-1, Math.min(1, _prevF.clone().normalize().dot(_uE))));
+      var _tooSteep = _elPrev < (-65 * Math.PI / 180);
+      /* ⚠️ 初始化**只能做一次**（刚进地表那一帧 / 或还没有视线时）。
+         写成"每帧都进这个分支"会每帧重置 _surfDir 与 tilt（实测视线永远停在 from）。 */
+      if (!_enterSurfNow && M._surfDir) {
+        /* 地表停留期间：什么都不做 —— 视线归玩家（v157.34 的"程序不自己动"）。
+           唯一例外在下面两个初始化分支里。 */
+      } else if (!_tooSteep) {
+        _surfTilt = null;
+        M._surfDir = _prevF.clone().normalize();
+        M._surfRight = new THREE.Vector3().crossVectors(M._surfDir, _uE).normalize();
+        M._surfAnchor = null;
+        camO.lookYaw = 0; camO.lookPitch = 0;
+        M._surfHold = false;
+        M._entryDbg = { mode: 'handoff', elPrev: +(_elPrev * 180 / Math.PI).toFixed(2), tilt: false };
+      } else if (_reuse && !M._surfDir) {          /* 只在"刚进地表、还没有视线"这一刻复用一次 */
         _surfTilt = null;
         M._surfRight = new THREE.Vector3().crossVectors(
           M._surfDir.clone().normalize(),
           new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize()).normalize();
         M._surfAnchor = null;               /* 一次性：用完作废，避免每帧重复判定 */
-      } else if (!M._surfDir) {
+      } else {
         /* v157.31：进地表时把轨道的 lookYaw/lookPitch 清零 ——
            它的分量已经烘进 `_prevF`（屏幕方向不变），再留着就会两套叠加。 */
         camO.lookYaw = 0; camO.lookPitch = 0;
@@ -5881,9 +6023,27 @@
     /* v156.59：直接用四元数（含 roll）——球可以自由倾倒，这才是"空间中的自由球"。
        lookYaw/lookPitch 作为**局部**偏移左乘（中键转头用）。 */
     cam.quaternion.copy(camO.quat);
-    if (camO.lookYaw || camO.lookPitch) {
+    /* v157.50：**交班偏移**（出地表时接过来的视线差）随高度连续衰减，
+       与玩家自己的 lookPitch 同层相加。62 米处满值（画面与地表一模一样）→
+       95 米归零（完全回正成"看球心"）。这一条就是"62 米处不再硬切 75°"的本体。 */
+    var _hEl = 0;
+    if (M._surfDir && !camO.lookPitch) {
+      /* ⚠️ 必须**每帧由 `_surfDir` 派生**，不能只在"出地表那一帧记一次"：
+         反向滚回来时那次记录早已衰减到 0（实测 out8 归零后，in23 仍是 −90 → 进地表
+         又是一次 75° 硬切）。每帧派生 = 上行下行共用同一条曲线，天然对称。
+         玩家自己抬过头（lookPitch）时不干预 —— 他的视角优先，进地表照旧接手。 */
+      var _hm = _handoffMul(_rAlt);
+      if (_hm > 0.0001) {
+        var _u3 = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize();
+        var _sd3 = M._surfDir.clone().normalize();
+        var _elS3 = Math.asin(Math.max(-1, Math.min(1, _sd3.dot(_u3))));
+        _hEl = (_elS3 + Math.PI / 2) * _hm;      /* 轨道基准（看球心）= −90° */
+      }
+    }
+    var _lpEff = camO.lookPitch + _hEl;
+    if (camO.lookYaw || _lpEff) {
       cam.quaternion.multiply(new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(Math.max(-1.55, Math.min(1.55, camO.lookPitch)), camO.lookYaw, 0, 'YXZ')));
+        new THREE.Euler(Math.max(-1.55, Math.min(1.55, _lpEff)), camO.lookYaw, 0, 'YXZ')));
     }
     cam.updateMatrixWorld();
     /* 远到 50R（=15000）时，旧的 far=6000 会把星球整个裁掉 —— 按距离动态给足余量；
@@ -5940,7 +6100,7 @@
     var _inPro241 = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
     if (_inPro241 && !M.camFree) {
       var _nearD152 = R + HSC * 1.5;
-      if (camO.dist > _nearD152 * 1.05) camO.dist = _nearD152;
+      if (camO.dist > _nearD152 * 1.05) { camO.dist = _nearD152; _syncZoom(); }
     }
     M._focus = null;                                      /* 兼容壳：任何残留都清掉 */
     _updateWind();                                        /* v157l：风场时间轴/阵风/风向 */
@@ -6910,7 +7070,6 @@
       e.preventDefault();
       /* v157b：滚轮只改**球心距离**，轨道/地表由 placeCamera 按离地高度自动派生
          —— 不需要"升空"特判，也不需要按钮（老板：「不需要特别按钮」）。 */
-      var _prevD = camO.dist;
       /* ============================================================
        * v157k（老板：「控制高度的滚轮单格高度差太高了，希望高度平滑连续下降，
        *        远处快，近处慢」）
@@ -6926,32 +7085,31 @@
        * 这样近处一格只动一两米、远处动几百米，比例手感处处一致。
        * elev 由 dist 反解出来保持不变，避免滚一下顺带"改地形高度"。
        * ============================================================ */
-      /* v157.31：滚轮改成**直接缩放半径**（原来按 agl 反解 elev，
-         等于把地形高裹进了缩放 —— 地形一变，同一格滚轮走到的高度就不同）。 */
-      var _aglNow = Math.max(0.5, camO.dist - R);
-      /* v157.18（老板「可以再慢一点」）：**近地再减速一半**。
-         远处一格几百米、近处一格一两米，本来就按比例；但 20~60 米这段是
-         "要不要落地"的决策区，滚太快会一冲到底 —— 这里额外降速，手感更稳。 */
-      var _K = (_aglNow < 120) ? 0.0006 : 0.0012;       /* deltaY 100 ≈ 1.06 / 1.127 倍 */
-      /* deltaY > 0 = 向下滚 = 拉远（与旧实现 1.12 同向），所以是 +deltaY */
-      var _step = Math.exp((e.deltaY || 0) * _K);
-      /* 单次事件封顶，防"甩一下滚轮"直接横跨整个量程 */
-      if (_step > 1.35) _step = 1.35;
-      if (_step < 0.74) _step = 0.74;
-      var _dNew = camO.dist * _step;
-      /* v157.31：**防穿模只在滚轮这一下做一次** —— 平移期间半径一个数都不动。
-         这是"窗口不动"与"别钻进山里"的唯一折中：想贴地就滚到底，会在当前地形上
-         落一次安全高度；之后转视角/平移，相机**不跟着地形起伏**（老板要的稳定）。
-         代价：贴着山滚到底再平移到更高的山，可能被地形切到 —— 再滚一格即重新校准。 */
+      /* ============================================================
+       * v157.50（老板「滚轮不能有距离跳变；速度按高度取平滑曲线，
+       *          不是按滚轮位移」）—— 旧实现在这里做了三件互相打架的事：
+       *   ① 乘在**球心距离**上（贴地 302×1.06 → agl 1.7→20，12 倍）；
+       *   ② 灵敏度在 120 米处**硬切**（0.0006 ↔ 0.0012，同一格 +25 变 +55 米）；
+       *   ③ 向内滚时把当前位置**立刻**顶到地形下限（floor 钳制）＝ 一次瞬移。
+       * 现在：只写**目标高度**，灵敏度走连续曲线 `_zoomK(agl)`，
+       *   下限钳制作用在**目标**上（阻尼负责把画面滑过去，不瞬移）。
+       * 逐格实测见 tools/_cam-wheel-probe.js / docs v15750。
+       * ============================================================ */
+      var _aglNow = Math.max(0.6, camO.dist - R);
+      if (_zoomTarget == null) _zoomTarget = _aglNow;
+      var _tNew = _zoomStepTo(_zoomTarget, e.deltaY || 0);
+      /* 防穿模：只约束**目标**，且只往内滚时约束（向外永远放行 —— 平移后再往外滚
+         不会被 floor 一把顶上天空）。下限换成 agl 口径，与缩放同一把尺。 */
       var _floor = (M.camFloorAt ? M.camFloorAt(camO.dir) : (R + (M.SURF_EYE || 1.7)));
-      /* v157.32：**向内滚才挡，向外滚永远放行** ——
-         否则平移把相机挪到比地形低的地方后，往外滚一格会被 floor 一把顶上去（跳一大截）。 */
-      var _lo = (_step < 1) ? _floor : Math.min(_floor, camO.dist);
-      camO.dist = Math.max(_lo, Math.min(M.ZOOM_MAX, _dNew));
+      var _floorAgl = Math.max(0.6, _floor - R);
+      if (e.deltaY < 0 && _tNew < _floorAgl) _tNew = _floorAgl;
+      if (_tNew > M.ZOOM_MAX - R) _tNew = M.ZOOM_MAX - R;
+      if (_tNew < 0.6) _tNew = 0.6;
+      _zoomTarget = _tNew;
       /* v157.35：与 camFloorAt 同一时机 —— 缩放这一次才更新"判据用的地形高"。 */
       if (M._groundAt) M._fadeGround = M._groundAt();
       /* 往外拉即"我想看全貌" → 前传的贴地跟随不再抢镜头 */
-      if (camO.dist > _prevD) M.camFree = true;
+      if (_tNew > _aglNow) M.camFree = true;
       touch(); redraw();
     }, { passive: false });
   };
@@ -6974,6 +7132,7 @@
       if (_flz && camO.dist < _flz) camO.dist = _flz;
       if (M._groundAt) M._fadeGround = M._groundAt();
     } catch (eZ) { }
+    _syncZoom();
     if (frac > 0.05) M.camFree = true;
     if (frac <= 0.02) M.camFree = false;
     if (M._lastAct != null) M._lastAct = Date.now();       /* 视为一次操作（重置自转计时）*/
@@ -7036,7 +7195,7 @@
   M.camFree = false;
   M.clearFocus = function (opts) {
     M._focus = null; M._pendingFocus = null;
-    if (opts && opts.dist != null) camO.dist = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, opts.dist));
+    if (opts && opts.dist != null) { camO.dist = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, opts.dist)); _syncZoom(); }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return false;
   };
@@ -7052,6 +7211,7 @@
     camO.yaw = Math.atan2(d[0], d[2]);
     camO.pitch = Math.max(-1.55, Math.min(1.55, Math.asin(Math.max(-1, Math.min(1, d[1])))));
     camO.dist = R + HSC * 1.5;                    /* ≈ 一格半的视距（站在这一格上方）*/
+    _syncZoom();
     M._focus = null;
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return true;
@@ -7877,7 +8037,7 @@
     var c = GAME.map.lonlatOf(x, y), d = GAME.map.dirOf(c.lon, c.lat);
     camO.yaw = Math.atan2(d[0], d[2]);
     camO.pitch = Math.max(-1.35, Math.min(1.35, c.lat * Math.PI / 180));
-    camO.dist = R * 1.9;
+    camO.dist = R * 1.9; _syncZoom();
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   /* v90.68（老板）：**定位光束** —— 从某格**向外射出一道**提示玩家 + 相机对准该格。
@@ -38312,7 +38472,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.49';
+  GAME.VERSION = 'v157.50';
   function boot() {
     fitAppSize();
     try {

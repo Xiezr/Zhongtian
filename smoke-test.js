@@ -36326,9 +36326,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        * 另加一条正面证据：轨道分支只在"刚离开地表"那一帧清 lookYaw/lookPitch ——
        * 之前的写法是每帧清零，右键写进去的值当帧就被抹掉（高空视角转换失效的根因）。
        * ============================================================ */
-      c243('§243①c 相机半径不随地形（v157.31/32）：下限=常数 R+眼高 · 模式读海拔 _rAlt · 外滚不吃地形下限',
+      c243('§243①c 相机半径不随地形（v157.31/32/v157.50）：下限=常数 R+眼高 · 模式读海拔 _rAlt · 外滚不吃地形下限',
         /var _minD = R \+ \(M\.SURF_EYE/.test(m243)
-        && /var _lo = \(_step < 1\) \? _floor : Math\.min\(_floor, camO\.dist\)/.test(m243)
+        /* v157.50：滚轮改成"只写目标高度"，下限钳制挪到目标上 —— 只在内滚时钳，
+           外滚永远放行（原意不变：平移后再往外滚不会被 floor 顶上天）。 */
+        && /if \(e\.deltaY < 0 && _tNew < _floorAgl\) _tNew = _floorAgl;/.test(m243)
         && !/R \+ _elev0 \+ \(M\.SURF_EYE/.test(m243)
         && /var _rAlt = d - R/.test(m243)
         && /_rAlt < _aglOut/.test(m243));
@@ -36364,12 +36366,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          ③ 快照只在输入时更新（滚轮 / 滑块 / 进地表）—— 平移期间冻结，否则又回到"走过山忽实忽虚"。
          背景：裸 _rAlt 是绝对海拔，站上 25 米丘陵时判据算出 26.7 米 → 地表 31% 透明（实测 0.689）。
          v157.35 后同一位置 0.965。 */
-      c243('§243①g 地表淡出判据 = 海拔 − 快照地形高（v157.35）',
+      c243('§243①g 地表淡出判据 = 海拔 − 快照地形高（v157.35/50）',
         /var _altN = \(M\._rAlt != null\) \? M\._rAlt : \(M\._agl \|\| 0\)/.test(m243)
-        && /Math\.max\(0, _altN - \(M\._fadeGround \|\| 0\)\)/.test(m243)
+        /* v157.50：地形高先取到 `_gh`（同一份快照），f1 也要用它对齐切模式高度 */
+        && /Math\.max\(0, _altN - _gh\)/.test(m243)
         && !/var agl = \(M\._rAlt != null\) \? M\._rAlt/.test(m243)
         && /M\._fadeGround = M\._groundAt\(\)/.test(m243)
-        && /if \(on && M\._groundAt\) M\._fadeGround = M\._groundAt\(\)/.test(m243));
+        && /if \(on && M\._groundAt\) M\._fadeGround = M\._groundAt\(\)/.test(m243)
+        /* v157.50（老板「阈值处要全面平滑」）：fade 终点必须钉在**切模式海拔**上
+           —— 否则站在丘陵上时，海拔 62 处地表还剩 40% 不透明，切模式那帧"地形
+           半透明地叠在轨道视角上"，这就是硬切感的另一半。 */
+        && /var f1 = Math\.max\(6, Math\.min\(M\.SURF_FADE_FAR, _aglOut50 - _gh\)\)/.test(m243)
+        && /if \(t < _prevFade\)/.test(m243));
 
       /* v157.36（P0-A2）· 阈值必须收在"地表模式区间"内：
          · FAR ≤ AGL_SURF(55) + 滞后(7) = 62 —— 否则地面在切模式后才淡完，
@@ -36463,6 +36471,58 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var seg = (i >= 0) ? m243.slice(i, i + 420) : '';
         return seg.indexOf('Math.atan2(camO.dir[0], camO.dir[2])') >= 0
           && seg.indexOf('_surfDir') < 0;
+      })());
+      /* ============================================================
+       * v157.50（老板「滚轮不能有距离跳变；视线在阈值处要全面平滑」）
+       * ------------------------------------------------------------
+       * 两条都必须**数值**验，不能只查源码里有这行字：
+       *   ① 灵敏度曲线连续 —— 每格"变化倍数"随高度单调不增、相邻差不超 8%；
+       *      旧实现 120 米处从 0.0006 硬切 0.0012（同格 +25 变 +55 米）。
+       *   ② 交班衰减 —— 62 米满值、95 米归零、中间单调；旧实现这一格视线跳 75°。
+       * ============================================================ */
+      c243('§243①q 滚轮灵敏度是连续曲线（按高度、不按滚轮位移）：倍数单调不增 · 无分段硬切', (function () {
+        var M3 = GAME.map3d;
+        if (!M3 || !M3._zoomCurveProbe) return false;
+        /* 对数采样：贴地 1.7 米 → 最远 8000 米，覆盖全部量程 */
+        var prevRatio = null, bad = 0, maxJump = 0;
+        for (var i = 0; i <= 40; i++) {
+          var agl = 1.7 * Math.pow(8000 / 1.7, i / 40);
+          var nxt = M3._zoomCurveProbe(agl, 100);
+          var ratio = nxt / agl;
+          if (prevRatio != null) {
+            if (ratio > prevRatio + 1e-6) bad++;                 /* 必须随高度不增 */
+            maxJump = Math.max(maxJump, Math.abs(ratio - prevRatio));
+          }
+          prevRatio = ratio;
+        }
+        /* 源码里不得再有"按 agl 分两段取 K"的写法 */
+        var noSplit = !/_K\s*=\s*\(_aglNow\s*<\s*120\)/.test(m243);
+        return bad === 0 && maxJump < 0.09 && noSplit
+          && m243.indexOf('function _zoomK(agl)') >= 0
+          && m243.indexOf('_zoomStepTo(') >= 0;
+      })(), (function () {
+        var M3 = GAME.map3d; if (!M3) return '';
+        return '贴地一格 ×' + (M3._zoomCurveProbe(1.7, 100) / 1.7).toFixed(2)
+          + ' → 4000 米一格 ×' + (M3._zoomCurveProbe(4000, 100) / 4000).toFixed(3);
+      })());
+      c243('§243①r 视线跨阈值连续：交班衰减 62 米满值 → 95 米归零（旧版此处跳 75°）', (function () {
+        var M3 = GAME.map3d;
+        if (!M3 || !M3._handoffMulProbe) return false;
+        var a = M3._handoffMulProbe(62), b = M3._handoffMulProbe(78), c = M3._handoffMulProbe(95);
+        var mono = true, prev = 2;
+        for (var x = 50; x <= 100; x += 2) {
+          var v = M3._handoffMulProbe(x);
+          if (v > prev + 1e-9) mono = false;
+          prev = v;
+        }
+        /* 进地表必须"接手当前真实视线"（而不是强设 −15），否则又回到硬切 */
+        return Math.abs(a - 1) < 1e-6 && b > 0.2 && b < 0.8 && Math.abs(c) < 1e-6 && mono
+          && m243.indexOf('var _tooSteep = _elPrev < (-65 * Math.PI / 180)') >= 0
+          && m243.indexOf('M._surfDir = _prevF.clone().normalize()') >= 0;
+      })(), (function () {
+        var M3 = GAME.map3d; if (!M3) return '';
+        return '62m=' + M3._handoffMulProbe(62).toFixed(2) + ' · 78m=' + M3._handoffMulProbe(78).toFixed(2)
+          + ' · 95m=' + M3._handoffMulProbe(95).toFixed(2);
       })());
       })();
       /* ============================================================
@@ -36568,9 +36628,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
            ① 半径恒定：固定 camO.dist，96 个方位渲染出的 |pos| 必须一样（差 ≤ 0.01）；
            ② 滚轮下限：camFloorAt 必须挡住"滚到底钻进山里"，且只在滚轮那一次用。
          这是收紧：旧版允许"半径随方位变"（还有个正的下限就行），新版要求"不许变"。 */
-      c243('§243⑭ 相机半径恒定（地形不参与 · 96 方位差 ≤0.01）+ 滚轮落地一次校准（v157.31）',
+      c243('§243⑭ 相机半径恒定（地形不参与 · 96 方位差 ≤0.01）+ 滚轮落地一次校准（v157.31/50）',
         /M\.camFloorAt = function/.test(m243)
-        && /camO\.dist = Math\.max\(_lo, Math\.min\(M\.ZOOM_MAX/.test(m243)
+        && /if \(e\.deltaY < 0 && _tNew < _floorAgl\) _tNew = _floorAgl;/.test(m243)
         && /M\.camGuardCheck = function/.test(m243)
         && /for \(var w = 0; w < 20; w\+\+\) placeCamera\(\);/.test(m243)
         && /if \(!\(n >= 96\)\)/.test(m243)
