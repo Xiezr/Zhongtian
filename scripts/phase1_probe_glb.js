@@ -13,12 +13,34 @@ function walk(d, out) {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
       if (e.isDirectory()) walk(p, out);
-      else if (/\.glb$/i.test(e.name)) out.push(p);
+      else if (/\.glb$/i.test(e.name) || /\.gltf$/i.test(e.name)) out.push(p);
     }
   } catch (e) {}
   return out;
 }
+/* .gltf（JSON + 外部 .bin / 贴图）：只解析 JSON 抽 PBR 通道，不校验外部资源是否齐 */
+function probeGltf(p) {
+  let json;
+  try { json = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return { file: p, err: 'json parse' }; }
+  const mats = json.materials || [];
+  const ext = (json.extensionsUsed || []).join(',');
+  const hit = {};
+  mats.forEach(m => {
+    const pbr = m.pbrMetallicRoughness || {};
+    if (pbr.baseColorTexture) hit.base = 1;
+    if (pbr.metallicRoughnessTexture) hit.mr = 1;
+    if (m.normalTexture) hit.normal = 1;
+    if (m.occlusionTexture) hit.ao = 1;
+    if (m.emissiveTexture) hit.emissive = 1;
+    const ef = m.emissiveFactor || [];
+    if (ef[0] || ef[1] || ef[2]) hit.emissiveF = 1;
+  });
+  const imgs = json.images || [];
+  return { file: p.replace(ROOT, ''), meshes: mats.length, ext: 'gltf:' + ext,
+    channels: Object.keys(hit).join('+') || 'none', note: imgs.length + ' imgs(外部资源需齐)' };
+}
 function probe(p) {
+  if (/\.gltf$/i.test(p)) return probeGltf(p);
   let b;
   try { b = fs.readFileSync(p); } catch (e) { return { file: p, err: 'read fail' }; }
   if (b.length < 20 || b.readUInt32LE(0) !== 0x46546C67) return { file: p, err: 'not glb' };
@@ -56,7 +78,7 @@ let nBase = 0, nMr = 0, nNormal = 0, nAo = 0, nEmis = 0;
 files.forEach(f => {
   const r = probe(f);
   if (r.err) { console.log(r.file, 'ERR:', r.err); return; }
-  console.log([r.file, r.meshes, r.ext, r.channels].join(' | '));
+  console.log([r.file, r.meshes, r.ext, r.channels, r.note || ''].join(' | '));
   if (r.channels.includes('base')) nBase++;
   if (r.channels.includes('mr')) nMr++;
   if (r.channels.includes('normal')) nNormal++;
