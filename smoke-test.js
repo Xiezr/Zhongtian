@@ -6555,7 +6555,7 @@
        v90.62：地板改 0 + 归零 1 游戏日自动放弃（toAbandon → doAbandonWild）。 */
     /GAME\.wildHeld = function/.test(dS36)
     && /var _hold = GAME\.wildHeld\(w\) \|\|/.test(dS36)
-    && /toAbandon\.push\(w\)/.test(dS36) && /GAME\.doAbandonWild\(w\.ci\)/.test(dS36));
+    && /toAbandon\.push\(w\)/.test(dS36) && /GAME\.doAbandonWild\(w\.ci/.test(dS36));
   check('实测：驻军走行军通道（出发扣兵入队 · 抵达写入野地 · v89.137 唯一入口 = dispatch）', (function () {
     /* v89.87（需求 2）：驻守改走行军 —— 出发扣兵入 marches，抵达才写野地。
        v89.137（老板 7）：`GAME.doWildGarrison` 退役 —— 唯一入口 = `GAME.march.dispatch(...,'station')`
@@ -47627,6 +47627,59 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.plugins.setParam('set-pop', old);
         return ok;
       })(), '');
+  })();
+
+  /* ===================== §586h v157.66 野地自动放弃「重复消息」 =====================
+   * 老板：「📌 系统🏚️ 1 块野地等级归零超 1 日，已自动放弃 —— 重复消息」
+   * 实测根因（.workbuddy/tmp/probe_wild_abandon.js）：跨星球野地 pid≠curPid 时，
+   *   doAbandonWild(w.ci) 内 wildAt(ci) 落空 → 放弃失败 → 野地永远留在 s.wilds、
+   *   zeroDay 不清 → 每个在线 tick 重新收进 toAbandon 重发；GAME.log v129 合并
+   *   要求「消息连续」，主循环夹别的日志即失效 → 逐条堆积（3 轮 = 3 条）。
+   * 守卫三层：① 源码面 ② 运行面-跨星球（干扰日志插队后仍只 1 条且野地被移除）
+   *          ③ 运行面-同星球（正常路径不回归，仍只 1 条）
+   * ===================================================================== */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var dSrc = fs.readFileSync(path.join(__dirname, 'js', 'domain.js'), 'utf8');
+
+    check('§586h 源码面：放弃按野地 pid 定位 / 精确按 (ci,pid) 移除 / 只按成功数公告 / 失败跳过',
+      /GAME\.doAbandonWild = function \(ci, pid\)/.test(dSrc)
+      && /GAME\.map\.wildAt\(ci, pid\)/.test(dSrc)
+      && /z\.ci === ci && GAME\.pidOf\(z\) === _wPid/.test(dSrc)
+      && /GAME\.doAbandonWild\(w\.ci, GAME\.pidOf\(w\)\)/.test(dSrc)
+      && /if \(r && r\.ok\) abandoned\+\+/.test(dSrc)
+      && /else w\._abandonSkip = true/.test(dSrc)
+      && /if \(abandoned\)/.test(dSrc)
+      && !/if \(toAbandon\.length\)/.test(dSrc));
+
+    function trial(useForeignPid) {
+      var st = G.state, bkWilds = st.wilds, bkMsg = st.msgLog;
+      var today = G.questDayIndex ? G.questDayIndex() : Math.floor(Date.now() / 86400000);
+      try {
+        var w = { ci: 990001, x: 5, y: 5, type: 'lake', level: 0,
+          levelDay: today - 3, zeroDay: today - 2 };
+        if (useForeignPid) w.pid = 2;
+        st.wilds = [w];
+        st.msgLog = [];
+        for (var i = 0; i < 3; i++) {
+          G.decayWilds();
+          G.log('（干扰）建造完成：某某', 'sys');   /* 打断 v129 的「连续」合并条件 */
+        }
+        var hits = (st.msgLog || []).filter(function (m) {
+          return m.msg.indexOf('野地等级归零') >= 0;
+        }).length;
+        return { hits: hits, left: st.wilds.length };
+      } catch (e) { return { hits: -1, left: -1, err: e.message }; }
+      finally { st.wilds = bkWilds; st.msgLog = bkMsg; }
+    }
+
+    var cross = trial(true);
+    check('§586h 运行面①：跨星球野地 + 干扰日志插队，连跑 3 轮只留 1 条 🏚️ 且野地被移除',
+      cross.hits === 1 && cross.left === 0, JSON.stringify(cross));
+
+    var same = trial(false);
+    check('§586h 运行面②：同星球正常路径不回归（1 条 🏚️ · 野地移除）',
+      same.hits === 1 && same.left === 0, JSON.stringify(same));
   })();
 
   /* ===================== §587 球面坐标系（摆位不变量） =====================

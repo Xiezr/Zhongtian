@@ -20599,9 +20599,12 @@ window.GAME = window.GAME || {};
     return { ok: true, msg: '撤回驻军 ' + U.fmt(n) + ' 名' + (_wgen ? '（英雄随军归城）' : '') };
   };
 
-  /* 放弃野地：先把驻军与采集队撤回（否则兵力凭空消失），再解除占领 */
-  GAME.doAbandonWild = function (ci) {
-    var s = GAME.state, w = GAME.map.wildAt(ci);
+  /* 放弃野地：先把驻军与采集队撤回（否则兵力凭空消失），再解除占领。
+     v157.66（老板「重复消息」）：第二参数 pid = 野地归属星球。不传时仍按当前星球，
+     与既有全部调用点（main.js / ui-* 的手动放弃）逐字等价；decayWilds 的自动放弃
+     会传 w 自带 pid —— 否则跨星球野地 wildAt(ci) 找不到 → 放弃失败 → 每 tick 重报。 */
+  GAME.doAbandonWild = function (ci, pid) {
+    var s = GAME.state, w = GAME.map.wildAt(ci, pid);
     if (!w) return { ok: false, msg: '该野地尚未占领' };
     var back = 0;
     if (w.garrison) {
@@ -20617,7 +20620,12 @@ window.GAME = window.GAME || {};
          满 1h 先自动收获的语义在 doWildWithdraw 主路径已处理）。 */
       GAME.abandonGather(gth.id);
     }
-    s.wilds = (s.wilds || []).filter(function (z) { return z.ci !== ci; });
+    /* v157.66：按 (ci, pid) 精确移除 —— v91.74 起各星球 ci 会重号，
+       只按 ci 过滤会把当前星球上同 ci 的另一块野地误删（也会让本块残留 → 重报）。 */
+    var _wPid = GAME.pidOf(w);
+    s.wilds = (s.wilds || []).filter(function (z) {
+      return !(z.ci === ci && GAME.pidOf(z) === _wPid);
+    });
     var tn = DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : w.type;
     GAME.log('放弃野地：' + tn + ' Lv' + w.level + '（产量加成与采集权一并失去' +
       (back ? '，' + U.fmt(back) + ' 名守军/采集队已归城' : '') + '）');
@@ -21825,12 +21833,23 @@ window.GAME = window.GAME || {};
         if (today - w.zeroDay >= 1) toAbandon.push(w);        /* 0 级满 1 游戏日 → 自动放弃 */
       } else { w.zeroDay = null; }
     });
-    /* 自动放弃（0 级超期）：复用 doAbandonWild —— 它自带撤驻军回城 + 停采 */
+    /* 自动放弃（0 级超期）：复用 doAbandonWild —— 它自带撤驻军回城 + 停采。
+       v157.66（老板「重复消息」）：
+         · 传 w 自带 pid：v91.74 起各星球 ci 会重号，跨星球野地若按当前星球找会落空
+           → 放弃失败 → 野地永远留在 s.wilds 且 zeroDay 不清 → 每个在线 tick 重新
+           收进 toAbandon 重发同一条；GAME.log v129 合并要求「消息连续」，主循环里
+           必然夹别的日志 → 1 游戏天窗口拦不住，逐条堆积成刷屏。
+         · 只对**真的放弃成功**的地块计数公告；失败的地块打跳过标记，
+           不再每 tick 重试/重报（异常态静默，不刷屏）。 */
+    var abandoned = 0;
     toAbandon.forEach(function (w) {
-      if (GAME.doAbandonWild) GAME.doAbandonWild(w.ci);
+      if (!GAME.doAbandonWild || w._abandonSkip) return;
+      var r = GAME.doAbandonWild(w.ci, GAME.pidOf(w));
+      if (r && r.ok) abandoned++;
+      else w._abandonSkip = true;
     });
-    if (toAbandon.length) {
-      GAME.log('🏚️ ' + toAbandon.length + ' 块野地等级归零超 1 日，已自动放弃（驻军/采集已返回）');
+    if (abandoned) {
+      GAME.log('🏚️ ' + abandoned + ' 块野地等级归零超 1 日，已自动放弃（驻军/采集已返回）');
     }
     if (changed.length) {
       GAME.log('⚠️ 久据之下野地渐荒：' + changed.length + ' 块野地等级下降（每现实日 -' + (WD_.perDay || 2)

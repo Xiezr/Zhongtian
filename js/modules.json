@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "2abe18280366aabf",
+ "sourceHash": "d36b02c62af19ff2",
  "layout": {
   "order": [
    "core",
@@ -531,7 +531,7 @@
   {
    "name": "domain",
    "file": "js/domain.js",
-   "lines": 9704,
+   "lines": 9723,
    "bundle": "core",
    "duty": "domain.js  核心业务逻辑（真实数值版）",
    "deps": [
