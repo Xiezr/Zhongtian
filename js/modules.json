@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "5b5b59559016fdac",
+ "sourceHash": "2ee8387c22c555ca",
  "layout": {
   "order": [
    "core",
@@ -92,6 +92,7 @@
    "ui-exped",
    "ui-report",
    "ui-config",
+   "plugins",
    "main"
   ],
   "war": [
@@ -123,7 +124,8 @@
    "ui-mapui",
    "ui-exped",
    "ui-report",
-   "ui-config"
+   "ui-config",
+   "plugins"
   ]
  },
  "order": [
@@ -213,6 +215,7 @@
   "ui-exped",
   "ui-report",
   "ui-config",
+  "plugins",
   "main"
  ],
  "bundles": {
@@ -307,6 +310,7 @@
    "ui-exped",
    "ui-report",
    "ui-config",
+   "plugins",
    "main"
   ]
  },
@@ -546,6 +550,7 @@
     "camp",
     "tower",
     "map3d",
+    "plugins",
     "ruin",
     "story",
     "ui-city",
@@ -710,7 +715,7 @@
   {
    "name": "gltf",
    "file": "js/gltf.js",
-   "lines": 688,
+   "lines": 734,
    "bundle": "war",
    "duty": "three r150 的 GLTFLoader 是 ES module；本项目纯静态零外链（vendor three U…",
    "deps": []
@@ -797,7 +802,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4243,
+   "lines": 4259,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -808,15 +813,15 @@
     "ui-modal",
     "ui-view",
     "ui-craft",
-    "ui-exped",
     "map3d",
+    "ui-exped",
     "ui-space",
     "ui-planet",
     "systems",
     "ui-battle",
     "ui",
-    "ui-city",
     "ui-mapui",
+    "ui-city",
     "map",
     "ui-report",
     "ui-config",
@@ -856,7 +861,7 @@
   {
    "name": "map",
    "file": "js/map.js",
-   "lines": 2271,
+   "lines": 2277,
    "bundle": "core",
    "duty": "map.js  全国地图（500×500 · 真实坐标 · 7地形 · 野地）",
    "deps": [
@@ -873,7 +878,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 8183,
+   "lines": 8207,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -892,11 +897,11 @@
     "village",
     "camp",
     "ruin",
+    "ui-mapui",
     "main",
     "ui-exped",
     "belt",
     "faction",
-    "ui-mapui",
     "ui-delve",
     "memorial",
     "ui-shell",
@@ -974,6 +979,21 @@
     "map",
     "map3d",
     "ui-planet"
+   ]
+  },
+  {
+   "name": "plugins",
+   "file": "js/plugins.js",
+   "lines": 204,
+   "bundle": "ui",
+   "duty": "plugins.js — 插件箱（v157.64 · 老板 2026-11-15「可插拔数值插件」）",
+   "deps": [
+    "ui",
+    "ui-view",
+    "icons",
+    "registry",
+    "ui-fx",
+    "ui-shell"
    ]
   },
   {
@@ -1099,7 +1119,7 @@
   {
    "name": "scene3d",
    "file": "js/scene3d.js",
-   "lines": 3589,
+   "lines": 3592,
    "bundle": "ui",
    "duty": "scene3d.js — 2.5D 场景运行时（v140 · 老板 2026-10-24）",
    "deps": [
@@ -1236,7 +1256,7 @@
   {
    "name": "surge",
    "file": "js/surge.js",
-   "lines": 189,
+   "lines": 204,
    "bundle": "core",
    "duty": "surge.js — 会收缩的圈（v94.1 · 构想 E「大逃杀收缩圈」）",
    "deps": [
@@ -1590,7 +1610,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 895,
+   "lines": 928,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1598,14 +1618,15 @@
     "map",
     "state",
     "data",
-    "prologue",
     "ui-modal",
+    "prologue",
     "sphere",
     "ui-fx",
     "ui-craft",
     "growth",
     "taint",
     "convoy",
+    "map3d",
     "ui-exped",
     "idle",
     "climate",

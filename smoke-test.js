@@ -12669,7 +12669,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
       'placement', 'belt', 'planetgen',
-      'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'];
+      'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config',
+      /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致 */
+      'plugins', 'main'];
     var h = crypto.createHash('sha256');
     try {
       ORDER.forEach(function (m) {
@@ -12732,7 +12734,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var jsDir = path.join(__dirname, 'js');
     var MODS = ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'fog', 'growth', 'climate', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'placement', 'belt', 'planetgen',
-      'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'];
+      'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config',
+      /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致 */
+      'plugins', 'main'];
     var bad = [];
     MODS.forEach(function (f) {
       var p = path.join(jsDir, f + '.js');
@@ -47509,6 +47513,56 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /var pm = new THREE\.PMREMGenerator\(R3\)/.test(m));
     check('§586e 地表 env 生成后通知 gltf（setEnvAvailable(true)），与 scene3d 对称放开 metalness',
       /buildSurfEnv/.test(m) && /GAME\.gltf\.setEnvAvailable\(true\)/.test(m));
+  })();
+
+  /* ===================== §586f v157.64 插件箱（可插拔数值插件） =====================
+   * 需求原话：「给一个可插拔的插件，不影响原代码，实现功能是无限人口。
+   *   创建一个插件箱，用于存放这种数值调整的插件，放到菜单上『自动』菜单的左边」
+   * 守卫三层：① 登记面（页签位置 / modules.json layout / renderView 包装原样放行）
+   *          ② 运行面（GAME.plugins 注册表 · 插件 _on/_off 成对）
+   *          ③ 功能面（enable 后 maxPopOf 恒 999999；disable 后**逐引用**恢复原函数）
+   * ===================================================================== */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var pSrc = fs.readFileSync(path.join(__dirname, 'js', 'plugins.js'), 'utf8');
+    var hF = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    var mjF = JSON.parse(fs.readFileSync(path.join(__dirname, 'js', 'modules.json'), 'utf8'));
+
+    check('§586f 登记面：顶栏有「插件」页签且在「自动」左边',
+      /data-view="plugins"/.test(hF) && /data-nav="plugin"/.test(hF)
+      && hF.indexOf('data-view="plugins"') < hF.indexOf('data-view="auto"'));
+    check('§586f 登记面：plugins 模块进 uiSplit（bundle-ui · 排 main 之前）',
+      mjF.layout.order.indexOf('plugins') >= 0 && mjF.layout.uiSplit.indexOf('plugins') >= 0
+      && mjF.bundles.ui.indexOf('plugins') === mjF.bundles.ui.length - 2);
+    check('§586f 接入面：运行时包装（其余视图原样放行 + navSet 补图标 + reg 动作）',
+      /return _origRenderView\(v\);/.test(pSrc)
+      && /GAME\.icons\.navSet\.plugin/.test(pSrc)
+      && /GAME\.reg\.add\(\{\s*\n?\s*id: 'plugins'/.test(pSrc));
+    check('§586f 运行面：GAME.plugins 注册表就位，插件 _on/_off 成对',
+      !!(G.plugins && typeof G.plugins.register === 'function' && typeof G.plugins.toggle === 'function')
+      && (function () { var s = G.plugins.stats(); return s.total >= 1 && s.paired === s.total && s.ids.indexOf('infinite-pop') >= 0; })(),
+      G.plugins ? JSON.stringify(G.plugins.stats()) : 'no GAME.plugins');
+    check('§586f 功能面：无限人口 enable → maxPopOf 恒 999999；disable → 恢复原函数引用',
+      (function () {
+        var orig = G.maxPopOf;
+        if (typeof orig !== 'function') return false;
+        var okOn = G.plugins.enable('infinite-pop', true) === true
+          && G.maxPopOf !== orig && G.maxPopOf() === 999999;
+        var okOff = G.plugins.disable('infinite-pop', true) === true
+          && G.maxPopOf === orig;
+        return okOn && okOff;
+      })());
+    check('§586f 视图面：renderView(\'plugins\') 渲染插件箱（开关按钮 + 就地重绘动作）',
+      (function () {
+        if (!G.ui || G.ui._pluginsPatched !== true) return false;
+        G.ui.renderView('plugins');
+        var box = (typeof document !== 'undefined' && document.querySelector)
+          ? (document.querySelector('#view-container') || (typeof DC !== 'undefined' ? DC['#view-container'] : null))
+          : null;
+        var html = String((box && box.innerHTML) || '');
+        return html.indexOf('插件箱') >= 0 && html.indexOf('data-action="plugin-toggle"') >= 0
+          && html.indexOf('infinite-pop') >= 0;
+      })());
   })();
 
   /* ===================== §587 球面坐标系（摆位不变量） =====================
