@@ -1126,6 +1126,9 @@ import './ui.js';
     var keys = (BL && BL.ORE_KEYS) || ['stone', 'iron', 'rare', 'crystal'];
     var idx = String(rock.id || '').split('_').pop();
     var aMul = (rock.a / R);
+    /* v157.53：belt.summary 早已算好整条带子的汇总，此前零调用（机制在、界面零显示）。
+       这里只读不改：缓存没生成时返回 null，整行不渲染，不显示 NaN。 */
+    var sum = (BL && BL.summary) ? BL.summary() : null;
     var rows = keys.map(function (k) {
       var v = (rock.ore && rock.ore[k]) || 0;
       return '<div class="attr"><span class="k">' + U.escape(oreName[k] || k) + '</span>'
@@ -1148,10 +1151,14 @@ import './ui.js';
       + '<div class="attr"><span class="k">质量</span><span class="v">'
       + GAME.utils.numText(rock.mass, 0) + '</span></div>'
       + '<div class="mk-sep"></div>'
-      + '<div class="mk-lbl">矿藏（可采量）</div>'
+      + '<div class="mk-lbl">矿藏（储量）</div>'
       + rows
+      + (sum ? '<div class="ui-sub" style="margin-top:6px;">全带共 ' + sum.count
+          + ' 块 · 总质量 ' + GAME.utils.numText(sum.mass, 0)
+          + ' · 大型 ' + sum.big + ' 块</div>' : '')
       + '<div class="ui-sub" style="margin-top:8px;color:var(--text-dim);">'
-      + '⛏ 星际采矿尚未开放 —— 这些数字是它的数据源，不是现在能挖的量。</div>'
+      + '⛏ 星际采矿尚未开放 —— 上面是这块石头的储量，不是现在能挖的量；'
+      + '整条带的汇总也已算好，待采矿开放时直接取用。</div>'
       + '</div>'
       + '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h, 'sm');

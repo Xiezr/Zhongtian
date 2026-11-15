@@ -68,10 +68,14 @@ import './state.js';
     gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
     /* v89.224（老板 1）：本格为**基因实验室的建筑载体**（原在政务厅要务段，已撤）。
        v90.92：原「⚔️ 派系」入口随门派系统整条退役而移除。 */
-    honglusi: { label: "🧬 基因实验室", act: "open-lab" },
-    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役；
-       「幸存者统计」面板本身保留（城防统计仍由此进入）。 */
-    chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
+    honglusi: { label: "🧬 基因实验室", act: "open-lab" }
+    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役。
+       ⛔ v157.53 收尾：原 `chengqiang: { label: "🧱 城防统计", act: "open-panel",
+       view: "stats" }` 整条撤除 —— v89.104 已把 stats 视图（黄册 statsHTML）整体退役，
+       ui-bag.js 的 openPanel 也撤了 stats 分支，这个键点下去只会落到「此功能暂未开放」。
+       上面 v85 注释里「幸存者统计面板本身保留」是当时的记录，现已不成立（注释本身过期）。
+       城墙格的功能走 ui-build.js 的 openBuildModal（修建围墙 / 耐久 / 城防构成），
+       玩家并未失去入口。依据项目铁律：退役的入口要连动作、面板、文案一起清。 */
   };
   ui._C.BLDG_FUNC = BLDG_FUNC;
 
@@ -15056,6 +15060,9 @@ import './ui.js';
     var keys = (BL && BL.ORE_KEYS) || ['stone', 'iron', 'rare', 'crystal'];
     var idx = String(rock.id || '').split('_').pop();
     var aMul = (rock.a / R);
+    /* v157.53：belt.summary 早已算好整条带子的汇总，此前零调用（机制在、界面零显示）。
+       这里只读不改：缓存没生成时返回 null，整行不渲染，不显示 NaN。 */
+    var sum = (BL && BL.summary) ? BL.summary() : null;
     var rows = keys.map(function (k) {
       var v = (rock.ore && rock.ore[k]) || 0;
       return '<div class="attr"><span class="k">' + U.escape(oreName[k] || k) + '</span>'
@@ -15078,10 +15085,14 @@ import './ui.js';
       + '<div class="attr"><span class="k">质量</span><span class="v">'
       + GAME.utils.numText(rock.mass, 0) + '</span></div>'
       + '<div class="mk-sep"></div>'
-      + '<div class="mk-lbl">矿藏（可采量）</div>'
+      + '<div class="mk-lbl">矿藏（储量）</div>'
       + rows
+      + (sum ? '<div class="ui-sub" style="margin-top:6px;">全带共 ' + sum.count
+          + ' 块 · 总质量 ' + GAME.utils.numText(sum.mass, 0)
+          + ' · 大型 ' + sum.big + ' 块</div>' : '')
       + '<div class="ui-sub" style="margin-top:8px;color:var(--text-dim);">'
-      + '⛏ 星际采矿尚未开放 —— 这些数字是它的数据源，不是现在能挖的量。</div>'
+      + '⛏ 星际采矿尚未开放 —— 上面是这块石头的储量，不是现在能挖的量；'
+      + '整条带的汇总也已算好，待采矿开放时直接取用。</div>'
       + '</div>'
       + '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h, 'sm');
@@ -16769,6 +16780,39 @@ import './ui.js';
      · 派军采集（英雄带队）并入「带将驻军原地开工」（GAME.startGather 唯一形态）；
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
   /* 野外城市弹窗 */
+
+  /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」，再开详情面板。
+     层1 = 本函数（按 kind 给可用动作）；层2 = 既有 openCellPanel（按 kind 分发到各原面板）。
+     所有动作按钮走 data-action → GAME.action，本函数只产菜单、不写业务逻辑。 */
+  ui.openCellMenu = function (ci) {
+    var M = GAME.map3d || {};
+    var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
+    var ref = M.cellRef && M.cellRef[ci];
+    var name = (ref && ref.name) ? ref.name : ('地块 #' + ci);
+    var btns = [];
+    if (kind === 'own') {
+      btns.push(['🏯 经营', 'cell-menu-detail', kind]);
+      btns.push(['🛡 派遣', 'cell-menu-dispatch', kind]);
+    } else if (kind === 'wild') {
+      btns.push(['⚔ 出征', 'cell-menu-exp', kind]);
+      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else if (kind === 'npc' || kind === 'adm') {
+      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
+      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else if (kind === 'fort') {
+      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else {
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    }
+    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + btns.map(function (b) {
+      return '<button class="btn" data-action="' + b[1] + '" data-ci="' + ci +
+        '" data-kind="' + b[2] + '">' + b[0] + '</button>';
+    }).join(' ') + '</div>';
+    ui.openShell({ title: '🗺 地块操作', sub: name, body: body });
+  };
 })();
 
 /* ============================================================

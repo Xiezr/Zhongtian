@@ -891,4 +891,37 @@ import './ui.js';
      · 派军采集（英雄带队）并入「带将驻军原地开工」（GAME.startGather 唯一形态）；
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
   /* 野外城市弹窗 */
+
+  /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」，再开详情面板。
+     层1 = 本函数（按 kind 给可用动作）；层2 = 既有 openCellPanel（按 kind 分发到各原面板）。
+     所有动作按钮走 data-action → GAME.action，本函数只产菜单、不写业务逻辑。 */
+  ui.openCellMenu = function (ci) {
+    var M = GAME.map3d || {};
+    var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
+    var ref = M.cellRef && M.cellRef[ci];
+    var name = (ref && ref.name) ? ref.name : ('地块 #' + ci);
+    var btns = [];
+    if (kind === 'own') {
+      btns.push(['🏯 经营', 'cell-menu-detail', kind]);
+      btns.push(['🛡 派遣', 'cell-menu-dispatch', kind]);
+    } else if (kind === 'wild') {
+      btns.push(['⚔ 出征', 'cell-menu-exp', kind]);
+      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else if (kind === 'npc' || kind === 'adm') {
+      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
+      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else if (kind === 'fort') {
+      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else {
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    }
+    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + btns.map(function (b) {
+      return '<button class="btn" data-action="' + b[1] + '" data-ci="' + ci +
+        '" data-kind="' + b[2] + '">' + b[0] + '</button>';
+    }).join(' ') + '</div>';
+    ui.openShell({ title: '🗺 地块操作', sub: name, body: body });
+  };
 })();

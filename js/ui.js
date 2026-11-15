@@ -67,10 +67,14 @@ import './state.js';
     gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
     /* v89.224（老板 1）：本格为**基因实验室的建筑载体**（原在政务厅要务段，已撤）。
        v90.92：原「⚔️ 派系」入口随门派系统整条退役而移除。 */
-    honglusi: { label: "🧬 基因实验室", act: "open-lab" },
-    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役；
-       「幸存者统计」面板本身保留（城防统计仍由此进入）。 */
-    chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
+    honglusi: { label: "🧬 基因实验室", act: "open-lab" }
+    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役。
+       ⛔ v157.53 收尾：原 `chengqiang: { label: "🧱 城防统计", act: "open-panel",
+       view: "stats" }` 整条撤除 —— v89.104 已把 stats 视图（黄册 statsHTML）整体退役，
+       ui-bag.js 的 openPanel 也撤了 stats 分支，这个键点下去只会落到「此功能暂未开放」。
+       上面 v85 注释里「幸存者统计面板本身保留」是当时的记录，现已不成立（注释本身过期）。
+       城墙格的功能走 ui-build.js 的 openBuildModal（修建围墙 / 耐久 / 城防构成），
+       玩家并未失去入口。依据项目铁律：退役的入口要连动作、面板、文案一起清。 */
   };
   ui._C.BLDG_FUNC = BLDG_FUNC;
 

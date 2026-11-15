@@ -1269,6 +1269,9 @@
         var pm = new THREE.PMREMGenerator(R3);
         pm.compileEquirectangularShader();
         scene.environment = pm.fromEquirectangular(eq).texture;
+        /* v157.58：通知 gltf 解析器"本场景已有程序化 env"—— buildMaterial 据此放开 metalness 上限，
+           金属件才有反射、粗糙面才有环境色（不影响无 env 的 map3d/duel3d 场景）。 */
+        if (GAME.gltf && GAME.gltf.setEnvAvailable) GAME.gltf.setEnvAvailable(true);
         eq.dispose(); pm.dispose();
       } catch (e) { /* 老版本没有 PMREM → 退回纯直射光，不影响可用性 */ }
     })();

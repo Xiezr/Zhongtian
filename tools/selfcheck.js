@@ -8,13 +8,17 @@
  *        audit MODULES / audit REF_MODULES）—— 漏一处就出误报；
  *     ② bundle 与源码不同步（改了源码忘了构建）；
  *     ③ 工作区堆了未提交改动（下次提交被门禁拦下时才发现）。
- *   这个脚本把"四份清单是否一致 + 四道门禁 + 工作区状态"收成一份简报。
+ *   这个脚本把"四份清单是否一致 + 门禁读数 + 工作区状态"收成一份简报。
+ *
+ * ⚠️ **它是观察器，不是裁判**（2026-11-13 整改 G6）：
+ *   audit / chain 的结果行即判据，照判；smoke / e2e 只报数字、不下结论 ——
+ *   「本轮能不能提交」永远以 `.workbuddy/tools/git/gate.py` 为准。
  *
  * 用法：
  *   node tools/selfcheck.js            # 全量（约 4 分钟）
  *   node tools/selfcheck.js --fast     # 跳过 e2e（约 1.5 分钟）
  *
- * 退出码：0 全绿 / 1 有红项。
+ * 退出码：0 观察项均可读 / 1 有红项（结构项异常或脚本跑不起来）。
  * 产物：docs/自检-YYYY-MM-DD.md（当天覆盖）
  * ============================================================ */
 'use strict';
@@ -182,7 +186,11 @@ function listIn(file, marker) {
   add('bundle 与源码同步', r.ok, line);
 })();
 
-/* ---------- ③ 四道门禁 ---------- */
+/* ---------- ③ 四道门禁（2026-11-13 整改：两判两观察） ----------
+ * G6（docs/自检体系架构.md §七）：baseline 机制上线后，smoke/e2e 的「0 失败」判据
+ * 与 gate.py 的「只拦新增失败」会给出相反结论 —— selfcheck 因此永远假红，没人再看它。
+ * 处置取 G6 建议①：smoke/e2e 降为**观察项**，照旧实跑、只报数字、不判绿红；
+ * 判定统一归 gate.py（唯一裁判）。audit / chain 没有基线，结果行即判据，保留 gate()。 */
 function gate(name, cmd, args, passRe) {
   const r = run(cmd, args);
   const out = r.out || '';
@@ -196,10 +204,23 @@ function gate(name, cmd, args, passRe) {
   return out;
 }
 
+function observe(name, cmd, args, numRe) {
+  const r = run(cmd, args);
+  const out = r.out || '';
+  const m = numRe.exec(out);
+  const tail = (out.split('\n').filter(function (l) { return /结果|汇总|✅|❌/.test(l); }).pop() || '').trim();
+  const digits = m ? m[0] : (tail || ('退出码 ' + r.code));
+  /* ⚠️ r.ok 只代表「进程跑完了」，绝不代表「测试通过」。
+     detail 里必须把这点说死，否则"观察项"会被读成"绿灯" —— 正是 Q1 假绿要抓的形状。 */
+  add(name + '（观察项 · 判定归 gate.py）', r.ok,
+      digits + '　｜ 只报数字：基线 / 抖动复跑 / --strict 由 gate.py 裁决，本表不判通过与否');
+  return out;
+}
+
 gate('结构审计 audit', 'node', ['audit.js'], /死函数 0 · 孤儿按钮 0/);
 gate('链路审计 chain', 'node', ['chain-audit.js'], /结果：(\d+) 通过 \/ 0 失败/);
-gate('冒烟 smoke', 'node', ['smoke-test.js'], /结果：(\d+) 通过 \/ 0 失败/);
-if (!FAST) gate('端到端 e2e', 'node', ['e2e-test.js'], /结果：(\d+) 通过 \/ 0 失败/);
+observe('冒烟 smoke', 'node', ['smoke-test.js'], /结果：(\d+) 通过 \/ \d+ 失败/);
+if (!FAST) observe('端到端 e2e', 'node', ['e2e-test.js'], /结果：(\d+) 通过 \/ \d+ 失败/);
 
 /* ---------- ④ 工作区状态 ---------- */
 (function checkGit() {

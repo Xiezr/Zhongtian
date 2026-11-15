@@ -34,6 +34,11 @@ DESC = {
               '`probe67_save3.js` 量存档体积与配额。'
               '**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，'
               '判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。'),
+    'prof': ('验证体系内环与元判据',
+             '**验证体系的规则源都在这里**（不是"待归类"）：`tier_audit.js` 六问元判据（gate 前置）· '
+             '`gen_tiers.js` 断言分档唯一来源 · `mutation_probe.js` 变异测试 · `smoke_fast.js` 分片内环 · '
+             '`impact_of.js` 影响面提示 · `visual_baseline.js` 视觉基线。'
+             '⚠️ 内环可以快、可以漏，但**不能冒充裁判** —— 唯一裁判是 `git/gate.py`。'),
     'gen': ('生成器与索引',
             '素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`'
             '（勿手改产物）；`gen_tools_index.py` 生成本索引。'),

@@ -16919,12 +16919,29 @@ console.log('\n===== 70. v85 地图自适应 · 缩略地图 =====');
   var mS85 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map.js'), 'utf8');
 
   console.log('  --- ① 居所去「幸存者统计」入口 ---');
-  check('v85：BLDG_FUNC 无 minfang 条目（面板与城防入口保留）', (function () {
+  /* v157.53 规则变更（老板「完善这个游戏」）：stats 视图（黄册）v89.104 已整体退役，
+     但 BLDG_FUNC.chengqiang 的「🧱 城防统计」入口一直没跟着撤，点下去只弹
+     「此功能暂未开放」。本轮按项目铁律把死入口整条清掉。
+     旧断言的 `block.indexOf('chengqiang') >= 0` 是**旧口径** —— 按 §0.7 三件套重写：
+     ① 标题写清新规则；② 另配一条**运行期对象**断言（真读对象，不看 grep 在场）；
+     ③ 注释点明「v157.53 规则变更所致」。不是放宽：正负两侧都要成立，少一条即红。
+     §14.3 独立复核补强（同轮）：第二条加「已知键在场」防 BLDG_FUNC={} 的空对象平凡解，
+     并把两条 data-* 正则合成「同一颗按钮」判据 —— 分开查会各自命中不同位置而假绿。 */
+  check('v85 / v157.53：BLDG_FUNC 无 minfang 且城防统计死入口零残留（v157.53 规则变更）', (function () {
     var i = uS85.indexOf('var BLDG_FUNC = {');
     var j = uS85.indexOf('};', i);
     var block = uS85.slice(i, j);
-    return i > 0 && block.indexOf('minfang') < 0 && block.indexOf('chengqiang') >= 0
+    return i > 0 && block.indexOf('minfang') < 0
+      && !/chengqiang\s*:/.test(block)      /* 查可执行形态；墓碑注释已被 stripComment 剥掉 */
       && block.indexOf('junying') >= 0;
+  })());
+  check('v157.53 规则变更：城防统计退役后城墙格主入口仍在（运行期对象 + 渲染锚）', (function () {
+    var bld = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui-build.js'), 'utf8');
+    var live = (G.ui && G.ui._C && G.ui._C.BLDG_FUNC) || null;
+    return !!live && live.junying !== undefined         /* 已知键在场：防 {} 空对象平凡解 */
+      && live.chengqiang === undefined                 /* 真读运行期对象，不是 grep 源码 */
+      && typeof G.ui.openBuildModal === 'function'
+      && /data-action="confirm-build"[^>]*data-build="chengqiang"/.test(bld); /* 同一颗「修建围墙」按钮 */
   })());
 
   console.log('  --- ② 地图自适应（搜索式） ---');
@@ -36395,10 +36412,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          三态必须互斥，锁两条反向证据：
            ① 近地面不许再出现**六边形操作**（悬停不得高亮六边形格）；
            ② 六边形图层（_markers 色块 / _flags 符号）在地表必须退场 ——
-              它们是几十米一格的面片，叠在 2 米地砖上就是"方形格线上浮着六边形色块"。 */
-      c243('§243①i 近地面无六边形操作（v157.37 · 悬停不再高亮六边形格）',
-        /if \(M\._surf\) \{ M\.surfHighlight\(-1\); ui2\.tipHide\(\); return; \}/.test(m243)
-        && !/if \(M\._surf\) \{ M\.surfHighlight\(ci1, false\)/.test(m243));
+              它们是几十米一格的面片，叠在 2 米地砖上就是"方形格线上浮着六边形色块"。
+         ── v157.56 修正 ── 老板 2026-11-14 明确「只留鼠标悬停时正对格子亮色」，
+         反向了 ① 的悬停子规则：地表悬停恢复**被动**六边形高亮（surfHighlight 仅作亮度提示，
+         复用既有机制），但**仍不得触发六边形地块操作**（认领/建造工具）—— 这才是 v157.37 真正要守住的底线。 */
+      c243('§243①i 地表悬停显示被动高亮（v157.56 反向 v157.37 · 老板「只留悬停亮色」），且不得触发六边形操作',
+        /if \(M\._surf\) \{[\s\S]{0,600}?M\.surfHighlight\(ci1\)/.test(m243)
+        && !/M\._surf\) \{ M\.surfHighlight\(-1\); ui2\.tipHide\(\); return; \}/.test(m243)
+        && !/M\.gridHighlight\(_gc\.i, _gc\.j, true\)/.test(m243));
       c243('§243①j 六边形图层在地表退场（v157.37 · _markers 仍是 !M._surf）',
         /if \(M\._markers\) M\._markers\.visible = !M\._surf;/.test(m243)
         && !/if \(M\._markers\) M\._markers\.visible = true;/.test(m243));
@@ -36454,8 +36475,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        *   ③ 离开地表时把**视线**当成**相机位置**写进 camO.yaw/pitch → 相机瞬移到星球另一侧。
        *      现在位置量只取 `camO.dir`。
        * ============================================================ */
-      c243('§243①n 落地视线抬到 -15° + 天底自转兜底（v157.48）', (function () {
-        return /var _elWant = -15 \* Math\.PI \/ 180;/.test(m243)
+      c243('§243①n 落地**不**强制抬到 -15°（v157.60 反向 v157.48 · 老板「去除接近地面自动转向水平」），天底自转兜底仍保留', (function () {
+        /* 反向守卫：进入地表不再构造 _surfTilt 的 -15° 过渡（保留进入前真实视角）；
+           天底自转兜底（近乎垂直看地时自转避奇异点）仍在 6549-6569。 */
+        return !/var _elWant = -15 \* Math\.PI \/ 180;/.test(m243)
           && /Math\.abs\(_dS\.dot\(_radS\)\) > 0\.999/.test(m243);
       })());
       c243('§243①o 右键回正必须在 mouseup 且两次都没拖动（v157.48）', (function () {
@@ -47055,23 +47078,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §580 v156.15b：**点地块 = 直接开面板，不许多一层菜单**
+   * §580 v157.57（反向 v156.15b）：**点地块 = 先弹功能主菜单，再开面板**
    * ------------------------------------------------------------
    * 来历：v156.15 曾在"点地块"和"原本的面板"之间插了一层短条（⚔出征/🔍侦查/📜详情），
-   * 老板当场指出「这不是套娃吗」—— 那三个动作本来就在面板里（未占野地底部
-   * 「侦查/掠夺/占领」是 v89.152 老板亲自定的位置），插一层等于把 1 步变 2 步。
-   * 整条已撤除，这里改成**反向守卫**：谁再往这一层加菜单就红。
+   * v156.15b 老板以「这不是套娃吗」整条撤除（点地块直开面板）。2026-11-14 老板决策
+   * 反向：点任意地块先弹「功能主菜单」（ui.openCellMenu，按 kind 给动作），再开详情面板。
+   * 本守卫随之翻转 —— 现在**要求**点击经 openCellMenu；但 v156.15 的"旧手势条"
+   * （openMapBar / mapbar-*）仍属退役，不得复活。
    * ============================================================ */
   (function () {
     var fs580 = require('fs'), p580 = require('path');
     var rd = function (f) { return ((f === 'ui.js') ? __uiAll() : fs580.readFileSync(p580.join(__dirname, 'js', f), 'utf8')); };
-    var md = rd('map3d.js'), mj = rd('main.js'), uj = rd('ui.js');
+    var md = rd('map3d.js'), mj = rd('main.js'), uj = rd('ui.js'), um = rd('ui-mapui.js');
 
     check('§580① 地图点击不再有中间层（pickAt 不调 openMapBar / 无 barTargetOf）',
       md.indexOf('ui.openMapBar') < 0 && md.indexOf('M.barTargetOf') < 0
       && md.indexOf('barTargetOf: _barTargetOf') < 0);
-    check('§580② 点地块直接开那一格的面板（pickAt 里调 openCellPanel）',
-      /M\.openCellPanel\(ci\);/.test(md));
+    check('§580② 点地块先弹功能主菜单（pickAt 调 ui.openCellMenu，v157.57 反向 v156.15b）',
+      /if \(GAME\.ui && GAME\.ui\.openCellMenu\) GAME\.ui\.openCellMenu\(ci\)/.test(md)
+      && /ui\.openCellMenu = function/.test(um));
+    check('§580②b 层2 出口仍是 openCellPanel（cell-menu-* 经 map3d.openCellPanel 开原面板）',
+      /case 'cell-menu-detail'/.test(mj) && /GAME\.map3d\.openCellPanel\(/.test(mj));
     check('§580③ 2D 兜底同样直调面板（npc/fort/wild 三个分支都没有中转）',
       /hit\.kind === 'npc'\) \{\s*\n\s*ui\.openAttackModal\(hit\.city\);/.test(mj)
       && /ui\.openFortModal\(hit\.fort\);/.test(mj)
@@ -47412,6 +47439,76 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     rc.skill('walk');
     check('§586 Actor.skill(walk)→Walking 并播放', rc.currentName === 'Walking');
     check('§586 Actor.skill(不存在) 返回 false', rc.skill('nope') === false);
+  })();
+
+  /* ===================== §586b v157.58 gltf 解析器 PBR 通道扩展（源特征守卫） ===================== */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var gpath = path.join(__dirname, 'js/gltf.js');
+    var gsrc = fs.existsSync(gpath) ? fs.readFileSync(gpath, 'utf8') : '';
+    check('§586b gltf.js 存在且可读', gsrc.length > 1000);
+    /* 解析层：ORM / occlusion / emissive 三通道抽取（此前完全丢弃 = "材质无微细节"根因） */
+    check('§586b GTF.parse 抽取 metallicRoughnessTexture → metalnessMap/roughnessMap',
+      /metallicRoughnessTexture\.index/.test(gsrc) && /metalnessMap:\s*texUrl/.test(gsrc) && /roughnessMap:\s*texUrl/.test(gsrc));
+    check('§586b GTF.parse 抽取 occlusionTexture → aoMap（R 通道=AO）',
+      /occlusionTexture/.test(gsrc) && /aoMap:\s*texUrl/.test(gsrc));
+    check('§586b GTF.parse 抽取 emissiveTexture → emissiveMap + emissiveFactor',
+      /emissiveTexture/.test(gsrc) && /emissiveMap:\s*texUrl/.test(gsrc) && /emissiveFactor/.test(gsrc));
+    /* 材质层：把通道接到 MeshStandardMaterial，且 aoMap 双 UV 兼容 r150/r151+ */
+    check('§586b buildMaterial 接 metalnessMap/roughnessMap/aoMap/emissiveMap',
+      /mat\.metalnessMap\s*=\s*tx/.test(gsrc) && /mat\.roughnessMap\s*=\s*tx/.test(gsrc)
+      && /mat\.aoMap\s*=\s*tx/.test(gsrc) && /mat\.emissiveMap\s*=\s*tx/.test(gsrc));
+    check('§586b bakeGeometry 为 aoMap 设 uv2+uv1（兼容两版 three）',
+      /geo\.setAttribute\('uv2'/.test(gsrc) && /geo\.setAttribute\('uv1'/.test(gsrc));
+    /* env 联动：有程序化 env 才放开 metalness 上限（防无 env 场景金属发黑） */
+    check('§586b env 联动：GTF._envOK 控制 metalness 上限放开',
+      /GTF\._envOK\s*\?\s*_m\s*:\s*Math\.min/.test(gsrc) && /setEnvAvailable\s*=\s*function/.test(gsrc));
+    check('§586b scene3d 在 PMREM 后通知 gltf env 可用', (function () {
+      var sp = path.join(__dirname, 'js/scene3d.js'); var s = fs.existsSync(sp) ? fs.readFileSync(sp, 'utf8') : '';
+      return /setEnvAvailable\(true\)/.test(s);
+    })());
+  })();
+
+  /* ===================== §586c v157.59 地表平台去方格色斑（源特征守卫） =====================
+   * 背景：老板「地面色斑严重，要求以地形原色呈现；方形/六边形地块只做边缘规划，不影响地形起伏与颜色」。
+   * 根因：原 _surfPlateGeo 把每格 5 顶点共用一个被 97% 漂向沙色 [198,184,142] 的色值 → 整片深色斑驳。
+   * 修复：平台逐顶点按其自身方向+自然高度取 sphBiome 原色（与 surfTerrain 同一套），相邻格共享角点同色 → 无缝。
+   * 守卫：① 禁止沙色漂变公式复活（NEUT/MIX）；② 要求逐顶点取原色（cornerNat 缓存 q.c + 每顶点 col.push(cn[k].c)）。
+   * ======================================================================================= */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var mp = path.join(__dirname, 'js/map3d.js'); var m = fs.existsSync(mp) ? fs.readFileSync(mp, 'utf8') : '';
+    check('§586c 地表平台去「沙色漂变」：禁止 NEUT=[198,184,142] MIX=0.97 公式复活',
+      !/NEUT\s*=\s*\[\s*198\s*,\s*184\s*,\s*142\s*\]/.test(m) && !/MIX\s*=\s*0\.97/.test(m));
+    check('§586c 平台逐顶点取 sphBiome 原色（cornerNat 缓存 q.c + 每顶点 col.push(cn[k].c)）',
+      /var cornerNat\s*=/.test(m) && /q\.c\s*=\s*sphBiome/.test(m)
+      && /col\.push\(cCs\[k\]\[0\]\s*\/\s*255/.test(m));
+    check('§586c 平台高度仍可整平（isT 时四角同高），野生格仍跟随自然 sphElev（不抹平起伏）',
+      /var isT\s*=\s*\(th\s*!=\s*null\)/.test(m) && /es\s*=\s*isT\s*\?/.test(m) && /esNat/.test(m));
+  })();
+
+  (function () {
+    var mp = require('path').join(__dirname, 'js/map3d.js');
+    var fs2 = require('fs');
+    var m = fs2.existsSync(mp) ? fs2.readFileSync(mp, 'utf8') : '';
+    /* §586d v157.60：去除「进地表自动转向水平」——
+       进入地表不再构造 `_surfTilt = (_ang0 ...)` 过渡（即不再把视线强制抬到 -15°）；
+       改走「保留进入前真实视角 _prevF」+ 仅对 el<-80° 的退化态夹到 -80°（防奇异点）。 */
+    check('§586d 进地表不再强制俯角 -15°（去除自动转向水平 · v157.60）：入口分支不得构造 _surfTilt 过渡',
+      !/_surfTilt\s*=\s*\(_ang0/.test(m) && /_surfTilt\s*=\s*null;\s*\/\* v157\.60/.test(m));
+    check('§586d 进地表保留玩家进入前的真实视角（_prevF），滚轮只改高度、右键负责转头',
+      /M\._surfDir\s*=\s*_dPrev/.test(m) && /_dPrev\s*=\s*_prevF\.clone\(\)\.normalize\(\)/.test(m));
+  })();
+
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var m = fs.readFileSync(path.join(__dirname, 'js/map3d.js'), 'utf8');
+    check('§586e v157.61 地表(map3d)接入程序化 env（零外链）：ensure 内建造 scene.environment = PMREM',
+      /buildSurfEnv/.test(m)
+      && /scene\.environment\s*=\s*pm\.fromEquirectangular\(eq\)\.texture/.test(m)
+      && /var pm = new THREE\.PMREMGenerator\(R3\)/.test(m));
+    check('§586e 地表 env 生成后通知 gltf（setEnvAvailable(true)），与 scene3d 对称放开 metalness',
+      /buildSurfEnv/.test(m) && /GAME\.gltf\.setEnvAvailable\(true\)/.test(m));
   })();
 
   /* ===================== §587 球面坐标系（摆位不变量） =====================
@@ -47946,9 +48043,65 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§600① 地表左键平移分支在抓球代码之前',
       iS > 0 && iG > iS, '平移@' + iS + ' · 抓球@' + iG);
     var seg600 = (iS > 0 && iG > iS) ? mV.slice(iS, iG) : '';
-    check('§600② 平移真的改相机位置（camO.dir / dist）',
-      /camO\.dir = \[/.test(seg600) && /camO\.dist = _nl/.test(seg600) && /_panA/.test(seg600),
-      '段长 ' + seg600.length);
+    /* v157.54 规则变更（老板「绝对稳定 · 最保守」）：平移从「每帧射线求交 +
+       锚点全量补回 + 写 camO.dist」改为「按下冻结每像素基准 → 每帧纯增量」。
+       旧判据查 `camO.dist = _nl` / `_panA` 是**旧口径** —— 按 §0.7 三件套重写：
+       ① 标题写清新规则；② 另配一条**运行期真调**的行为断言（§600⑤）；
+       ③ 本注释点明「v157.54 规则变更所致」。不是放宽：正负两侧都要成立，
+       少一条即红。负侧一律**剥注释**后再查（退役说明里提到旧名，别被自己打红）。 */
+    var seg600c = seg600.replace(/\/\*[\s\S]*?\*\//g, '');
+    check('§600② v157.54 规则变更：平移=按下冻结基准的纯增量，不写半径/不每帧射线',
+      seg600.length > 200
+        && /camO\.dir = \[/.test(seg600c)
+        && /M\.panStepOf\(dx, dy, _B54\)/.test(seg600c)
+        && /multiplyScalar\(_B54\.dist \/ _nl54\)/.test(seg600c)
+        && !/camO\.dist\s*=/.test(seg600c)
+        && !/_groundPtAt\(/.test(seg600c)
+        && !/_syncZoom\(/.test(seg600c)
+        && !/_panA/.test(seg600c)
+        && /M\._panBasis = M\.panBasisOf\(/.test(mV),
+      '段长 ' + seg600.length + ' · 纯代码 ' + seg600c.length);
+    /* ②' 行为断言：真调两个纯数学出口，不看 grep 在场。
+       下限防平凡解：ex/ey 非零 · 90 帧里 ≥60 帧真跑 · 掠射注入必须被收口。 */
+    var M604 = (typeof GAME !== 'undefined' && GAME.map3d) || null;
+    check('§600⑤ v157.54 规则变更：冻结基准与每帧位移真调有界（掠射注入 + 回路无关 + 坏值跳过）', (function () {
+      if (!M604 || typeof M604.panBasisOf !== 'function' || typeof M604.panStepOf !== 'function') return false;
+      function len604(v) { return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
+      var o604 = { cap: 0.255, fallback: 0.12, maxStep: 0.85, dist: 320 };
+      var b604 = M604.panBasisOf(
+        { x: 0, y: 0, z: 0 }, { x: 0.05, y: 0, z: 0 }, { x: 0, y: 0, z: 0.05 },
+        { x: 0, y: 1, z: 0 }, o604);
+      if (!b604 || !b604.ok || b604.dist !== 320 || b604.maxStep !== 0.85) return false;
+      if (!(len604(b604.ex) > 1e-9) || !(len604(b604.ey) > 1e-9)) return false;
+      if (len604(b604.ex) > 0.255 + 1e-9 || len604(b604.ey) > 0.255 + 1e-9) return false;
+      /* 掠射病态注入：相邻一像素"实测"出 1e6 米时必须被收口，绝不放大进相机 */
+      var bg604 = M604.panBasisOf(
+        { x: 0, y: 0, z: 0 }, { x: 1e6, y: 0, z: 0 }, { x: 0, y: 0, z: 1e6 },
+        { x: 0, y: 1, z: 0 }, o604);
+      if (!bg604 || !bg604.ok || len604(bg604.ex) > 0.255 + 1e-9
+          || len604(bg604.ey) > 0.255 + 1e-9) return false;
+      /* 90 帧带反转轨迹：每帧有界、无 NaN、返回值不含任何相机/半径量 */
+      var maxL604 = 0, okN604 = 0, keysOK604 = true, i604, s604;
+      for (i604 = 0; i604 < 90; i604++) {
+        s604 = M604.panStepOf((i604 % 7) - 3, (i604 % 5) - 2, b604);
+        if (!s604.ok) continue;
+        okN604++;
+        maxL604 = Math.max(maxL604, s604.len);
+        if (!isFinite(s604.x) || !isFinite(s604.y) || !isFinite(s604.z)
+            || !isFinite(s604.len)) return false;
+        if ('dist' in s604 || 'radial' in s604 || 'cam' in s604) keysOK604 = false;
+      }
+      var bad604a = M604.panStepOf(NaN, 0, b604), bad604b = M604.panStepOf(1, 1, null);
+      /* 回路反证：换相机起点/半径，同一串鼠标输入必须得到逐字相同的逐帧位移 */
+      var b604b = M604.panBasisOf(
+        { x: 120, y: -80, z: 5 }, { x: 120.05, y: -80, z: 5 }, { x: 120, y: -80, z: 5.05 },
+        { x: 0, y: 1, z: 0 }, { cap: 0.255, fallback: 0.12, maxStep: 0.85, dist: 999 });
+      var s604a = M604.panStepOf(3, -2, b604), s604b = M604.panStepOf(3, -2, b604b);
+      return okN604 >= 60 && maxL604 <= 0.85 + 1e-9 && keysOK604
+        && bad604a.ok === false && bad604b.ok === false
+        && Math.abs(s604a.x - s604b.x) < 1e-9
+        && Math.abs(s604a.z - s604b.z) < 1e-9;
+    })(), '真调 panBasisOf / panStepOf · 90 帧轨迹');
     check('§600③ 地表右键转的是自由视线（不夹 ±90°、不用 lookPitch 折回）',
       /_dS\.applyAxisAngle\(_rS, -TURN\.lookPitch\.surf \* _dy \* M\.TURN_K_SURF\)/.test(mV)
         && !/Math\.max\(-Math\.PI \/ 2, Math\.min\(Math\.PI \/ 2/.test(mV)

@@ -494,20 +494,99 @@
     qt.set(q[0], q[1], q[2], q[3]);
     return qt;
   }
+  /* ============================================================
+   * v157.54（老板「近地面左键长按拖动画面剧烈跳动 · 绝对稳定 · 最保守方法」）
+   * ------------------------------------------------------------
+   * 两个**不依赖 THREE** 的纯数学出口，故意放在无 THREE 守卫之前：
+   * jsdom 下本文件整块 return，若把「按下冻结 / 每帧算位移」留在守卫之后，
+   * smoke 就只能 grep 源码（等于没测 —— v156.15 的教训）。
+   *
+   * 病根（.workbuddy/tools/probe/probe_v15754_pan_stability.js 实测）：
+   *   v157.24 的「锚点抓取」每帧从**当前相机**重新拾取地面命中点，
+   *   T = 按下锚点 − 当前命中点 → 相机 += T，**输入依赖自己的输出**。
+   *   贴地平视时俯角 θ→0，纵向每像素地面位移按 1/sin²θ 放大
+   *   （42°→2° 实测 367.607 倍；手抖 3px = 5.025 米 = 2.956 倍眼高）；
+   *   单帧实测可达 7.883 米（4.637 倍眼高）、90 帧内方向反转 25 次。
+   *   再叠加它写 camO.dist 却没同步 _zoomTarget，placeCamera 每帧回拉半径
+   *   —— 方向已变、半径被拽回，整屏地面与标记一起跳。
+   *
+   * 修法 = 拖拽平移的行业标准（OrbitControls / Google Earth）：
+   *   按下时一次算定每像素地面位移并**冻结**；之后每帧只读鼠标增量。
+   *   不改视线 _surfDir / 契约向量 _surfRight，不写 camO.dist，不动玩法语义。
+   * ============================================================ */
+  function _panProj(v, r) {                 /* 去掉径向分量，只留切平面 */
+    var d = v.x * r.x + v.y * r.y + v.z * r.z;
+    return { x: v.x - d * r.x, y: v.y - d * r.y, z: v.z - d * r.z };
+  }
+  function _panClamp(v, cap) {              /* 收口到 cap 米以内；退化/坏值返回 null */
+    var L = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (!isFinite(L) || L < 1e-9 || !isFinite(cap) || cap <= 0) return null;
+    if (L > cap * 50) return null;         /* 明显不是"相邻一像素"，交给兜底方向 */
+    var s = L > cap ? cap / L : 1;
+    return { x: v.x * s, y: v.y * s, z: v.z * s };
+  }
+  /* ① 按下时冻结基准。pa=(x,y) 命中点、pb=(x+1,y)、pc=(x,y+1)；
+     返回 { ex, ey, maxStep, dist, ok }。ex/ey 是「鼠标右移/下移一像素时地面点的
+     切平面位移」，符号由实测给出，不需猜 fov、视口或俯角公式（拾取出口即唯一口径）。
+     opts: cap 每像素上限 · fallback 打空时的兜底尺度 · fx/fy 兜底方向 ·
+           maxStep 单帧上限 · dist 按下时的相机半径（全程冻结）。 */
+  function panBasisOf(pa, pb, pc, radial, opts) {
+    var o = opts || {}, r = radial || { x: 0, y: 1, z: 0 };
+    var cap = (isFinite(o.cap) && o.cap > 0) ? o.cap : 0.255;
+    var fb = (isFinite(o.fallback) && o.fallback > 0) ? o.fallback : cap * 0.5;
+    function pick(p, q, f) {
+      if (p && q) {
+        var c = _panClamp(_panProj({ x: q.x - p.x, y: q.y - p.y, z: q.z - p.z }, r), cap);
+        if (c) return c;
+      }
+      /* 拾取打空或异常：沿兜底方向给一个保守小尺度，保证这一轴仍能拖 */
+      var d = _panProj(f || { x: 1, y: 0, z: 0 }, r);
+      var dl = Math.sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+      if (!isFinite(dl) || dl < 1e-9) return { x: 0, y: 0, z: 0 };
+      return { x: d.x / dl * fb, y: d.y / dl * fb, z: d.z / dl * fb };
+    }
+    var ex = pick(pa, pb, o.fx), ey = pick(pa, pc, o.fy);
+    var ok = (Math.sqrt(ex.x * ex.x + ex.y * ex.y + ex.z * ex.z) > 1e-9 ||
+              Math.sqrt(ey.x * ey.x + ey.y * ey.y + ey.z * ey.z) > 1e-9);
+    return {
+      ex: ex, ey: ey, cap: cap,
+      maxStep: (isFinite(o.maxStep) && o.maxStep > 0) ? o.maxStep : 0.85,
+      dist: o.dist, ok: ok
+    };
+  }
+  /* ② 每帧位移：只读鼠标增量与冻结基准，**不读相机**（回路已断）。
+     单帧按 maxStep 限幅；非有限输入/输出一律返回 ok:false（跳过本帧，绝不写状态）。
+     返回值不含任何半径或相机量 —— 拖拽对滚轮阻尼零干扰。 */
+  function panStepOf(dx, dy, b) {
+    var none = { x: 0, y: 0, z: 0, len: 0, ok: false };
+    if (!b || !isFinite(dx) || !isFinite(dy)) return none;
+    var ex = b.ex || none, ey = b.ey || none;
+    var x = -(dx * ex.x + dy * ey.x);
+    var y = -(dx * ex.y + dy * ey.y);
+    var z = -(dx * ex.z + dy * ey.z);
+    var L = Math.sqrt(x * x + y * y + z * z);
+    if (!isFinite(L) || L < 1e-9) return none;
+    var mx = (isFinite(b.maxStep) && b.maxStep > 0) ? b.maxStep : 0.85;
+    if (L > mx) { var s = mx / L; x *= s; y *= s; z *= s; L = mx; }
+    return { x: x, y: y, z: z, len: L, ok: true };
+  }
   if (typeof THREE === 'undefined') {
     /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
       openCellPanel: _openCellPanel, cellBrief: _cellBrief,
       townScaleOf: _townScaleOf,
       /* v156.19：球面坐标系的纯数学出口（无 three 也要能验） */
-      surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame };
+      surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+      /* v157.54：拖拽平移的两个纯数学出口（无 three 也要能真调，见上方注释） */
+      panBasisOf: panBasisOf, panStepOf: panStepOf };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
     openCellPanel: _openCellPanel, cellBrief: _cellBrief,
     townScaleOf: _townScaleOf,
-    surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame };
+    surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+    panBasisOf: panBasisOf, panStepOf: panStepOf };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
   var HSC = (SP && SP.HSC) || 26;                 /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
@@ -1281,6 +1360,9 @@
     } catch (eL) { }
     M._sr = null;          /* ⚠️ 对外暴露的那份引用也要清 —— 只清闭包里的 SR，
                               外部读 M._sr 仍是旧对象（实测"已升空但 hasSR 还是 true"）*/
+    /* v157.56：悬停高亮(surfHi) 直接加进 scene（非 SR.root，destroySurf 的 traverse 清不到），
+       退地表必须显式清，否则亮格会赖在场景里（实测退地表后亮格残留）。 */
+    try { if (surfHi) { scene.remove(surfHi); surfHi = null; surfHiCi = -1; M._hiCi = -1; } } catch (eSH) { }
   }
   M.destroySurf = destroySurf;
 
@@ -1450,6 +1532,9 @@
       var e = 0;
       try { e = sphElev(dd); } catch (x) { e = 0; }
       q = { d: dd, e: Math.max(0, e) };
+      /* v157.59：角点原色随方向缓存（与 _cn 同生命周期，每角只算一次），
+         供平台逐顶点取 sphBiome 原色，消除「每格一色」的方格色斑。 */
+      try { q.c = sphBiome(q.e, dd[1], dd) || [180, 172, 132]; } catch (x) { q.c = [180, 172, 132]; }
       _cn[k] = q;
       return q;
     };
@@ -1477,32 +1562,27 @@
         var ctrD = [vx / vL, vy / vL, vz / vL];
         var eC = isT ? Math.max(0, th) : (esNat[0] + esNat[1] + esNat[2] + esNat[3]) * 0.25;
 
-        /* ---- 颜色：按地形类型（与地形层同一套 sphBiome，接缝最小） ---- */
-        var cc = sphBiome(eC, ctrD[1], ctrD) || [180, 172, 132];
-        var NEUT = [198, 184, 142], MIX = 0.97;
-        /* v157.27：加一点**逐格微差**（±3%）。整片纯一色像塑料板，
-           加一点噪声才像"土"，而且不影响成片感（幅度小到一个格内看不出来）。 */
-        var _jit = 0.97 + (((i * 73856093) ^ (j * 19349663)) & 255) / 255 * 0.06;
-        var r = Math.min(255, (cc[0] * (1 - MIX) + NEUT[0] * MIX) * 1.01 + 8) * _jit / 255;
-        var g = Math.min(255, (cc[1] * (1 - MIX) + NEUT[1] * MIX) * 1.01 + 8) * _jit / 255;
-        var b = Math.min(255, (cc[2] * (1 - MIX) + NEUT[2] * MIX) * 1.01 + 8) * _jit / 255;
-        /* 水下不铺土色（混成灰褐会像海面漂着一片沼泽）。
-           v157.26：改判 eC<0（原来是逐格 nearestCell，2809 次太贵）。 */
-        if (eC < 0.004) {
-          r = Math.min(255, cc[0] * 1.05 + 6) / 255;
-          g = Math.min(255, cc[1] * 1.05 + 6) / 255;
-          b = Math.min(255, cc[2] * 1.05 + 6) / 255;
-        }
+        /* ---- 颜色：地形原色（与地形层 surfTerrain 同一套 sphBiome，逐顶点取色 → 无缝、无方格色斑） ----
+         * v157.59（老板「地面色斑严重，要求以地形原色呈现；方形/六边形地块只做边缘规划，不影响地形起伏与颜色」）：
+         *   原每格 5 顶点共用一个被 97% 漂向沙色的色值 → 整片"深浅不一的沙色斑块"。
+         *   现改为**每顶点按其自身方向+自然高度取 sphBiome 原色**（与 surfTerrain 完全一致），
+         *   相邻格共享的角点方向相同 → 颜色相同 → 连续无界；去掉沙色漂变，露出真实地形原色
+         *   （森林绿/草原黄/荒漠褐…）。角点色随方向在 _cn 缓存（只算一次）；中心色按自然平均高度取。
+         *   侧壁仍走暗土剖面（v157.27），不参与原色。 */
+        var cCs = [cSW.c, cSE.c, cNE.c, cNW.c];
+        var eCnat = (cSW.e + cSE.e + cNE.e + cNW.e) * 0.25;
+        var cC = sphBiome(eCnat, ctrD[1], ctrD) || [180, 172, 132];
 
-        /* ---- 顶点：4 角 + 心 ---- */
+        /* ---- 顶点：4 角 + 心（各取自身原色） ---- */
         var Vs = [];
         for (var k = 0; k < 4; k++) Vs.push(ptOf(cds[k], es[k]));
         var Vc = ptOf(ctrD, eC);
 
         var b0 = pos.length / 3;
-        pos.push(Vc[0], Vc[1], Vc[2]); col.push(r, g, b);
+        pos.push(Vc[0], Vc[1], Vc[2]); col.push(cC[0] / 255, cC[1] / 255, cC[2] / 255);
         for (k = 0; k < 4; k++) {
-          pos.push(Vs[k][0], Vs[k][1], Vs[k][2]); col.push(r, g, b);
+          pos.push(Vs[k][0], Vs[k][1], Vs[k][2]);
+          col.push(cCs[k][0] / 255, cCs[k][1] / 255, cCs[k][2] / 255);
         }
         /* 绕序按"法向朝外"现场判定（球面各处朝向不同，写死顺序会被背面剔除） */
         for (k = 0; k < 4; k++) {
@@ -1530,8 +1610,11 @@
         /* ⚠️ LIP/DIG 是**米**，而 es[]/e0 是**归一化高度**（×HSC 才是米）——
            直接相加会把 8 厘米变成 2 米（208 厘米的土沿，整块地会翘边）。 */
         var LIP = 0.08 / (HSC || 26), DIG = 0.25 / (HSC || 26);
-        var _wcTop = [r * 0.66, g * 0.56, b * 0.42];      /* 上沿：草根土 */
-        var _wcBot = [r * 0.38, g * 0.30, b * 0.20];      /* 下部：底土 */
+        var _tc = [(cC[0] + cCs[0][0] + cCs[1][0] + cCs[2][0] + cCs[3][0]) / 5 / 255,
+                   (cC[1] + cCs[0][1] + cCs[1][1] + cCs[2][1] + cCs[3][1]) / 5 / 255,
+                   (cC[2] + cCs[0][2] + cCs[1][2] + cCs[2][2] + cCs[3][2]) / 5 / 255];
+        var _wcTop = [_tc[0] * 0.66, _tc[1] * 0.56, _tc[2] * 0.42];      /* 上沿：草根土 */
+        var _wcBot = [_tc[0] * 0.38, _tc[1] * 0.30, _tc[2] * 0.20];      /* 下部：底土 */
         for (k = 0; k < 4; k++) {
           var k2 = (k + 1) % 4;
           var nth = _terrHOfIJ(NB[k][0], NB[k][1]);
@@ -1871,6 +1954,13 @@
 
   M.BUILD_GRID = true;
   M.BUILD_MODE = 'grid';
+  /* v157.56（老板 2026-11-14「线条太杂，不要边线了，只留悬停亮色」）：
+     地表常驻线总开关。false = 不画方形建造网格(surfBuildGrid) 与 六边形平台边线(surfPlateLine)，
+     地表只留地形 + 悬停高亮（surfHighlight 复用）。要回退「极淡网格」置 true。 */
+  M.SURF_LINES = false;
+  /* v157.56（老板「线条太杂，不要边线」）：太空六边形线框总开关。false = 彻底隐藏 tiles 星球线框
+     （地表本就隐藏）；区划边界是独立图层（见 v157p 注释），不受影响。置 true 才显示（峰值 0.16 极淡）。 */
+  M.TILE_LINES = false;
   M.BUILD_CELL = 2.0;                    /* 建造格边长（米） */
   M.BUILD_N = 40;                        /* 每边格数：40×2=80 米，边界推出视野 */
   /* 锚漂移上限（米）。实测：阈值 60 + 离散检查（玩家一格一格走，不会正好踩在 60）
@@ -2236,8 +2326,9 @@
     var lmat = new THREE.LineBasicMaterial({
       color: 0x14180f, transparent: true, depthWrite: false,
       /* v157t：方格在场时六边形描边**完全退场**（0.14 → 0）。地表已经有方格做坐标，
-         六边形的边在近景只会斜穿画面、跟方格打架（实测还剩几条斜线很扎眼）。 */
-      opacity: M.BUILD_GRID ? 0.0 : 0.38,
+         六边形的边在近景只会斜穿画面、跟方格打架（实测还剩几条斜线很扎眼）。
+         v157.56：受 SURF_LINES 管控 —— 关掉后两套常驻线（方格/六边形）一起熄灭。 */
+      opacity: (M.SURF_LINES && !M.BUILD_GRID) ? 0.38 : 0.0,
       polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8
     });
     var plateLine = new THREE.LineSegments(pg.lgeo, lmat);
@@ -2249,9 +2340,10 @@
     var scat = null;
     try { scat = _surfScatter(pg.list, root); } catch (eS) { scat = null; }
     var _tt3 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    /* ④ 方形建造网格（实验层，M.BUILD_GRID=false 即回退到纯六边形） */
+    /* ④ 方形建造网格（实验层，M.BUILD_GRID=false 即回退到纯六边形；
+        v157.56：再受 SURF_LINES 管控 —— 关掉后不画） */
     var bgrid = null;
-    if (M.BUILD_GRID) {
+    if (M.SURF_LINES && M.BUILD_GRID) {
       try {
         bgrid = (M.BUILD_MODE === 'inset')
           ? _surfInsetGeo(pg.list)
@@ -3096,6 +3188,42 @@
     R3.toneMapping = THREE.NoToneMapping;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a1020);
+    /* ============================================================
+     * v157.61：地表（map3d）接入程序化 env（与 scene3d 同源：零外链、无 HDRI）。
+     * ------------------------------------------------------------
+     * 地表上的单位/建筑模型经 GAME.gltf.parse 加载（8052+），buildMaterial 据此放开 metalness
+     * 上限（`GTF._envOK`），金属件与粗糙面才有反射/环境色 —— 这正是 v157.58 缺失的最后一环：
+     * scene3d 有 env，但 map3d 没有，导致地表金属资产始终夹在 0.25。
+     * 用程序化天空 canvas + PMREM，避免任何外部资源依赖。
+     * 注：duel3d 仍走 v157.58 起的全局 `_envOK=true 且无 env` 状态（未引入新回归，老板未反馈变黑）。
+     * ============================================================ */
+    (function buildSurfEnv() {
+      try {
+        var cv2 = document.createElement('canvas');
+        cv2.width = 512; cv2.height = 256;
+        var g2 = cv2.getContext('2d');
+        var sky = g2.createLinearGradient(0, 0, 0, 256);
+        sky.addColorStop(0.00, '#0e151d');   /* 天顶：最深 */
+        sky.addColorStop(0.34, '#38434f');
+        sky.addColorStop(0.50, '#9c8f78');   /* 地平线：暖沙色 */
+        sky.addColorStop(0.62, '#5b5142');
+        sky.addColorStop(1.00, '#241f19');   /* 地面：暗褐 */
+        g2.fillStyle = sky; g2.fillRect(0, 0, 512, 256);
+        var sg = g2.createRadialGradient(392, 96, 3, 392, 96, 104);
+        sg.addColorStop(0.00, 'rgba(255,242,214,1)');
+        sg.addColorStop(0.22, 'rgba(255,208,142,0.62)');
+        sg.addColorStop(0.55, 'rgba(240,178,110,0.16)');
+        sg.addColorStop(1.00, 'rgba(230,170,100,0)');
+        g2.fillStyle = sg; g2.fillRect(286, 0, 212, 200);
+        var eq = new THREE.CanvasTexture(cv2);
+        eq.mapping = THREE.EquirectangularReflectionMapping;
+        var pm = new THREE.PMREMGenerator(R3);
+        pm.compileEquirectangularShader();
+        scene.environment = pm.fromEquirectangular(eq).texture;
+        if (GAME.gltf && GAME.gltf.setEnvAvailable) GAME.gltf.setEnvAvailable(true);
+        eq.dispose(); pm.dispose();
+      } catch (e) { /* 老版本无 PMREM → 退回纯直射光，不影响可用性 */ }
+    })();
     /* ============================================================
      * v156.52（老板「提供一条虚拟线（穿过球心）」）——
      * 一条**南北极轴**，贯穿球心、两端各伸出 1.3R。
@@ -5860,37 +5988,28 @@
            它的分量已经烘进 `_prevF`（屏幕方向不变），再留着就会两套叠加。 */
         camO.lookYaw = 0; camO.lookPitch = 0;
         M._surfHold = false;                       /* 上一次离开时的"用户接管"标记别带进来 */
-        /* ---- v157.48：把视线从"正对脚下"抬到俯角 -15° ----
-           轨道默认看球心 → 落地即 el=−90°，此时左右拖是空操作（见 _surfTilt 注释）。
-           保留玩家原来的**水平朝向**（上一帧视线的切向分量），只把俯角改成 -15°。 */
-        var _up0 = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize();
-        var _h0 = _prevF.clone().addScaledVector(_up0, -_prevF.dot(_up0));
-        if (_h0.lengthSq() < 1e-4) {
-          /* 上一帧几乎是垂直看地 → 切向分量≈0；退而用相机的"上方向"当水平朝向 */
-          var _cu = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
-          _h0.copy(_cu).addScaledVector(_up0, -_cu.dot(_up0));
+        /* ---- v157.60：去除「进地表自动转向水平」 ----
+           老板：「相机接近地面时，去除相机自动转向水平这个功能。滚轮只负责高度，右键负责角度」。
+           即：进入地表**保留玩家进入前的真实视角**（_prevF），不再把俯角强制抬到 -15°（近水平）。
+           滚轮只改离地高度、右键（转头）负责角度，朝向完全交给玩家。
+           唯一保留：当进入视角近乎垂直看地（el < -80°）时，夹到 -80° 上限 ——
+           仅为避免「切向分量≈0 → 左右拖是空操作」的退化态；这是防奇异点，不是转向水平（俯角仍很陡）。 */
+        _surfTilt = null;                          /* v157.60：不再构造任何自动过渡 */
+        var _dPrev = _prevF.clone().normalize();
+        var _elPrevFix = Math.asin(Math.max(-1, Math.min(1, _dPrev.dot(_uE))));
+        if (_elPrevFix < (-80 * Math.PI / 180)) {
+          var _hFix = _dPrev.clone().addScaledVector(_uE, -_dPrev.dot(_uE));
+          if (_hFix.lengthSq() < 1e-6) _hFix.set(1, 0, 0).addScaledVector(_uE, -_uE.x);
+          _hFix.normalize();
+          var _elFix = -80 * Math.PI / 180;
+          _dPrev = _hFix.clone().multiplyScalar(Math.cos(_elFix)).addScaledVector(_uE, Math.sin(_elFix)).normalize();
         }
-        if (_h0.lengthSq() < 1e-6) _h0.set(1, 0, 0).addScaledVector(_up0, -_up0.x);
-        _h0.normalize();
-        var _elWant = -15 * Math.PI / 180;
-        var _want = _h0.clone().multiplyScalar(Math.cos(_elWant))
-          .addScaledVector(_up0, Math.sin(_elWant)).normalize();
-        /* 一次性过渡：从"当前真实朝向"滑到 _want，220ms 内结束。
-           不是常驻自动运动（v157b 那种被老板否掉的"自己抬头"）—— 它跑完就消失，
-           任何一次右键拖拽都会立刻接管（`M._surfHold`）。 */
-        var _ang0 = Math.acos(Math.max(-1, Math.min(1, _prevF.clone().normalize().dot(_want))));
-        _surfTilt = (_ang0 > 0.10)
-          ? { from: _prevF.clone().normalize(), to: _want.clone(), t0: Date.now(), dur: 220 }
-          : null;
-        M._surfDir = _want.clone();
-        M._surfRight = new THREE.Vector3().crossVectors(_want, _up0).normalize();
-        /* 进地表这一刻也记一次锚：不记的话"刚进又立刻出去再进"（缩放来回蹭阈值）
-           会因为 anchor 已被一次性清空而退化成重新推导 → 往返残差 2.5°。 */
-        M._surfAnchor = { pos: [_dir0[0], _dir0[1], _dir0[2]], fwd: [_want.x, _want.y, _want.z] };
-        M._entryDbg = { want: [+_want.x.toFixed(3), +_want.y.toFixed(3), +_want.z.toFixed(3)],
-          from: [+_prevF.x.toFixed(3), +_prevF.y.toFixed(3), +_prevF.z.toFixed(3)],
-          up: [+_up0.x.toFixed(3), +_up0.y.toFixed(3), +_up0.z.toFixed(3)],
-          ang: +_ang0.toFixed(3), tilt: !!_surfTilt };
+        M._surfDir = _dPrev;
+        M._surfRight = new THREE.Vector3().crossVectors(M._surfDir, _uE).normalize();
+        M._surfAnchor = null;                      /* 不记强制锚：保留真实视角，往返不强制重推导 */
+        M._entryDbg = { mode: 'handoff', elPrev: +(_elPrev * 180 / Math.PI).toFixed(2),
+          elFix: +(_elPrevFix * 180 / Math.PI).toFixed(2), tilt: false,
+          clamp: _elPrevFix < (-80 * Math.PI / 180) };
       }
       /* 过渡推进（只在落地那一瞬间存在；用户一动就放弃） */
       if (_surfTilt) {
@@ -6227,8 +6346,15 @@
        * ⚠️ 下方 _pxCell 的亚像素 LOD 保留不动 —— 那是"1px 以下根本不画"，
        *    与这里的方向性是两个独立机制。
        * ============================================================ */
+      /* v157.56：M.TILE_LINES 默认 false = 太空六边形线框彻底隐藏（老板「线条太杂，不要边线」）。
+         区划边界是独立图层（见 v157p 注释），隐藏 tiles 不影响它。置 true 才走下方渐显逻辑。 */
+      if (!M.TILE_LINES) {
+        if (M._shellMat) M._shellMat.opacity = 0.0;
+        if (tiles) tiles.visible = false;
+        M._cellPx = 0; M._cellLod = 0;
+      } else {
       var near = R * 1.30, far = R * 2.05;
-      var o = 0.46 - 0.40 * Math.min(1, Math.max(0, (camO.dist - near) / (far - near)));
+      var o = 0.16 - 0.14 * Math.min(1, Math.max(0, (camO.dist - near) / (far - near)));   /* v157.56：太空六边形极淡，max 0.16 → 远 0.02 */
       if (M._surf) {
         /* v157：地表模式下地块由地表层（surfPlate）实体化呈现。
            40962 格的粗线框必须退场 —— 两套网格同时出现就是重影。 */
@@ -6244,6 +6370,7 @@
         if (tiles) tiles.visible = _oFin > 0.012;    /* 亚阈值直接跳过，不占 drawcall */
         M._cellPx = _pxCell;
         M._cellLod = _lk;
+      }
       }
     }
     /* ============================================================
@@ -6524,18 +6651,52 @@
         touch(); e.preventDefault(); return;
       }
       /* ============================================================
-       * v157.24（老板：「左键应该是移动相机本身 —— 粘起面前的一个点，
+       * v157.24（老板逐字：「左键应该是移动相机本身 —— 粘起面前的一个点，
        *          这个点不动，向前/后拖，相机往反方向去动」）
        * ------------------------------------------------------------
-       * 锚点 = **按下时鼠标下面的那个地面点**。之后每一帧：
-       *   相机位移 = 锚点 − 当前光标下的地面点
-       * 于是那个点永远待在光标底下（画面跟着手走），而相机本身在前后左右平移。
-       * 只取切平面分量：高度交给 placeCamera 按地形重新夹，不做垂直平移。
+       * 语义不变（仍是「粘住地面一点、相机反向走」），但**实现口径**在
+       * v157.54 改为「按下时冻结基准」：
+       *   旧做法每帧从当前相机重新拾取地面命中点，用「锚点 − 命中点」全量补回。
+       *   那是输入依赖输出的反馈回路；近地面掠射角下按 1/sin²θ 放大几百倍，
+       *   叠加写了 camO.dist 却没同步 _zoomTarget，整屏会剧烈跳动。
+       *   新做法：按下这一刻一次采 (x,y)/(x+1,y)/(x,y+1) 三个地面点，
+       *   由唯一出口 panBasisOf 算出并**冻结**每像素地面位移；之后每帧
+       *   只读鼠标增量（panStepOf）。只取切平面分量，高度交给 placeCamera。
+       * 代价：拖得很远时「点严格在光标下」变成一阶近似（轻微漂移），
+       *   换来构造上不可能跳 —— 老板要求「绝对稳定 · 最保守」。
+       * ⛔ 旧状态 M._panA 整条退役（改由 M._panBasis 表达「抓到了地面」），
+       *   不留只写不读的字段。
        * ============================================================ */
-      M._panDrag = false; M._panA = null;
+      M._panDrag = false; M._panBasis = null;
       if (M._surf) {
-        var _pa = _groundPtAt(e.clientX, e.clientY);
-        if (_pa) { M._panA = _pa; M._panDrag = true; }
+        var _pa0 = _groundPtAt(e.clientX, e.clientY);
+        if (_pa0) {
+          var _pb0 = _groundPtAt(e.clientX + 1, e.clientY);
+          var _pc0 = _groundPtAt(e.clientX, e.clientY + 1);
+          var _rad0 = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
+          var _rgt0 = M._surfRight ? M._surfRight.clone() : new THREE.Vector3(1, 0, 0);
+          var _dS0 = M._surfDir ? M._surfDir.clone() : null;
+          var _fwd0 = _dS0 ? _dS0.addScaledVector(_rad0, -_dS0.dot(_rad0)) : null;
+          if (!_fwd0 || !isFinite(_fwd0.x) || _fwd0.lengthSq() < 1e-6) {
+            _fwd0 = new THREE.Vector3().crossVectors(_rad0, _rgt0);
+          }
+          var _eye0 = M.SURF_EYE || 1.7;
+          M._panBasis = M.panBasisOf(
+            _pa0, _pb0, _pc0,
+            { x: _rad0.x, y: _rad0.y, z: _rad0.z },
+            { cap: _eye0 * 0.15,                 /* 每像素 ≤ 15% 眼高 */
+              fallback: _eye0 * 0.15 * 0.5,     /* 拾取打空时的保守兜底 */
+              fx: { x: _rgt0.x, y: _rgt0.y, z: _rgt0.z },
+              /* v157.54 复核修正（独立复核抓出）：实测 ey =「下移一像素、地面点
+                 朝相机走」≈ −fwd（panBasisOf 的 pc=(x,y+1) 口径），兜底方向必须与
+                 实测同号，否则掠射 <0.5° 或 (x,y+1) 打空时纵向拖拽会反向。
+                 fx 实测 ≈ +right，不动。 */
+              fy: { x: -_fwd0.x, y: -_fwd0.y, z: -_fwd0.z },
+              maxStep: _eye0 * 0.5,             /* 单帧 ≤ 半个眼高 */
+              dist: camO.dist }                /* 半径冻结，拖拽全程不写 camO.dist */
+          );
+          M._panDrag = !!(M._panBasis && M._panBasis.ok);
+        }
       }
       drag = 1; moved = false; lx = e.clientX; ly = e.clientY;
         var _rd = canvas.getBoundingClientRect(); lx0 = e.clientX - _rd.left; ly0 = e.clientY - _rd.top; touch(); e.preventDefault();
@@ -6662,7 +6823,13 @@
          贴在 2 米地面上就是一块六边形的怪斑，还和方形地砖抢视觉。
          地表的地块身份由 **地砖（方形）+ 地块涂色** 表达，六边形高亮全部退场。
          建造模式走上面的 gridHighlight 分支，不经过这里。 */
-      if (M._surf) { M.surfHighlight(-1); ui2.tipHide(); return; }
+      if (M._surf) {
+        /* v157.56（老板）：地表悬停改为「正对格子亮色微提」—— 复用 surfHighlight 画六边形地块高亮
+           （青色填充 op0.20 + 亮边），作为唯一指示，不再清掉（v157.37 当年为去「怪斑」而清）。
+           地表本就是六边形瓦片，六边形高亮 = 自然的地块指示，非操作入口。 */
+        if (ci1 >= 0) M.surfHighlight(ci1); else M.surfHighlight(-1);
+        ui2.tipHide(); return;
+      }
       if (ci1 === _hovCi) { ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY); return; }
       _hovCi = ci1;
       ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY);
@@ -6771,29 +6938,42 @@
         M._surfDir = null; M._surfRight = null; M._surfAnchor = null;
       }
       if (M._surf && M._panDrag) {
-        /* 平移：让锚点始终待在光标下 —— 相机走反向位移 */
-        var _p1 = _groundPtAt(e.clientX, e.clientY);
-        if (_p1) {
-          var _T = M._panA.clone().sub(_p1);
-          var _upP = new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]);
-          _T.addScaledVector(_upP, -_T.dot(_upP));       /* 只走切平面 */
-          var _tl = _T.length();
-          if (_tl > 0.001) {
-            if (_tl > 40) _T.multiplyScalar(40 / _tl);   /* 单帧上限，防光标飞出地形时瞬移 */
-            var _np = cam.position.clone().add(_T);
-            var _nl = _np.length() || 1;
-            camO.dir = [_np.x / _nl, _np.y / _nl, _np.z / _nl];
-            camO.dist = _nl;
-            camO.quat = new THREE.Quaternion().setFromUnitVectors(
-              new THREE.Vector3(0, 0, 1), new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]));
-            camO.yaw = Math.atan2(camO.dir[0], camO.dir[2]);
-            camO.pitch = Math.asin(Math.max(-1, Math.min(1, camO.dir[1])));
-            camO._euler = [camO.yaw, camO.pitch];
-            /* 航向不变（只平移不转）。但"落定自动抬头"必须停 ——
-               它每帧改俯角，屏幕中心那个地面点就跟着漂，锚点抓不住（实测残差 1.07 米）。
-               用户一旦开始平移，就等于接管了镜头，不再自动抬头。 */
-            M._surfHold = true;
-            touch(); redraw();
+        /* ============================================================
+         * v157.54：纯增量平移 —— 输入只来自「鼠标增量 + 按下时冻结的基准」。
+         * ------------------------------------------------------------
+         * 已退役：每帧用当前相机重新拾取地面命中点、再拿锚点减它全量补回。
+         *   那是反馈回路（输入依赖自己的输出），贴地掠射角下按 1/sin²θ 放大，
+         *   探针实测单帧 7.883 米（4.637 倍眼高）、90 帧内方向反转 25 次；
+         *   且它改了半径却没同步 _zoomTarget，placeCamera 每帧把半径拉回
+         *   —— 方向已变、半径被拽回，玩家看到「整个画面元素一起跳」。
+         * 现在 panStepOf 是纯函数（无 THREE / 无相机 / 无射线）：
+         *   位移 = −(dx·ex + dy·ey)，单帧 ≤ 半个眼高，坏值直接跳过本帧。
+         * ⚠️ **不写 camO.dist**：把新位置归一化到按下时冻结的半径即可。
+         *   半径一寸不动 → 滚轮阻尼（_zoomTarget）完全不受拖拽干扰；
+         *   反过来在这里调 _syncZoom()，会把用户正在逼近的滚轮目标改掉。
+         * ⚠️ 不改 _surfDir / _surfRight：视线归玩家，平移只搬位置、不转头。
+         * ============================================================ */
+        var _B54 = M._panBasis;
+        if (_B54 && _B54.ok && isFinite(_B54.dist) && _B54.dist > 0) {
+          var _st54 = M.panStepOf(dx, dy, _B54);
+          if (_st54.ok) {
+            var _np54 = new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2])
+              .multiplyScalar(_B54.dist)
+              .add(new THREE.Vector3(_st54.x, _st54.y, _st54.z));
+            var _nl54 = _np54.length();
+            if (isFinite(_nl54) && _nl54 > 1e-6) {
+              _np54.multiplyScalar(_B54.dist / _nl54);  /* 半径归一：camO.dist 保持原值 */
+              var _u54 = 1 / _B54.dist;
+              camO.dir = [_np54.x * _u54, _np54.y * _u54, _np54.z * _u54];
+              camO.quat = new THREE.Quaternion().setFromUnitVectors(
+                new THREE.Vector3(0, 0, 1), new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]));
+              camO.yaw = Math.atan2(camO.dir[0], camO.dir[2]);
+              camO.pitch = Math.asin(Math.max(-1, Math.min(1, camO.dir[1])));
+              camO._euler = [camO.yaw, camO.pitch];
+              /* 落定过渡曾在无人操作时改俯角 —— 用户一旦平移就接管镜头 */
+              M._surfHold = true;
+              touch(); redraw();
+            }
           }
         }
         return;
@@ -7011,14 +7191,14 @@
          ⚠️ 只有**真的拖过**才在这里 return —— 否则地表里"点一下"（放置物品 /
          选中格子）会被这行吞掉（`_panDrag` 在按下时就置位了）。 */
       if (M._panDrag) {
-        M._panDrag = false; M._panA = null;
+        M._panDrag = false; M._panBasis = null;
         if (moved) {
           try { if (M._surf) rebuildSurf(camO.dir); } catch (ePR) { }
           if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
           return;
         }
       }
-      M._panA = null;
+      M._panBasis = null;
       var wasDrag = drag; drag = 0;
       M._lastClickDebug = { wasDrag: wasDrag, moved: moved, x: e.clientX, y: e.clientY };
       if (!wasDrag || moved) return;
@@ -8018,16 +8198,12 @@
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';   /* 地块属性：野地/城市/据点/行政城/己方城 */
     M._cellKind = kind;
     var reg = M.regionAt(ci);                                  /* 该地块的省/市/区归属 */
-    /* ============================================================
-     * ⛔ v156.15b（老板：「为什么地图上地块现在多了一层菜单，出征侦查详情。这不是套娃吗」）
-     * ------------------------------------------------------------
-     * v156.15 曾在这里先弹一条「⚔出征 / 🔍侦查 / 📜详情」的短条，点「详情」才开原面板。
-     * 那是**把 1 步变成 2 步**：这三个动作原本就在面板里（未占野地底部「侦查/掠夺/占领」
-     * 是 v89.152 老板亲自定在菜单底部的）。已整条撤除。
-     * 现在的口径：**点地块 = 直接开那一格的面板**，不再有中间层。
-     * smoke §580 已改成反向守卫：谁再往这一层加菜单就红。
-     * ============================================================ */
-    M.openCellPanel(ci);
+    /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」（ui.openCellMenu），
+       再由菜单调 openCellPanel 作层2。v156.15b 当年嫌"套娃"删掉的中间菜单，现按老板决策加回。
+       保留兜底：若 ui.openCellMenu 不存在，仍直开原面板（不退化成死点击）。
+       smoke §580② 已改为正向守卫：点击必须先经 openCellMenu。 */
+    if (GAME.ui && GAME.ui.openCellMenu) GAME.ui.openCellMenu(ci);
+    else M.openCellPanel(ci);
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   M.centerOn = function (x, y) {                            /* 相机对准某格（回主城/回本城/灰烬城）· 不高亮 */
@@ -9595,6 +9771,9 @@
         var pm = new THREE.PMREMGenerator(R3);
         pm.compileEquirectangularShader();
         scene.environment = pm.fromEquirectangular(eq).texture;
+        /* v157.58：通知 gltf 解析器"本场景已有程序化 env"—— buildMaterial 据此放开 metalness 上限，
+           金属件才有反射、粗糙面才有环境色（不影响无 env 的 map3d/duel3d 场景）。 */
+        if (GAME.gltf && GAME.gltf.setEnvAvailable) GAME.gltf.setEnvAvailable(true);
         eq.dispose(); pm.dispose();
       } catch (e) { /* 老版本没有 PMREM → 退回纯直射光，不影响可用性 */ }
     })();
@@ -12307,10 +12486,14 @@
     gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
     /* v89.224（老板 1）：本格为**基因实验室的建筑载体**（原在政务厅要务段，已撤）。
        v90.92：原「⚔️ 派系」入口随门派系统整条退役而移除。 */
-    honglusi: { label: "🧬 基因实验室", act: "open-lab" },
-    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役；
-       「幸存者统计」面板本身保留（城防统计仍由此进入）。 */
-    chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
+    honglusi: { label: "🧬 基因实验室", act: "open-lab" }
+    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役。
+       ⛔ v157.53 收尾：原 `chengqiang: { label: "🧱 城防统计", act: "open-panel",
+       view: "stats" }` 整条撤除 —— v89.104 已把 stats 视图（黄册 statsHTML）整体退役，
+       ui-bag.js 的 openPanel 也撤了 stats 分支，这个键点下去只会落到「此功能暂未开放」。
+       上面 v85 注释里「幸存者统计面板本身保留」是当时的记录，现已不成立（注释本身过期）。
+       城墙格的功能走 ui-build.js 的 openBuildModal（修建围墙 / 耐久 / 城防构成），
+       玩家并未失去入口。依据项目铁律：退役的入口要连动作、面板、文案一起清。 */
   };
   ui._C.BLDG_FUNC = BLDG_FUNC;
 
@@ -27308,6 +27491,9 @@
     var keys = (BL && BL.ORE_KEYS) || ['stone', 'iron', 'rare', 'crystal'];
     var idx = String(rock.id || '').split('_').pop();
     var aMul = (rock.a / R);
+    /* v157.53：belt.summary 早已算好整条带子的汇总，此前零调用（机制在、界面零显示）。
+       这里只读不改：缓存没生成时返回 null，整行不渲染，不显示 NaN。 */
+    var sum = (BL && BL.summary) ? BL.summary() : null;
     var rows = keys.map(function (k) {
       var v = (rock.ore && rock.ore[k]) || 0;
       return '<div class="attr"><span class="k">' + U.escape(oreName[k] || k) + '</span>'
@@ -27330,10 +27516,14 @@
       + '<div class="attr"><span class="k">质量</span><span class="v">'
       + GAME.utils.numText(rock.mass, 0) + '</span></div>'
       + '<div class="mk-sep"></div>'
-      + '<div class="mk-lbl">矿藏（可采量）</div>'
+      + '<div class="mk-lbl">矿藏（储量）</div>'
       + rows
+      + (sum ? '<div class="ui-sub" style="margin-top:6px;">全带共 ' + sum.count
+          + ' 块 · 总质量 ' + GAME.utils.numText(sum.mass, 0)
+          + ' · 大型 ' + sum.big + ' 块</div>' : '')
       + '<div class="ui-sub" style="margin-top:8px;color:var(--text-dim);">'
-      + '⛏ 星际采矿尚未开放 —— 这些数字是它的数据源，不是现在能挖的量。</div>'
+      + '⛏ 星际采矿尚未开放 —— 上面是这块石头的储量，不是现在能挖的量；'
+      + '整条带的汇总也已算好，待采矿开放时直接取用。</div>'
       + '</div>'
       + '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h, 'sm');
@@ -29023,6 +29213,39 @@ ui.openDuel = function (fid, moveId) {
      · 派军采集（英雄带队）并入「带将驻军原地开工」（GAME.startGather 唯一形态）；
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
   /* 野外城市弹窗 */
+
+  /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」，再开详情面板。
+     层1 = 本函数（按 kind 给可用动作）；层2 = 既有 openCellPanel（按 kind 分发到各原面板）。
+     所有动作按钮走 data-action → GAME.action，本函数只产菜单、不写业务逻辑。 */
+  ui.openCellMenu = function (ci) {
+    var M = GAME.map3d || {};
+    var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
+    var ref = M.cellRef && M.cellRef[ci];
+    var name = (ref && ref.name) ? ref.name : ('地块 #' + ci);
+    var btns = [];
+    if (kind === 'own') {
+      btns.push(['🏯 经营', 'cell-menu-detail', kind]);
+      btns.push(['🛡 派遣', 'cell-menu-dispatch', kind]);
+    } else if (kind === 'wild') {
+      btns.push(['⚔ 出征', 'cell-menu-exp', kind]);
+      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else if (kind === 'npc' || kind === 'adm') {
+      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
+      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else if (kind === 'fort') {
+      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    } else {
+      btns.push(['📜 详情', 'cell-menu-detail', kind]);
+    }
+    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + btns.map(function (b) {
+      return '<button class="btn" data-action="' + b[1] + '" data-ci="' + ci +
+        '" data-kind="' + b[2] + '">' + b[0] + '</button>';
+    }).join(' ') + '</div>';
+    ui.openShell({ title: '🗺 地块操作', sub: name, body: body });
+  };
 })();
 
 /* ---- ui-exped.js ---- */
@@ -36136,6 +36359,22 @@ ui.openDuel = function (fid, moveId) {
       case 'exp-open': GAME.doOpenExp(el.dataset.kind, el.dataset.mode); break;
       case 'fort-exp': GAME.doOpenFortExp(el.dataset.mode); break;
       case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y)); break;
+      /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹功能主菜单，这里是其层2 出口。
+         exp/detail/dispatch 都复用既有 openCellPanel（按 kind 分发，零逻辑重复）；
+         scout 须先把目标喂给 ui._expTarget / ui._attackNpc，再走 doOpenExp。 */
+      case 'cell-menu-detail': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
+      case 'cell-menu-exp': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
+      case 'cell-menu-dispatch': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
+      case 'cell-menu-scout': {
+        var _sci = Number(el.dataset.ci), _sk = el.dataset.kind || 'wild';
+        var _sref = (GAME.map3d && GAME.map3d.cellRef) ? GAME.map3d.cellRef[_sci] : null;
+        if (GAME.ui) {
+          if (_sk === 'npc' || _sk === 'adm') { GAME.ui._attackNpc = _sref; GAME.ui._expTarget = { kind: 'city', id: _sref && _sref.id, npc: _sref }; }
+          else { GAME.ui._expTarget = { kind: 'wild', ci: _sci }; }
+        }
+        GAME.doOpenExp(_sk === 'npc' || _sk === 'adm' ? 'city' : _sk, 'scout');
+        break;
+      }
       /* v89.193（老板 2）：前哨总览（入口：地图导航栏「🚩 前哨」/ 前哨面板） */
       case 'open-outposts': ui.openOutposts(); break;
       /* v156.52（老板「提供一个正位按钮（把球体摆正）」）：视角复位 = 南北轴竖直、
@@ -38472,7 +38711,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.51';
+  GAME.VERSION = 'v157.61';
   function boot() {
     fitAppSize();
     try {

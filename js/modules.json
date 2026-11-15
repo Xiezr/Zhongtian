@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "707b7b2a2fc89144",
+ "sourceHash": "5b5b59559016fdac",
  "layout": {
   "order": [
    "core",
@@ -873,15 +873,15 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 8031,
+   "lines": 8183,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
     "sphere",
     "map",
     "ui",
-    "prologue",
     "domain",
+    "prologue",
     "ui-space",
     "gltf",
     "state",
@@ -1329,7 +1329,7 @@
   {
    "name": "ui",
    "file": "js/ui.js",
-   "lines": 78,
+   "lines": 82,
    "bundle": "ui",
    "duty": "ui.js　界面层入口 · ui 命名空间初始化（拆分后只剩骨架）",
    "deps": []
@@ -1719,7 +1719,7 @@
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1344,
+   "lines": 1351,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [
@@ -1736,13 +1736,13 @@
     "fleet",
     "prologue",
     "placement",
+    "belt",
     "ui-modal",
     "items",
     "sphere",
     "ui-shell",
     "main",
     "ui-mapui",
-    "belt",
     "ui",
     "ui-exped",
     "ui-city"

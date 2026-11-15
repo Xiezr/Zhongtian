@@ -1859,6 +1859,22 @@ import './ui.js';
       case 'exp-open': GAME.doOpenExp(el.dataset.kind, el.dataset.mode); break;
       case 'fort-exp': GAME.doOpenFortExp(el.dataset.mode); break;
       case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y)); break;
+      /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹功能主菜单，这里是其层2 出口。
+         exp/detail/dispatch 都复用既有 openCellPanel（按 kind 分发，零逻辑重复）；
+         scout 须先把目标喂给 ui._expTarget / ui._attackNpc，再走 doOpenExp。 */
+      case 'cell-menu-detail': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
+      case 'cell-menu-exp': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
+      case 'cell-menu-dispatch': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
+      case 'cell-menu-scout': {
+        var _sci = Number(el.dataset.ci), _sk = el.dataset.kind || 'wild';
+        var _sref = (GAME.map3d && GAME.map3d.cellRef) ? GAME.map3d.cellRef[_sci] : null;
+        if (GAME.ui) {
+          if (_sk === 'npc' || _sk === 'adm') { GAME.ui._attackNpc = _sref; GAME.ui._expTarget = { kind: 'city', id: _sref && _sref.id, npc: _sref }; }
+          else { GAME.ui._expTarget = { kind: 'wild', ci: _sci }; }
+        }
+        GAME.doOpenExp(_sk === 'npc' || _sk === 'adm' ? 'city' : _sk, 'scout');
+        break;
+      }
       /* v89.193（老板 2）：前哨总览（入口：地图导航栏「🚩 前哨」/ 前哨面板） */
       case 'open-outposts': ui.openOutposts(); break;
       /* v156.52（老板「提供一个正位按钮（把球体摆正）」）：视角复位 = 南北轴竖直、
@@ -4195,7 +4211,7 @@ import './ui.js';
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.51';
+  GAME.VERSION = 'v157.61';
   function boot() {
     fitAppSize();
     try {

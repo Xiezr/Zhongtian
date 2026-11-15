@@ -12,6 +12,8 @@ import './core.js';
   'use strict';
   var GAME = window.GAME = window.GAME || {};
   var GTF = {};
+  GTF._envOK = false;   /* v157.58：场景是否已有程序化 env（scene.environment）—— 有则放开 metalness 上限 */
+  GTF.setEnvAvailable = function (b) { GTF._envOK = !!b; };
 
   var CITEM = { 5120: Int8Array, 5121: Uint8Array, 5122: Int16Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array };
   var CNUM = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
@@ -164,11 +166,22 @@ import './core.js';
         }
         var mat = (prim.material != null) ? (gltf.materials[prim.material] || {}) : {};
         var pbr = mat.pbrMetallicRoughness || {};
+        /* v157.58：ORM / AO / emissive 三个通道——此前解析器完全丢弃，是"材质无微细节"的根因。
+           metallicRoughnessTexture 一张图同时含 G=rough / B=metal（three 自动按通道取）；
+           occlusionTexture 的 R 通道 = AO；emissiveTexture 单独通道。 */
+        var _ormTi = (pbr.metallicRoughness && pbr.metallicRoughness.metallicRoughnessTexture) ? pbr.metallicRoughness.metallicRoughnessTexture.index : null;
+        var _occTi = (mat.occlusionTexture) ? mat.occlusionTexture.index : null;
+        var _emiTi = (mat.emissiveTexture) ? mat.emissiveTexture.index : null;
         parts.push({
           position: pos, nor: nor, uv: uv, idx: idx,
           count: pos.length / 3,
           map: texUrl(pbr.baseColorTexture && pbr.baseColorTexture.index),
           normalMap: texUrl(mat.normalTexture && mat.normalTexture.index),
+          metalnessMap: texUrl(_ormTi),
+          roughnessMap: texUrl(_ormTi),
+          aoMap: texUrl(_occTi),
+          emissiveMap: texUrl(_emiTi),
+          emissiveFactor: (mat.emissiveFactor && mat.emissiveFactor.length === 3) ? mat.emissiveFactor : null,
           metalness: (pbr.metallicFactor != null ? pbr.metallicFactor : 0),
           roughness: (pbr.roughnessFactor != null ? pbr.roughnessFactor : 0.7),
           doubleSided: !!mat.doubleSided,
@@ -200,7 +213,13 @@ import './core.js';
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(p2, 3));
     if (part.nor) geo.setAttribute('normal', new THREE.BufferAttribute(part.nor, 3));
-    if (part.uv) geo.setAttribute('uv', new THREE.BufferAttribute(part.uv, 2));
+    if (part.uv) {
+      geo.setAttribute('uv', new THREE.BufferAttribute(part.uv, 2));
+      /* v157.58：aoMap 需要第二套 UV。three r150 用 uv2、r151+ 用 uv1；两个都设兼容两版。
+         模型无 TEXCOORD_1 时复制 TEXCOORD_0（降级，AO 用主 UV），不阻断。 */
+      geo.setAttribute('uv2', new THREE.BufferAttribute(part.uv, 2));
+      geo.setAttribute('uv1', new THREE.BufferAttribute(part.uv, 2));
+    }
     if (!part.nor) geo.computeVertexNormals();
     if (part.idx) geo.setIndex(new THREE.BufferAttribute(part.idx, 1));
     return geo;
@@ -223,23 +242,26 @@ import './core.js';
       side: part.doubleSided ? THREE.DoubleSide : THREE.FrontSide, color: 0xffffff,
     });
     if (_std) {
-      /* 无环境贴图 → 金属会发黑，夹到一个低值（奇观多为岩石/金属混材，靠漫反射看形）。 */
-      mat.metalness = Math.min(part.metalness != null ? part.metalness : 0, 0.25);
+      /* v157.58：有程序化 env（scene.environment）时金属才有东西可反射，放开 metalness 上限到 1.0；
+         无 env（map3d/duel3d 等无 PMREM 场景）仍夹 0.25 防发黑——v91.38 铁律的保守兜底。 */
+      var _m = (part.metalness != null ? part.metalness : 0);
+      mat.metalness = GTF._envOK ? _m : Math.min(_m, 0.25);
       mat.roughness = (part.roughness != null ? part.roughness : 0.8);
-      mat.emissive = new THREE.Color(0xffffff);
-      mat.emissiveIntensity = 0.18;      /* 自发光 = 自身贴图 ×0.18：补背光，但不抹平明暗 */
     }
-    /* 统一贴图加载（baseColor / normalMap）；载完回调一次。 */
+    /* 统一贴图加载（baseColor / normalMap / ORM / AO / emissive）；载完回调一次。 */
     var _pending = 0, _done = 0;
     function _finish() { if (onReady && _done === _pending) onReady(); }
-    function _load(url, apply) {
+    /* v157.58：kind 用于定 colorSpace —— baseColor/emissive 是颜色数据走 sRGB；
+       normal/metalness/roughness/ao 是数据纹理必须走线性，错设 sRGB 会让金属度/粗糙度/AO 全部失真。 */
+    function _load(url, apply, kind) {
       if (!url) return;
       _pending++;
       var bmp = new Image();
+      var _isColor = (kind === 'map' || kind === 'emissive');
       bmp.onload = function () {
         try {
           var tx = new THREE.Texture(bmp); tx.needsUpdate = true;
-          if (THREE.SRGBColorSpace && apply !== 'normal') tx.colorSpace = THREE.SRGBColorSpace;
+          if (THREE.SRGBColorSpace && _isColor) tx.colorSpace = THREE.SRGBColorSpace;
           apply(tx); mat.needsUpdate = true;
         } catch (e) { }
         try { URL.revokeObjectURL(url); } catch (e) { }
@@ -249,12 +271,30 @@ import './core.js';
       bmp.src = url;
     }
     try {
+      /* v157.58：自发光贴图（emissiveTexture）存在时优先用它；否则保留旧行为
+         （emissiveMap = 自身 baseColor）补背光，避免无 emissive 资产背面死黑。 */
       _load(part.map, function (tx) {
         mat.map = tx;
-        if (_std) mat.emissiveMap = tx;      /* 自发光用自身颜色（保留原贴图色，不加环境光染色） */
-      });
-      /* v91.38：法线贴图此前被丢弃（"胡乱着色"观感的一因）——现接上，恢复表面凹凸明暗。 */
-      if (_std) _load(part.normalMap, function (tx) { mat.normalMap = tx; mat.normalScale = new THREE.Vector2(1, 1); });
+        if (_std && !part.emissiveMap) mat.emissiveMap = tx;
+      }, 'map');
+      /* v91.38：法线贴图此前被丢弃——现接上，恢复表面凹凸明暗。 */
+      if (_std) {
+        _load(part.normalMap, function (tx) { mat.normalMap = tx; mat.normalScale = new THREE.Vector2(1, 1); }, 'normal');
+        /* v157.58：ORM（金属/粗糙一张图按通道取）+ AO + 真·emissive。 */
+        _load(part.metalnessMap, function (tx) { mat.metalnessMap = tx; }, 'metalness');
+        _load(part.roughnessMap, function (tx) { mat.roughnessMap = tx; }, 'roughness');
+        _load(part.aoMap, function (tx) { mat.aoMap = tx; mat.aoMapIntensity = 1.0; }, 'ao');
+        _load(part.emissiveMap, function (tx) { mat.emissiveMap = tx; }, 'emissive');
+        /* 自发光颜色：资产给了 emissiveFactor 用它的（含 [0,0,0]=关）；否则有 emissiveMap 则白（显出贴图），无则白×0.18（补背光）。 */
+        if (part.emissiveMap) {
+          var ef = (part.emissiveFactor || [1, 1, 1]);
+          mat.emissive = new THREE.Color(ef[0], ef[1], ef[2]);
+          mat.emissiveIntensity = 1.0;
+        } else {
+          mat.emissive = new THREE.Color(0xffffff);
+          mat.emissiveIntensity = 0.18;
+        }
+      }
       else if (part.normalMap) { try { URL.revokeObjectURL(part.normalMap); } catch (e) { } }
       if (!_pending) _finish();
     } catch (e) { _finish(); }
@@ -408,9 +448,15 @@ import './core.js';
     function buildMat(mi) {
       var m = (gltf.materials && gltf.materials[mi]) || {};
       var pbr = m.pbrMetallicRoughness || {};
+      var _ormTi = (pbr.metallicRoughness && pbr.metallicRoughness.metallicRoughnessTexture) ? pbr.metallicRoughness.metallicRoughnessTexture.index : null;
       var part = {
         map: texUrl(pbr.baseColorTexture && pbr.baseColorTexture.index),
         normalMap: texUrl(m.normalTexture && m.normalTexture.index),
+        metalnessMap: texUrl(_ormTi),
+        roughnessMap: texUrl(_ormTi),
+        aoMap: texUrl(m.occlusionTexture && m.occlusionTexture.index),
+        emissiveMap: texUrl(m.emissiveTexture && m.emissiveTexture.index),
+        emissiveFactor: (m.emissiveFactor && m.emissiveFactor.length === 3) ? m.emissiveFactor : null,
         metalness: (pbr.metallicFactor != null ? pbr.metallicFactor : 0),
         roughness: (pbr.roughnessFactor != null ? pbr.roughnessFactor : 0.7),
         doubleSided: !!m.doubleSided,
@@ -683,5 +729,5 @@ import './core.js';
   GTF.Actor.prototype.update = function (dt) { if (this.mixer) this.mixer.update(dt); };
 
   GAME.gltf = GTF;
-  GAME.gltfVersion = 'v92.00';   /* 成员定义锚（供 audit ⑥ 识别 · 见 audit.js 白名单） */
+  GAME.gltfVersion = 'v157.58';   /* v157.58：扩展 ORM/AO/emissive 通道 + 程序化 env 联动（GTF._envOK） */
 })();

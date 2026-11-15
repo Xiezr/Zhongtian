@@ -8,10 +8,11 @@
 | 目录 | 个数 | 干什么 |
 |---|---|---|
 | `asset/` | 116 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
-| `audit/` | 40 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
+| `audit/` | 42 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 22 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
+| `fast/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
 | `gen/` | 10 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
-| `git/` | 4 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
+| `git/` | 5 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `gltf/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
 | `gltf/node_modules/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
@@ -437,15 +438,15 @@
 | `gltf/node_modules/wrap-ansi/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
 | `map/` | 2 | **动手前的第一站**：`gen_index.js` 扫源码生成 `js/modules.json`（唯一权威模块清单）与 `.workbuddy/index/project-index.json`（符号/断言/资产/标定表）；`who.js <关键词>` 反查"改哪里、波及什么、跑哪条验证"。铁律：索引必须被构建与审计消费，过期由 smoke §591 报红。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 1258 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 1261 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `play/` | 1 | **不在 gate 三件套内，按需手动跑**。`lifecycle_v89121.js` = 全玩法链路体检（渠道 / 锻造 / 宝物等分组核验，交付文档的复现命令指向它 → **视同在岗**）；`repro_v89174*` = 三条一次性复现。 |
 | `playtest/` | 1 | v89.x 时代的 600×/1× 长时压测与收益分析（`play_600x.js` 等，单次几分钟到几十分钟）。结论已沉淀进交付文档；**不复用为口径**，新压测请基于 `probe/` 的在岗模板重写。 |
-| `probe/` | 16 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。 |
-| `prof/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
-| `show/` | 239 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| `probe/` | 31 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。 |
+| `prof/` | 25 | **验证体系的规则源都在这里**（不是"待归类"）：`tier_audit.js` 六问元判据（gate 前置）· `gen_tiers.js` 断言分档唯一来源 · `mutation_probe.js` 变异测试 · `smoke_fast.js` 分片内环 · `impact_of.js` 影响面提示 · `visual_baseline.js` 视觉基线。⚠️ 内环可以快、可以漏，但**不能冒充裁判** —— 唯一裁判是 `git/gate.py`。 |
+| `show/` | 246 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
 | `show/reports/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
 | `sim/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
-| **合计** | **5928** | |
+| **合计** | **5975** | |
 
 ## asset/（素材处理）
 
@@ -577,6 +578,7 @@
 - `audit_refs.py`（3KB）　— 搬迁前普查：谁引用了 DESIGN.md / docs 里的文件 / tools 里的脚本。
 - `audit_v125b_perf_ui.js`（15KB）　— v131：`distOf` 上界从 20 放到 40 —— 它现在是 **O(视野环内格数)**，
 - `audit_v125b_playtest_dist.js`（8KB）　— 分布检验 v2 —— **沿用 fun-audit 的 harness**（补满将领 + withBoost 半科技 + 同一守军坐标），
+- `audit_v15730_goldsink.js`（4KB）
 - `audit_v89105_chains.js`（25KB）
 - `audit_v89105_css_tokens.js`（10KB）　— 取 <style> 段（含多条 style）
 - `audit_v89105_modals.js`（15KB）
@@ -606,7 +608,8 @@
 - `diag_v89105_overflow.js`（3KB）　— 诊断：7 个溢出弹窗的**高度分布**（哪个块把窗口撑爆了）
 - `economy_audit.js`（8KB）　— 经济审计：旧币收入构成（v68 · 老板「审计一下」）
 - `fix_v89165_audit.py`（3KB）　— 修 audit_v89165_live.js：hasLive 递归化 + 豁免表补全。
-- `ladder_audit.js`（6KB）　— 数值阶梯审计 —— 回答一个问题：**从开局到灰烬城，这条路走得通吗？
+- `intent_closure.js`（8KB）
+- `ladder_audit.js`（8KB）　— 数值阶梯审计 —— 回答一个问题：**从开局到灰烬城，这条路走得通吗？
 - `read_recycle.py`（2KB）　— 解析 E: 回收站的 $I 元数据，列出"刚刚被删的原始路径"。
 - `survey_project.py`（5KB）　— 项目全景盘点：产物清单 + 规则分布 + 引用关系（为"是否完整/精简/集中"提供证据）。
 - `survey_project2.py`（3KB）　— 补充盘点：素材分解 · 记忆体量 · 项目自建技能 · 测试规模。
@@ -640,6 +643,12 @@
 - `break_v8988.py`（7KB）　— v89.88 破坏测试：对「野外城池改造 + 地图悬浮」的 §88/§⑦ 断言逐一注入，确认**变红**。
 - `break_v8989.py`（7KB）　— v89.89 破坏测试：对「v6 期待清单八条（A2/A3/A4/B1/C3/C4/D4/E3）」的 §89 断言逐一注入，
 
+## fast/（未归类）
+
+待归类：请确认用途后归档。
+
+- `fast-test.js`（14KB）　— 最小启动（不用 jsdom：data/rules/battle 都能在裸 node 里跑） ----------
+
 ## gen/（生成器与索引）
 
 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。
@@ -659,7 +668,8 @@
 
 **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。
 
-- `gate.py`（21KB）　— 三件套门禁 —— 提交前跑 audit / smoke / e2e，红了就不许提交。
+- `domains.json`（2KB）
+- `gate.py`（36KB）　— 三件套门禁 —— 提交前跑 audit / smoke / e2e，红了就不许提交。
 - `install_hooks.py`（4KB）　— 安装 / 卸载 / 检查本仓的两个 git 钩子。
 - `sync.py`（12KB）　— 收尾一键同步 —— 汇总改动 → 过门禁 → 提交 → 推送到 GitHub。
 - `test_gate_baseline.py`（4KB）　— 门禁基线判定的单元测试（判据自己也要能测）。
@@ -6982,7 +6992,7 @@
 
 **动手前的第一站**：`gen_index.js` 扫源码生成 `js/modules.json`（唯一权威模块清单）与 `.workbuddy/index/project-index.json`（符号/断言/资产/标定表）；`who.js <关键词>` 反查"改哪里、波及什么、跑哪条验证"。铁律：索引必须被构建与审计消费，过期由 smoke §591 报红。
 
-- `gen_index.js`（26KB）　— 小工具 ----------------
+- `gen_index.js`（28KB）　— 小工具 ----------------
 - `who.js`（15KB）
 
 ## mem/（记忆维护）
@@ -7009,9 +7019,10 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `add_smoke_590b.js`（4KB）　— v156.23：§590 追加两条 —— ⑥真实占领链路 ⑦挂钩在册（源码级）
 - `add_smoke_590c.js`（1KB）　— v156.24c：§590 追加一条 —— 已占行政城不再画成紫色敌方城（源码级防回归）
 - `add_smoke_591.py`（6KB）　— 在 smoke 里插入 §591：项目索引（单一清单）的 5 条断言。
+- `add_smoke_592.py`（4KB）　— 插入 §592：城市/城外/建筑地块"文字不可选"的 5 条断言。
 - `apply_abandon.py`（14KB）　— v67 补丁 B：放弃城池（唯一入口 + 城池关联数据登记表 + 界面入口）。
 - `apply_cols.py`（6KB）　— v67 补丁 A：侧栏「资源 / 驻军」两列数字各自成列、拉开间距。
-- `build_bundle.py`（10KB）　— v91.61 地基第 1 期 —— bundle 构建器（确定性 · 离线可用 · 不依赖 esbuild）。
+- `build_bundle.py`（11KB）　— v91.61 地基第 1 期 —— bundle 构建器（确定性 · 离线可用 · 不依赖 esbuild）。
 - `bump_version.py`（6KB）　— 发版脚本（v90.94 治理版）：一次同步三处版本标识里的「代码侧两处」。
 - `check_v89226_confirm.py`（2KB）　— v89.226 复核：素材层三证复跑（apply 完整性 + 切分确定性）。
 - `check_v89226_themes.py`（4KB）　— v89.226 复核：地块染色 4 主题 × 8 族 全量逐字节复验。
@@ -7049,6 +7060,8 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patchC2_e2e.py`（10KB）　— v90.93 批次C2：e2e 剧本用例段 → 一次性结算 + 退役守卫
 - `patchC2_smokefix.py`（6KB）　— v90.93 批次C2：修 smoke 两条越界守卫
 - `patchC2_tests.py`（11KB）　— v90.93 批次C2 配套：smoke 口径同步（全屏剧本退役）。
+- `patch_335_world.py`（3KB）　— 改 §335⑤：世界账本入口从顶栏迁到「行政」页，有事件时按钮呼吸。
+- `patch_338_world.py`（6KB）　— 改 §338①②③：世界账本从「顶栏常驻」改为「行政页入口」的同一组守卫。
 - `patch_adm_marker_own.js`（2KB）　— v156.24c：已被我方占据的行政中心城，不再画成紫色敌方城。
 - `patch_admin_pure.js`（3KB）　— v156.24b：把 adminCiList 的过滤逻辑抽成**纯函数** `adminCisOf(fields, level, index)`，
 - `patch_admin_reveal.js`（12KB）　— v156.24：把「首府视野」从「13 州(NPC_CITIES.state)」换到**地图真正的省/市/区
@@ -8281,6 +8294,8 @@ v89.x 时代的 600×/1× 长时压测与收益分析（`play_600x.js` 等，单
 
 jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。
 
+- `cam_regress.js`（9KB）　— 相机修复的实机探针（v157.31 · 临时/可复用）
+- `gen_audit.js`（8KB）
 - `probe.js`（1KB）
 - `probe60_geom.js`（5KB）　— v60 真实浏览器几何探针：老板的硬规矩（弹窗不许出现滚动条、内容不许溢出）
 - `probe61_board.js`（5KB）　— v61 几何探针：**攻占后城格数按等级变小**（6×4 / 8×4 / 8×5）
@@ -8297,18 +8312,49 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe67_save3.js`（5KB）
 - `probe67_save_ui.js`（3KB）
 - `probe67_tbl.js`（3KB）
+- `probe_birth_state.js`（2KB）　— 诊断「出生州：十三区逐个验证落点归属」—— 到底哪个州、哪个条件不对。
+- `probe_flicker_ab.js`（3KB）　— v156.34 探针：**消元法**找"半径闪烁"的元凶。
+- `probe_frame_diff.js`（3KB）　— v156.34 探针：两帧差异的**空间分布** —— 判断"闪"发生在轮廓还是在面上。
+- `probe_freecam.js`（3KB）　— v156.47 验证自由相机：三张图对拍 ——
+- `probe_globe_flicker.js`（5KB）　— v156.34 探针：星球自转中的「半径闪烁」
+- `probe_globe_radius.js`（4KB）　— v156.34 探针：沿 36 条射线量「球体轮廓半径」—— 专门抓"自转时半径闪烁"。
+- `probe_globe_radius2.js`（4KB）　— v156.34 探针：**轮廓半径的帧间抖动**（固定球心，按方向逐条算 std）
+- `probe_locked_tab.js`（4KB）　— v156.33：锁定页签的**真实点击行为** ——
+- `probe_newgame_cost.js`（3KB）　— v156.36 探针：newGame 到底多贵？同 seed 重复 vs 换 seed —— 这决定了"测试慢"的真凶。
+- `probe_scene_objects.js`（3KB）　— v156.34：把 3D 场景里**所有**对象列出来（类型 / 材质 / 包围球半径 / 是否透明）。
+- `probe_testseed.js`（2KB）　— v156.36：验证 `GAME.__testSeed` 到底有没有让"不传 seed 的 newGame"变便宜。
+- `probe_wild_scan.js`（2KB）　— 诊断「回放态改设定」那条的 `no wild`：城周围 ±8 格到底有什么。
+- `probe_wonder_size.js`（4KB）　— v156.48 验证奇观尺寸：强制一个**地表**奇观（按日随机可能是太空/海面），
 
-## prof/（未归类）
+## prof/（验证体系内环与元判据）
 
-待归类：请确认用途后归档。
+**验证体系的规则源都在这里**（不是"待归类"）：`tier_audit.js` 六问元判据（gate 前置）· `gen_tiers.js` 断言分档唯一来源 · `mutation_probe.js` 变异测试 · `smoke_fast.js` 分片内环 · `impact_of.js` 影响面提示 · `visual_baseline.js` 视觉基线。⚠️ 内环可以快、可以漏，但**不能冒充裁判** —— 唯一裁判是 `git/gate.py`。
 
+- `analyze_cpuprof.js`（3KB）　— 解析 node --cpu-prof 产物：按「自身采样数」排出热点函数与热点文件。
 - `analyze_ui.js`（5KB）　— ui.js 结构分析：为拆分定边界（只读，不改文件）
+- `assert_density.js`（4KB）　— v156.38：**断言密度扫描** —— 一个 UI 元素 / 出口被多少条 check 钉着？
+- `assert_owner.js`（5KB）　— 文件 → 层
+- `assert_tier.js`（5KB）
 - `audit_arch.js`（5KB）　— 架构体检：一次性量化「清爽度」的五个维度，输出可核对的数据。
+- `find_shared_symbols.js`（4KB）
 - `find_shared_vars.js`（3KB）　— 找出「跨功能的顶层局部变量」—— 拆分后它们会变成未定义。
 - `gen_head_prof.js`（3KB）　— 性能探针：把 smoke-test.js 截成"前 N 段"并在 newGame/ensure 上装计时钩子，
+- `gen_seg_modules.js`（5KB）
+- `gen_tiers.js`（9KB）
+- `impact_of.js`（3KB）
+- `layer_debt.js`（7KB）　— 允许的方向：core 不依赖 war/ui；war 不依赖 ui
+- `mutation_probe.js`（8KB）
+- `param_probe.js`（12KB）　— 沙箱：按加载顺序跑源码 ----
+- `profile_smoke.js`（3KB）
+- `smoke_fast.js`（10KB）
+- `smoke_parallel.js`（10KB）　— ⚠️ 分片必须落在**仓库根**：smoke 里用 （相对 __dirname），
 - `smoke_slice.js`（14KB）　— smoke 快切片 —— 支持两种用法：
+- `smoke_touching.js`（5KB）
 - `snapshot_ui_fns.js`（5KB）　— ui 函数快照：把 js/ui*.js 里每个 `ui.xxx = …` 定义的源码切片并哈希，
+- `tier_audit.js`（27KB）　— 可调阈值 —— 全部集中在这里，因为「阈值本身也会过期」
 - `top_cpu.js`（2KB）　— 读 .cpuprofile，按"自身耗时(self time)"排出前 N 个函数。
+- `visual_baseline.js`（9KB）
+- `who_assert.js`（3KB）
 
 ## show/（展示与校准）
 
@@ -8361,6 +8407,8 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_load.js`（1KB）
 - `probe_matrix_writers.js`（2KB）　— 抓现行：给 InstancedMesh.setMatrixAt 装钩子，记录所有写入者的调用栈
 - `probe_meta.js`（1KB）
+- `probe_noselect.js`（5KB）　— 验证：城市 / 城外 / 建筑面板里，左键长按拖动**不能**选中文字；
+- `probe_noselect2.js`（4KB）
 - `probe_scale_tracks.js`（1KB）
 - `probe_soldier_rot.js`（3KB）　— 定点实验：把 Soldier 用 4 个固定根旋转各渲染一张，肉眼判定"哪个朝向是站着的"。
 - `probe_stand_candidates.js`（3KB）　— 立姿候选体检：不归一化加载，逐候选根旋转报告「骨骼 Y 跨度 / Box3 Y 跨度 / 骨骼数」，
@@ -8372,6 +8420,7 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_water_ab.js`（3KB）　— 水面 A/B：同一机位，uAmp=3.2（现状）与 uAmp=0（关浪）各拍一张，
 - `probe_water_fps.js`（3KB）　— 水面着色器性能：在"看得见海"的视角下统计 90 帧的平均帧时间
 - `probe_water_state.js`（2KB）
+- `probe_world_btn.js`（3KB）
 - `render3d.js`（8KB）　— 真·3D 地形渲染（用游戏地图的真实地形数据）
 - `render3d_full.js`（9KB）　— 全量 500×500 真·3D 地形渲染（每格细分 2×2 = 1000×1000 面片）
 - `review_guide.py`（4KB）　— v89.42 定稿验收图：改前/改后 + 2x 放大 + 7 块贴图 + 中文说明，合成单图。
@@ -8387,8 +8436,12 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `shot_height.js`（2KB）　— 主地图 · 高度模式实机截图
 - `shot_lord_globe.js`（2KB）　— 前传：君主站在球面的姿态核对（applyQuad 重构后）
 - `shot_map3d.js`（2KB）
+- `shot_mapdock.js`（3KB）　— v156.35：地图页底栏（.map-dock）实测 —— 截条 + 打印每个可见元素与总宽。
+- `shot_navright.js`（2KB）　— v156.32：顶栏右侧工具区（图例 + 天时）放大对照 —— 省约前/后看同一块。
 - `shot_ocean.js`（3KB）　— 海面观感探针 v2：对准大片水域，按 3 档距离（轨道 / 中景 / 近景）各拍一张，
 - `shot_scene3d_player.js`（2KB）　— 采集场景玩家（Soldier）外观核对：进入 scene3d 的野外场景，截一张
+- `shot_topbar_widths.js`（3KB）　— v156.33：顶栏在 1440 / 1180 / 1024 三档的实测 ——
+- `shot_topnav.js`（2KB）
 - `shot_v145_colony.js`（4KB）　— v145 实机：空间站 + 星际投送面板（选母舰 / 选星球 / 带人带兵 / 启航）
 - `shot_v146_fleet.js`（4KB）　— v146 实机：空间站「深空远征」面板（选舰 / 选目标 / 编成 / 出港 / 战报）
 - `shot_v147_preview.js`（2KB）　— v147 实机：建造预览（D 期）—— 候选卡片「先看看」→ 3D 单栋预览

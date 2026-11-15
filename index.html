@@ -2066,7 +2066,14 @@
   /* v26（需求 4）：观察框改 12×8，画布变矮，浮标让位也随之收窄 */
   /* v76（老板）：导航迁入底部条后，这里不再需要为右下浮标让位（78px 撤） */
   /* v90.71（老板）：地图**贴边占满** —— 去内边距，画布撑满大界面（视野更宽）。 */
-  .map-wrap { position: relative; padding: 0; width: 100%; height: 100%; box-sizing: border-box; }
+  /* v157.55（老板「视窗大小不随意变动，内容可超出虚拟空间」）：
+     给地图视窗加 `overflow:hidden` —— 把 3D 奇观模型与雷霆箭头(#wonder-arrow)的溢出
+     **裁在地图框内**，绝不漏进外层 `.view-box`(overflow:auto)。
+     否则奇观（如戴森残片）转到屏幕边缘时，箭头溢出会触发外层滚动条，
+     滚动条吃掉 ~15px → .map-wrap(100%) 缩小 → 画布每帧跟着缩 → 奇观扫过边缘时
+     画布尺寸随滚动条出现/消失跳变 = 用户感知的「网页界面大小调整 / 震颤」。
+     裁掉溢出后：视窗尺寸恒定，内容可超出（被裁），不再反向改变视窗。 */
+  .map-wrap { position: relative; padding: 0; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; }
   /* v91.30：**雷霆大箭头** —— 指向今日奇观的大标记（脉动 + 光晕），点它开奇观菜单。 */
   .wonder-arrow {
     /* v91.73（老板）：不可点击 / 不可选中 —— 纯指路标记（奇观本体在地图上点击打开）。 */
@@ -4752,9 +4759,9 @@
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=707b7b2a"></script>
-<script src="js/bundle-core.js?v=707b7b2a"></script>
-<script src="js/bundle-war.js?v=707b7b2a"></script>
-<script src="js/bundle-ui.js?v=707b7b2a"></script>
+<script src="vendor/three.min.js?v=3762e548"></script>
+<script src="js/bundle-core.js?v=3762e548"></script>
+<script src="js/bundle-war.js?v=3762e548"></script>
+<script src="js/bundle-ui.js?v=3762e548"></script>
 </body>
 </html>
