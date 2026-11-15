@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "d31dacbe162f6071",
+ "sourceHash": "11bc89dea796f985",
  "layout": {
   "order": [
    "core",
@@ -512,7 +512,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7413,
+   "lines": 7434,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -907,7 +907,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 8053,
+   "lines": 8061,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -920,9 +920,9 @@
     "gltf",
     "state",
     "fog",
+    "data",
     "ui-fx",
     "placement",
-    "data",
     "village",
     "camp",
     "ruin",

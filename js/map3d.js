@@ -500,15 +500,23 @@ import './gltf.js';
   }
   M.buildSkyClouds = buildSkyClouds;
 
-  var TERRAIN_RGB = {
-    lake:    [28, 66, 104],     /* 深蓝 */
-    zhaoze:  [86, 104, 70],     /* 沼泽：浑浊的青褐绿（不是"黑绿"） */
-    plain:   [188, 176, 132],   /* 浅土黄（能立城的空地） */
-    caoyuan: [162, 180, 98],    /* 草原：黄绿 */
-    forest:  [48, 112, 58],     /* 森林：饱和的深绿（绝不会是黄的） */
-    desert:  [216, 186, 120],   /* 荒漠：沙黄 */
-    hill:    [156, 144, 126]    /* 山地：暖灰岩；很高的地方掺雪 */
-  };
+  /* v157.71（老板「地图上各种地块颜色，根本分不清是什么」）：
+   * 这里**不再另写一份**地形色。唯一来源 = DATA.TERRAIN[t].color，
+   * 七色已在 data.js 按 v45 老板拍板的「色相拉开 / 明度分档 / 饱和度兜底」重排。
+   * 旧本地字面量的病根：plain/desert 32.1、zhaoze/forest 亮度差 3.2，
+   * 又与 2D TERRAIN_TINT、面板 DATA.TERRAIN.color 三套口径互不一致。
+   * bundle 顺序 core → war → ui，data.js 在 core，此处 GAME.DATA.TERRAIN 已就绪；
+   * 单模块加载 / 测试桩缺 DATA 时只兜一个 plain，正常路径永远走派生。 */
+  var TERRAIN_RGB = (function () {
+    var D = (GAME.DATA && GAME.DATA.TERRAIN) || {}, out = {};
+    Object.keys(D).forEach(function (k) {
+      var h = D[k] && D[k].color;
+      if (typeof h !== 'string' || h.length !== 7 || h.charAt(0) !== '#') return;
+      out[k] = [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    });
+    if (!out.plain) out.plain = [170, 214, 186];
+    return out;
+  })();
   M.terrainRGB = TERRAIN_RGB;
 
   /* ============================================================

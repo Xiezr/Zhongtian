@@ -2233,14 +2233,35 @@ import './core.js';
    *   山地         废钢 +5%/级
    * 这正是高等级野地值得反复争夺的根本原因。
    * ============================================================ */
+  /* v157.71（老板截图：「地图上各种地块颜色，根本分不清是什么」）
+   * ------------------------------------------------------------
+   * 病根不在某个颜色值，在**同一份地形信息曾有三套口径**：
+   *   ① 这里 DATA.TERRAIN[t].color —— 全仓 grep 无任何消费者（死字段，且是旧土黄绿）；
+   *   ② map3d.js 另写一份 TERRAIN_RGB 给 3D 星球；
+   *   ③ map.js 的 TERRAIN_TINT 给 2D 方格图（v45 已按老板拍板原则重排过）。
+   * 旧 ② 实测：plain/desert RGB 距 32.1、zhaoze/forest 亮度差 3.2、
+   * plain/caoyuan 亮度差 5.1 —— 七色塌进「土黄绿」一个色族；未探明区再
+   * 乘 paintGlobeFog 的 0.34，色差只剩 1/3，实机截图中位亮度 79/255、
+   * 51.6% 像素饱和度 <0.2，主色桶全是 64,64,64 / 64,64,32 这类近无彩色。
+   *
+   * 本版：这里升为**地形色唯一来源**，map3d.js 的 TERRAIN_RGB 改为派生；
+   * 七色按 v45 老板已拍板的「色相拉开 + 明度分档 + 同名色相时饱和度兜底」重排
+   * （见 map.js TERRAIN_TINT 上方注释）：
+   *   湖泊 饱和蓝·暗 ｜ 沼泽 低饱和青灰·中暗 ｜ 森林 饱和深绿·暗
+   *   平原 浅青绿·最亮（能立城，色相独一份）｜ 草原 亮黄绿
+   *   荒漠 高饱和沙橙·亮 ｜ 山地 暖灰岩·中（低饱和，靠明度与沼泽拉开）
+   * 实测：最小两两 RGB 距 32.1 → 62.5、平均 113.2 → 142.7。
+   * ⚠️ 不动 paintGlobeFog 的 0.34 两态（v157.68「干净边界感」口径），
+   *    未探明区仍均匀压暗、不泄露地形情报；改的是**已探明区**能不能认出来。
+   * ⚠️ TERRAIN_TINT 是 2D 方格的亮/暗双色（立体地块用），不是同一维度，不动。 */
   DATA.TERRAIN = {
-    plain:   { name: '平原', color: '#b8c08a', move: 1.0, buildable: true,  add: { grain: 0.03 }, desc: '可建新城。净水 +3%/级' },
-    caoyuan: { name: '草原', color: '#a9c08a', move: 1.0, buildable: false, add: { grain: 0.03 }, desc: '净水 +3%/级' },
-    zhaoze:  { name: '沼泽', color: '#8a9d6b', move: 1.4, buildable: false, add: { grain: 0.05 }, desc: '净水 +5%/级' },
-    lake:    { name: '湖泊', color: '#5f86a3', move: 1.6, buildable: false, add: { grain: 0.08 }, desc: '净水 +8%/级（净水产量最高）' },
-    forest:  { name: '森林', color: '#4e7a3c', move: 1.4, buildable: false, add: { wood: 0.05 },  desc: '生物质 +5%/级' },
-    desert:  { name: '荒漠', color: '#cbb277', move: 1.8, buildable: false, add: { stone: 0.05 }, desc: '电能 +5%/级' },
-    hill:    { name: '山地', color: '#9c8871', move: 1.6, buildable: false, add: { iron: 0.05 },  desc: '废钢 +5%/级' },
+    plain:   { name: '平原', color: '#aad6ba', move: 1.0, buildable: true,  add: { grain: 0.03 }, desc: '可建新城。净水 +3%/级' },
+    caoyuan: { name: '草原', color: '#a4c448', move: 1.0, buildable: false, add: { grain: 0.03 }, desc: '净水 +3%/级' },
+    zhaoze:  { name: '沼泽', color: '#46686a', move: 1.4, buildable: false, add: { grain: 0.05 }, desc: '净水 +5%/级' },
+    lake:    { name: '湖泊', color: '#1e54a8', move: 1.6, buildable: false, add: { grain: 0.08 }, desc: '净水 +8%/级（净水产量最高）' },
+    forest:  { name: '森林', color: '#247838', move: 1.4, buildable: false, add: { wood: 0.05 },  desc: '生物质 +5%/级' },
+    desert:  { name: '荒漠', color: '#eeba4e', move: 1.8, buildable: false, add: { stone: 0.05 }, desc: '电能 +5%/级' },
+    hill:    { name: '山地', color: '#b0a094', move: 1.6, buildable: false, add: { iron: 0.05 },  desc: '废钢 +5%/级' },
     city:    { name: '城市', color: null, move: 1.0, buildable: false, add: null, step: 0 },
   };
   /* ⛔ v90.76：`DATA.TERRAIN_WEIGHTS` 退役 —— 地形占比改由**球面内核**原生决定

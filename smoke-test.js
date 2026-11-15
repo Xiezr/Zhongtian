@@ -48811,12 +48811,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         + ' · 污染 ' + t0K + '→' + t1K + '→' + TNK.of(cityK)
         + ' · 折损=' + mutK.toFixed(2));
 
+    /* v157.71：旧写法把「四个消费点在岗」和 `GAME.VERSION = 'v157.70'` 绑死，
+       每升一版就假红一次（v157.69→70 已手动改过一轮）。保留面真正要守的是
+       消费点在岗 + 版本确实递进过退役那轮，不该锁某个具体版本号。
+       改成解析数值下界：以后 v157.72/80 都不假红，但版本被清空或倒退仍会翻红。 */
+    var verK = /GAME\.VERSION = 'v157\.(\d+)'/.exec(mSrc);
+    var verN = verK ? +verK[1] : -1;
     check('§586k 保留面：棚户的寒潮 / 火 / 辐射云代价与污染产量折损消费点照旧在岗',
       /coldLoss/.test(gSrc) && /fireLoss/.test(gSrc)
       && /shantyLoss/.test(sSrc) && /villageLoss/.test(sSrc)
       && /mutMulOf/.test(stSrc)
-      && /GAME\.VERSION = 'v157\.70'/.test(mSrc),
-      'growth / surge / state / main 四处');
+      && verN >= 69,
+      'growth / surge / state / main 四处 · 版本 v157.' + verN);
 
     var arcK = fsK.readFileSync(pK.join(__dirname, '需求档案.md'), 'utf8');
     check('§586k 台账面：v157.69 与老板原话在册（需求档案）',
@@ -49019,6 +49025,114 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /下月预告/.test(boxL.innerHTML) && /逐局构筑/.test(boxL.innerHTML),
       'HTML ' + boxL.innerHTML.length + ' 字符 · 动作 '
         + (boxL.innerHTML.match(/data-action="agenda-/g) || []).length + ' 个');
+  })();
+
+  /* ============================================================
+   * §586m（v157.71 · 老板「地图上各种地块颜色，根本分不清是什么」）
+   * 五层守卫：① 源码面唯一来源 ② 数据面七色 + 色差下限 ③ 旧近色对确实拉开
+   *           ④ 运行时同源 ⑤ v157.68 迷雾两态保留面
+   * ⚠️ 带下限：必须真解析出 7 个 HEX、21 个两两距离，且旧的三对近色
+   *    全部被拉过 60 —— 空表 / 全同色 / 只改注释 / 悄悄调回旧值都会翻红。
+   * ============================================================ */
+  (function () {
+    var fsM = require('fs'), pathM = require('path');
+    var dSrcM = fsM.readFileSync(pathM.join(__dirname, 'js', 'data.js'), 'utf8');
+    var mSrcM = fsM.readFileSync(pathM.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var KEYS = ['plain', 'caoyuan', 'zhaoze', 'lake', 'forest', 'desert', 'hill'];
+    var HEX = {};
+    KEYS.forEach(function (k) {
+      var re = new RegExp('\\b' + k + ":\\s*\\{\\s*name:\\s*'[^']*',\\s*color:\\s*'(#[0-9a-fA-F]{6})'");
+      var mm = re.exec(dSrcM);
+      if (mm) HEX[k] = mm[1];
+    });
+    var hexN = Object.keys(HEX).length;
+    function rgbOf(h) {
+      return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    }
+    function distM(a, b) {
+      var x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
+      return Math.sqrt(x * x + y * y + z * z);
+    }
+    var pairsM = {}, minD = Infinity, minPair = '', sumD = 0;
+    for (var iM = 0; iM < KEYS.length; iM++) {
+      for (var jM = iM + 1; jM < KEYS.length; jM++) {
+        if (!HEX[KEYS[iM]] || !HEX[KEYS[jM]]) continue;
+        var dM = distM(rgbOf(HEX[KEYS[iM]]), rgbOf(HEX[KEYS[jM]]));
+        pairsM[KEYS[iM] + '-' + KEYS[jM]] = dM;
+        sumD += dM;
+        if (dM < minD) { minD = dM; minPair = KEYS[iM] + '-' + KEYS[jM]; }
+      }
+    }
+    var pairN = Object.keys(pairsM).length;
+    var avgD = pairN ? sumD / pairN : 0;
+
+    check('§586m 源码面：3D 地形色改为 DATA.TERRAIN.color 派生，不再另写字面量',
+      /var TERRAIN_RGB = \(function \(\)/.test(mSrcM)
+      && /GAME\.DATA && GAME\.DATA\.TERRAIN/.test(mSrcM)
+      && /M\.terrainRGB = TERRAIN_RGB/.test(mSrcM)
+      && !/var TERRAIN_RGB = \{/.test(mSrcM)
+      && /v157\.71/.test(dSrcM)
+      && /地形色唯一来源/.test(dSrcM),
+      'data.js 含 v157.71 墓碑 · map3d.js 派生形态已就位 · 字面量已消失');
+
+    check('§586m 数据面：七色齐全 + 21 组两两距离 + 色差下限（防平凡解）',
+      hexN === 7 && pairN === 21 && minD >= 60 && avgD >= 130,
+      'hex=' + hexN + '/7 · 距离组=' + pairN + '/21 · 最小=' + minD.toFixed(1)
+        + '(' + minPair + ') · 平均=' + avgD.toFixed(1));
+
+    check('§586m 旧近色对确实被拉开（plain/desert、zhaoze/forest、plain/caoyuan）',
+      pairsM['plain-desert'] >= 60 && pairsM['zhaoze-forest'] >= 60
+      && pairsM['plain-caoyuan'] >= 60,
+      'plain-desert ' + (pairsM['plain-desert'] || 0).toFixed(1) + '(旧32.1) · '
+        + 'zhaoze-forest ' + (pairsM['zhaoze-forest'] || 0).toFixed(1) + '(旧40.6) · '
+        + 'plain-caoyuan ' + (pairsM['plain-caoyuan'] || 0).toFixed(1) + '(旧43.0)');
+
+    /* 运行面 = vm 真调派生 IIFE（比只读运行时更强）。
+       ⚠️ 不能直接读 GAME.map3d.terrainRGB：smoke 的 node 桩没有 THREE，
+          map3d.js 会走 "enabled:false · why:no-three" 降级分支（见 map3d.js:143），
+          只挂 9 个降级 API，terrainRGB 根本不注册 —— 桩限制，不是产品 bug。
+       于是把派生 IIFE 从源码抽出来，在独立 GAME 上真调两次：
+         ① 用真实 DATA → 7/7 逐位同源；② 塞一个哨兵色 → 结果必须跟着变，
+         防「派生是假的、其实写死了一张表」的平凡解。 */
+    var vmM = require('vm');
+    var segM = /var TERRAIN_RGB = \(function \(\) \{[\s\S]*?\n  \}\)\(\);/.exec(mSrcM);
+    function deriveM(terrainM) {
+      if (!segM) return null;
+      var ctxM = { GAME: { DATA: { TERRAIN: terrainM } } };
+      ctxM.window = ctxM;
+      try {
+        vmM.runInNewContext(segM[0], ctxM, { filename: 'terrain-derive.js' });
+        return ctxM.TERRAIN_RGB || null;
+      } catch (e) { return null; }
+    }
+    var tableM = {};
+    KEYS.forEach(function (k) { tableM[k] = { color: HEX[k] }; });
+    var rgbM = deriveM(tableM), sameN = 0, mismatch = [];
+    if (rgbM) KEYS.forEach(function (k) {
+      var want = rgbOf(HEX[k]), got = rgbM[k];
+      if (got && got.length === 3 && got[0] === want[0] && got[1] === want[1] && got[2] === want[2]) sameN++;
+      else mismatch.push(k);
+    });
+    var sentinelM = {};
+    KEYS.forEach(function (k) { sentinelM[k] = { color: HEX[k] }; });
+    sentinelM.plain = { color: '#123456' };
+    var rgbM2 = deriveM(sentinelM);
+    var followsM = !!rgbM2 && !!rgbM2.plain
+      && rgbM2.plain[0] === 0x12 && rgbM2.plain[1] === 0x34 && rgbM2.plain[2] === 0x56
+      && !(rgbM && rgbM.plain && rgbM2.plain[0] === rgbM.plain[0]);
+    check('§586m 运行面：vm 真调派生 —— 7/7 同源，且改 DATA 颜色结果跟着变',
+      !!segM && hexN === 7 && sameN === 7 && followsM,
+      '真调同源 ' + sameN + '/7 · 哨兵 #123456 跟随=' + followsM
+        + (mismatch.length ? ' · 不一致 ' + mismatch.join(',') : ''));
+
+    check('§586m 保留面：v157.68 迷雾两态 0.34 未被借机改动',
+      /kCur = \(vv >= 1\) \? 1 : 0\.34/.test(mSrcM)
+      && /kCur = \(v2 >= 1\) \? 1 : 0\.34/.test(mSrcM)
+      && /v157\.68 两态/.test(mSrcM)
+      /* _fogLit 字样允许留在 v157.68 墓碑注释里（项目惯例），但**不许复活成代码** */
+      && !/_fogLit\s*=/.test(mSrcM)
+      && !/_fogLit1\s*=/.test(mSrcM),
+      '未探明仍 0.34 均匀压暗 · 已探明原色 · 贴地加亮层未复活');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
