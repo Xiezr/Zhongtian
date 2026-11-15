@@ -303,7 +303,8 @@ import './gltf.js';
    * 云是一块块被挖掉洞的马赛克，洞口边缘随格子走向锯齿，远看像破洞的纱网。
    * 现在改口径：**云层不切割** —— 一整层连续球壳（buildSkyClouds 的 M._sky）
    * 罩住全星，探明度**不再决定有没有云**；
-   * 已探明与否改由**地表亮度**表达（buildFog 的贴地加亮层 _fogLit / _fogLit1）。
+   * 已探明与否仍由**地表亮度**表达，但 v157.68 起改成「未探明整体压暗」的
+   *   顶点色两态（见 paintGlobeFog）—— 不再按格铺贴地加亮六边形（会在视野内造碎斑）。
    *
    * 大气层基准高度（海平面之上，世界单位）。取 **55** 的依据：
    *   · 最高峰 ≈ 40 —— 云顶必须整体高于它，否则山会穿破云壳、读起来是"地面上的斑块"；
@@ -3469,8 +3470,10 @@ import './gltf.js';
    * 雾必须浮在地形之上，否则山脊会穿破它。
    * 只在 fog.ver() 变化时重建 —— 全量 24 万个面片，不能每帧跑。
    * ============================================================ */
-  /* v92.240j：探明度不再切云，改成两级**贴地加亮**层（已探明满强度 / 半明半强度）。 */
-  var _fogLit = null, _fogLit1 = null;
+  /* ⛔ v157.68（老板截图「杂色」）：两级**贴地加亮六边形层**（_fogLit / _fogLit1）整条退役。
+     它们按 fog 三档给同一片已探明区铺不同强度的六边形，正是视野内部那些
+     硬边浅色碎斑的来源。已探明范围此后不叠加任何几何层，只由
+     paintGlobeFog 在顶点色上做「原色 / 均匀压暗」明暗两态。 */
   /* ============================================================
    * v157e：**按迷雾压暗 globe 的顶点色**
    * ------------------------------------------------------------
@@ -3481,10 +3484,13 @@ import './gltf.js';
    * 为什么不做成独立图层：试过两版，都毁轮廓（贴地壳 → 多边形边，
    * 统一球壳 → 露出浅色斑块）。**压暗是颜色的事，就在颜色上做。**
    *
-   * 系数：已探明 1.0 / 半明 0.78 / 未探明 0.34。
-   * 未探明仍留 1/3 亮度 —— 地形轮廓看得见（"那里有东西，只是看不清"），
-   * 但格间色差被压到几乎不可辨，"网格"就消失了。
-   * ============================================================ */
+ * 系数（v157.68 改为两态）：已探明（fog≥1）1.0 / 未探明 0.34。
+ * 未探明仍留 1/3 亮度 —— 地形轮廓看得见（"那里有东西，只是看不清"），
+ * 但格间色差被压到几乎不可辨，"网格"就消失了。
+ * ⚠️ 旧口径还有「半明 0.78」这一中间档：三档在 reveal 半径边缘交错时，
+ *    已探明范围内部会被切成深浅不一的六边形碎斑（老板截图「杂色」）。
+ *    v157.68 起半明并入已探明（内容是否可见仍由 fog.get 控制，不靠颜色分档）。
+ * ============================================================ */
   function paintGlobeFog() {
     var g = M._globe, base = M._globeColBase, SPn = GAME.sphere;
     if (!g || !base || !SPn || !SPn.nearestCell) return;
@@ -3511,7 +3517,9 @@ import './gltf.js';
       if (i % PER_FACE === 0 || ciCur < 0) {
         ciCur = SPn.nearestCell([dx, dy, dz]);          /* 每个面起点做一次全局查找 */
         var vv = (ciCur >= 0 && F) ? F.get(ciCur) : 2;
-        kCur = (vv === 2) ? 1 : (vv === 1 ? 0.78 : 0.34);
+        /* v157.68：两态（已探明含半明 = 原色 / 未探明 = 均匀压暗），
+           中间档 0.78 已在 reveal 边缘造成六边形深浅碎斑，退役。 */
+        kCur = (vv >= 1) ? 1 : 0.34;
       } else if (SPn.adj && SPn.cells) {
         var best = ciCur, cd = SPn.cells[ciCur] ? SPn.cells[ciCur].dir : null;
         var bd = cd ? (cd[0] * dx + cd[1] * dy + cd[2] * dz) : -2;
@@ -3529,7 +3537,7 @@ import './gltf.js';
         if (best !== ciCur) {
           ciCur = best;
           var v2 = (ciCur >= 0 && F) ? F.get(ciCur) : 2;
-          kCur = (v2 === 2) ? 1 : (v2 === 1 ? 0.78 : 0.34);
+          kCur = (v2 >= 1) ? 1 : 0.34;       /* v157.68 两态，同上一处 */
         }
       }
       arr[o] = base[o] * kCur; arr[o + 1] = base[o + 1] * kCur; arr[o + 2] = base[o + 2] * kCur;
@@ -3538,189 +3546,35 @@ import './gltf.js';
   }
   M.paintGlobeFog = paintGlobeFog;
 
+  /* ============================================================
+   * v157.68（老板截图「杂色」）：3D 视野渲染改成「两态 + 干净边界」。
+   * ------------------------------------------------------------
+   * 旧口径（v92.240j ~ v157e）在这里按 fog 三档铺两层**贴地六边形加亮层**
+   * （fog=2 → 0.20 / fog=1 → 0.10 / fog=0 → 无），globe 顶点色再按
+   * 1.0 / 0.78 / 0.34 三档压暗、线框按三档染色。三档在 reveal 半径边缘
+   * 交错 → 已探明范围内部被切成一片片硬边六边形深浅碎斑。
+   * 实机证据：.workbuddy/shots/v15768-BEFORE-fogclean.png —— 深蓝未探明底 +
+   * 中央一圈硬边浅色六边形碎斑，与老板放大截图同构。
+   *
+   * 老板口径（v157.63 逐字）：「要的是边界感，而不是在视野内增加渲染」。
+   * 本版据此：
+   *   ① 已探明范围内部**零额外渲染** —— 删掉两层贴地加亮几何，
+   *      globe 顶点色回原色，线框统一冷蓝；半明不再单独成一档颜色。
+   *   ② 未探明**整体均匀压暗**（paintGlobeFog 的 0.34）+ 线框隐形 ——
+   *      一片干净的暗，没有中间档、没有羽化、没有格间色差斑块。
+   *   ③ 边界 = 已探明/未探明之间的六边形格边，明暗分明、一条干净的线。
+   * 大气云壳（buildSkyClouds 的 M._sky）不按格分档，保持不动。
+   *
+   * 两条历史弯路别再走（v157e 已记录）：贴地压暗层 → 外轮廓多边形棱；
+   * 统一球壳 → 露出浅色斑块。压暗是「颜色」的事，就在顶点色上做。
+   * ============================================================ */
   function buildFog() {
-    var kill = function (m) { if (m) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } };
-    kill(_fogLit); kill(_fogLit1); _fogLit = _fogLit1 = null;
-    /* v137：云材质数组也要清 —— `kill` 只 dispose 材质，数组里的旧引用还在，
-       而 render 每帧会遍历它推 uTime → 换星球/迷雾重建时越积越多。 */
-    M._cloudMats = [];
-    var F = GAME.fog, SPn = GAME.sphere;
-    if (!F || !SPn || !SPn.fpos || !SPn.faceCell) return;
+    var F = GAME.fog;
+    if (!F) return;
     F.ensure();
-    var fpos = SPn.fpos, fc = SPn.faceCell, cells = SPn.cells;
-    var lit = [], half = [], t, v;
-    /* v155h：原来对**每个三角面**都判一次 → 同一格可能被塞进列表多次
-       （六边形通常由 6 个三角面拼，雾层顶点因此膨胀到 73 万）。
-       按**格子**去重后每格只画一次。 */
-    /* ============================================================
-     * v155m（老板：「六边形内有三角形」· 第三次）——
-     * 根因：这里按**三角面**收集，且每格只留**第一个**三角面 →
-     * 雾只铺了六边形的 1/6（一个三角），在六边形内部呈现为三角形。
-     * 现在按**格子**收集，makeMesh 用整块六边形（中心 + 外沿）铺。
-     * ============================================================ */
-    /* v92.240j：这里收集的不再是"要铺云的格子"，而是**要加亮的地块**。
-       fog=2（已探明）→ lit（满强度）；fog=1（半明）→ half（半强度）；
-       fog=0（未探明）→ 两边都不进 → 只有大气层罩着、地表保持原亮度（最暗）。 */
-    var _seenLit = {}, _seenHalf = {}, lit = [], half = [];
-    var _cellOfFace = SPn.faceCell || null;
-    for (t = 0; t < fc.length; t++) {
-      v = F.get(fc[t]);
-      var _k = _cellOfFace ? _cellOfFace[t] : t;
-      if (v === 2) { if (!_seenLit[_k]) { _seenLit[_k] = 1; lit.push(_k); } }
-      else if (v === 1) { if (!_seenHalf[_k]) { _seenHalf[_k] = 1; half.push(_k); } }
-    }
-    /* ============================================================
-     * v137（老板：「地图上黑魆魆的，能不能做云雾遮盖效果……我看人家又三维又流体的」）
-     * ------------------------------------------------------------
-     * 改前：未探明区 = 一层 `0x070b11`、**不透明度 0.94** 的实心面。
-     *      那不是"雾"，是"拿黑布盖住" —— 整球看过去就是一块死黑饼。
-     * 现在：同一批三角面换 **FBM 噪声着色器** ——
-     *   · 3D value noise 四倍频叠加（fbm），乘上缓慢平移的时间 → 云在球面上流动；
-     *   · 厚度决定不透明度与亮度（薄的透出底下地形，厚的更白更实）；
-     *   · 颜色从深蓝灰渐变到灰白 —— 读起来是"高空云层"，不是"没渲染出来的黑"。
-     * 为什么不上 raymarching 体积云（leoawen / jorjboi 那类）：
-     *   那套要 3D 纹理烘焙 + TAA + 后处理管线，是"第一人称飞行穿过云"的方案；
-     *   这里是**俯视一颗球**，云贴在球壳上已经足够"三维又流体"，
-     *   成本从"每像素步进 20+ 次"降到"每像素 4 次噪声"。
-     * ============================================================ */
-    var CLOUD_VS = 'varying vec3 vP;\n'
-      + 'void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
-    var CLOUD_FS = [
-      'uniform float uTime; uniform float uBase; uniform float uAlpha;',
-      'varying vec3 vP;',
-      'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }',
-      'float n31(vec3 p){',
-      '  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
-      '  return mix(mix(mix(h31(i), h31(i + vec3(1.0,0.0,0.0)), f.x),',
-      '                 mix(h31(i + vec3(0.0,1.0,0.0)), h31(i + vec3(1.0,1.0,0.0)), f.x), f.y),',
-      '             mix(mix(h31(i + vec3(0.0,0.0,1.0)), h31(i + vec3(1.0,0.0,1.0)), f.x),',
-      '                 mix(h31(i + vec3(0.0,1.0,1.0)), h31(i + vec3(1.0,1.0,1.0)), f.x), f.y), f.z);',
-      '}',
-      'float fbm(vec3 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * n31(p); p *= 2.03; a *= 0.5; } return v; }',
-      'void main(){',
-      '  vec3 d = normalize(vP);',
-      /* 两层不同速度 → 视差感（内层慢、外层快） */
-      /* 各向异性缩放 → 云被拉成**丝带状**（等比例缩放只会得到一团团噪点） */
-      '  vec3 q1 = d * vec3(3.1, 6.4, 3.1) + vec3(uTime * 0.020, uTime * 0.008, uTime * 0.014);',
-      '  vec3 q2 = d * vec3(8.0, 15.0, 8.0) - vec3(uTime * 0.011, uTime * 0.017, uTime * 0.006);',
-      /* ⚠️ 第一版参数（uBase 0.72 + smoothstep 0.30~0.80）实测像"磨砂玻璃球"：
-         整颗球均匀糊一层白，地形一点透不出来 —— 那不是云，是毛玻璃。
-         云要**有空洞**：薄处几乎全透（露出地形）、厚处几乎不透。
-         所以 uBase 降到 0.34，并把 smoothstep 区间收窄（0.42~0.72）——
-         同样一张噪声图，明暗对比拉开，才有"云团 + 云隙"的层次。 */
-      '  float f = fbm(q1) * 0.68 + fbm(q2) * 0.32;',
-      /* ⛔ v157.44（老板：「加大云量」）：覆盖阈值下移 0.42→0.30、上沿 0.72→0.68。
-         只动 smoothstep 的**下沿**就能改"云占多大面积"（f 超过下沿就算云），
-         不动 uBase 的天花板 —— 避免重演 v92.240i 那个"磨砂玻璃球"（uBase 0.72 + 宽区间）。
-         实测对照见 docs/_史料/交付/v15744-云量对比-{前,后}.png。 */
-      '  float a = uAlpha * (uBase + (1.0 - uBase) * smoothstep(0.30, 0.68, f));',
-      /* v154d: 未探明是"微暗"不是"雪白" —— 云色压到深蓝灰，厚度只影响深浅 */
-      '  vec3 col = mix(vec3(0.05,0.07,0.10), vec3(0.34,0.38,0.45), smoothstep(0.35, 0.75, f));',
-      '  gl_FragColor = vec4(col, a);',
-      '}'
-    ].join('\n');
-    function cloudMat(opacity, base) {
-      var mm = new THREE.ShaderMaterial({
-        uniforms: {
-          uTime: { value: 0 },
-          uBase: { value: base },
-          uAlpha: { value: opacity },
-        },
-        vertexShader: CLOUD_VS,
-        fragmentShader: CLOUD_FS,
-        transparent: true, depthWrite: false, side: THREE.DoubleSide,
-      });
-      mm.frustumCulled = false;
-      (M._cloudMats = M._cloudMats || []).push(mm);
-      return mm;
-    }
-    /* v92.240j：新增第 9 参 blend —— 传 THREE.AdditiveBlending 即"加亮"（地表提亮层用）。 */
-    function makeMesh(list, lift, color, opacity, order, useCloud, cloudBase, shellR, blend) {
-      if (!list.length) return null;
-      /* v155m：list 里装的是**格索引**；每格铺一块完整六边形（中心 + 外沿三角扇）。 */
-      var position = [], index = [], i, k, d;
-      for (i = 0; i < list.length; i++) {
-        var cx = cells[list[i]];
-        if (!cx || !cx.dir || !cx.rim || !cx.rim.length) continue;
-        d = cx.dir;
-        var _base = position.length / 3;
-        /* v92.240i：给了 shellR 就把顶点一律投影到**固定半径**球壳（大气层高度），
-           不再沿各自法向外推 lift —— 云因此是光滑整壳，不随地形起伏。
-           原式 p + p/|p|·lift 等价于 p/|p|·(|p|+lift)，故 shellR 时只需把半径换掉。 */
-        var _r0 = Math.hypot(cx.pos[0], cx.pos[1], cx.pos[2]) || R;
-        var _cr = shellR ? shellR : (_r0 + lift);
-        position.push(cx.pos[0] / _r0 * _cr,
-                      cx.pos[1] / _r0 * _cr,
-                      cx.pos[2] / _r0 * _cr);
-        var _mm = cx.rim.length;
-        for (k = 0; k < _mm; k++) {
-          var _p = cx.rim[k], _pl = Math.hypot(_p[0], _p[1], _p[2]) || 1;
-          var _pr = shellR ? shellR : (_pl + lift);
-          position.push(_p[0] / _pl * _pr, _p[1] / _pl * _pr, _p[2] / _pl * _pr);
-        }
-        for (k = 0; k < _mm; k++) index.push(_base, _base + 1 + k, _base + 1 + ((k + 1) % _mm));
-      }
-      var g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
-      if (index.length) g.setIndex(index);
-      var m = new THREE.Mesh(g, useCloud ? cloudMat(opacity, cloudBase == null ? 0.40 : cloudBase)
-        : new THREE.MeshBasicMaterial({
-            color: color, transparent: true, opacity: opacity,
-            side: THREE.DoubleSide, depthWrite: false,
-            blending: blend || THREE.NormalBlending
-          }));
-      m.renderOrder = order;
-      m.frustumCulled = false;
-      scene.add(m);
-      return m;
-    }
-    /* 外扩量：雾面只需盖住**自己脚下那格的地形**（山脊），不必去盖线框 ——
-       线框现在由顶点色自己熄掉（paintLineFog）。
-       上一版把 lift 提到 14 想盖线框，结果雾壳膨胀到把已探明区也挡住（截图确认）。 */
-    /* ============================================================
-     * v152（老板：「说好未探索区域只要云雾缭绕微暗就行 —— 现在点哪都是
-     * '那边还没探明'，地图根本点不动」）
-     * ------------------------------------------------------------
-     * 迷雾的**作用从"挡住操作"改成"遮住信息"**：
-     *   · 未探明 = 一层薄雾 + 把地形压暗（还看得见轮廓，能点、能走进去）；
-     *   · 半明   = 极薄的一层（几乎只是压一点对比）。
-     * 判定"能不能点/能不能走"的地方也随之改口径（见 prologue.P.pathTo 的
-     * 「雾里可以走，只是看不见」与 map3d.pickAt 的未探明分支）。
-     * ============================================================ */
-    /* v154c：雾团下面直接透出地形色（老板要的是"那里有东西，只是看不清"）。
-       原来 uAlpha 0.62 的云＋lift 4 把地形整个刷白 → 远看像雪原。
-       现在：**更低透明度 + 更贴地**，雾是"一层纱"，地形色仍然透出来。 */
-    /* v155e（老板：「云量太少了」）：未探明从"薄纱"加到"确实有云"，但仍透得出地形 */
-    /* ============================================================
-     * v92.240j（老板：「云层不切割，已探明的地块更亮即可」）
-     * ------------------------------------------------------------
-     * 这里**不再建任何云网格** —— 云是 buildSkyClouds 里那一整层连续大气球壳，
-     * 罩全星、不按格挖洞（挖洞 = 马赛克状破洞纱网，就是老板说的"切割"）。
-     * 探明度改由**贴地加亮**表达：加亮层贴着地形（lift 0.8，只比地表高一点），
-     * 走 AdditiveBlending（叠加提亮，不是盖一层白）—— 地形色仍然认得出。
-     *   · fog=2 已探明 → 0.20 满强度（云底下明显更亮）
-     *   · fog=1 半明   → 0.10 半强度
-     *   · fog=0 未探明 → 无加亮，只有大气层 → 相对最暗
-     * renderOrder 18：压在云层（20~22）之下、地表之上。
-     * ============================================================ */
-    _fogLit = makeMesh(lit, 0.8, 0xfff2dc, 0.20, 18, false, null, null, THREE.AdditiveBlending);
-    _fogLit1 = makeMesh(half, 0.8, 0xfff2dc, 0.10, 18, false, null, null, THREE.AdditiveBlending);
-    /* ============================================================
-     * v157e：未探明的压暗**不再建几何层**，改成直接调 globe 的顶点色
-     * ------------------------------------------------------------
-     * 走过的两条弯路（都留下截图证据，别再走）：
-     *   ① 贴地压暗层（每格按自己地形高度）→ 外轮廓变成 40962 格拼的多边形，
-     *      本该是 K=128 的圆球，边缘却有二十几道棱。
-     *   ② 改成统一球壳半径 → 壳浮在最高地形上方，半球边缘与 globe 交错，
-     *      露出一片片浅色斑块，比原问题更难看。
-     *
-     * 正解：**压暗是"颜色"的事，就该在颜色上做**。
-     * globe 每个顶点的原始色存在 _globeColBase，这里按迷雾乘一个系数写回，
-     * 几何一个字节都不动 → 轮廓永远是那个圆球，也不会有任何夹层。
-     * ============================================================ */
+    /* 只在 fog 版本变化时被调用（render 里 M._fogVer 比对）。
+       两处颜色重算：globe 顶点色（明暗两态）+ 地块线框色（已探明 / 隐形）。 */
     paintGlobeFog();
-    /* v154：海水波纹动画抬到**海平面之上**一点点 —— 只盖水面，不糊陆地 */
-    if (M._waterMat) { }
     paintLineFog();
   }
 
@@ -3749,8 +3603,7 @@ import './gltf.js';
         g = ((_bgH >> 8) & 255) / 255;
         b = (_bgH & 255) / 255;
       }
-      else if (v === 1) { r = 0.28; g = 0.36; b = 0.45; }   /* 半明：灰蓝 */
-      else { r = 0.56; g = 0.70; b = 0.84; }                /* 全明：原冷蓝 */
+      else { r = 0.56; g = 0.70; b = 0.84; }   /* v157.68：已探明（含半明）统一冷蓝，视野内不按格分档 */
       /* v154：区域边界色覆盖雾色（**同一条边**，不另画线 → 没有重影） */
       var rc = M._regionEdgeCol && M._regionEdgeCol[i];
       if (rc) { r = rc[0]; g = rc[1]; b = rc[2]; }
@@ -6134,13 +5987,6 @@ import './gltf.js';
       var _fade = Math.max(0, Math.min(1, (camO.dist - R * 1.15) / (R * 0.55)));
       M._skyMat.uniforms.uFade.value = _fade;
       if (M._sky) M._sky.visible = _fade > 0.02;
-    }
-    if (M._cloudMats && M._cloudMats.length) {
-      var _ct = (Date.now() % 3600000) / 1000;
-      for (var _ci2 = 0; _ci2 < M._cloudMats.length; _ci2++) {
-        var _u = M._cloudMats[_ci2].uniforms;
-        if (_u && _u.uTime) _u.uTime.value = _ct;
-      }
     }
     R3.render(scene, cam);
     var ctx = target2d.getContext('2d');

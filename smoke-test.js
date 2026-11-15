@@ -47580,66 +47580,77 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })());
   })();
 
-  /* ===================== §586g v157.65 现有人口设定插件 =====================
-   * 老板：「加个插件，不改变人口上限，而改变现有人口数值」
-   * 守卫四层：① 源码面（set-pop 段只写 res.pop，不得出现任何上限函数赋值）
-   *          ② 框架面（通用 plugin-action 分发 + transient 不重放 + 参数持久化）
-   *          ③ 运行面（成对注册、插件箱渲染出输入框与动作按钮）
-   *          ④ 功能面（桩造两座城：enable → 存量变 7777、上限函数逐引用不变；disable 不回滚）
+  /* ===================== §586g v157.68 「现有人口设定」整条退役 =====================
+   * 规则变更（§0.7 三件套）：v157.65 旧规则「插件箱有第二张卡、可注入任意存量」
+   *   被老板 2026-11-15 逐字推翻：「插件『现有人口设定』去除」。
+   * 新规则 = 插件箱只剩「人口常满」一张卡，且**再无任何路径直接写存量数值**。
+   *   旧四条断言（在册 / 输入框 / 动作 / 存量 7777）据此反向重写，判据未删未放宽；
+   *   另配一条真调行为断言（enable/disable/toggle + 通用动作分发都不写 pop）。
+   * 守卫四层：① 源码面（注册 / 控件 / 动作 / 文案零残留）
+   *   ② 框架面（插件箱通用 API 保留，不是随插件一起删掉）
+   *   ③ 运行面（byId 为空 · 只渲染一张卡 · viewHTML 无旧文案/输入框）
+   *   ④ 功能面（真调：退役后不存在任何注入路径，两城存量纹丝不动）
    * ===================================================================== */
   (function () {
     var fs = require('fs'), path = require('path');
     var pSrc = fs.readFileSync(path.join(__dirname, 'js', 'plugins.js'), 'utf8');
-    var seg = pSrc.slice(pSrc.indexOf("id: 'set-pop'"));
 
-    check('§586g 源码面：set-pop 只写 GAME.res(c).pop，段内无任何上限函数赋值',
-      seg.length > 0 && /GAME\.res\(c\)\.pop = v;/.test(seg)
-      && !/GAME\.maxPopOf\s*=/.test(seg) && !/GAME\.effPopCapOf\s*=/.test(seg)
-      && !/GAME\.popGrowthOf\s*=/.test(seg));
+    check('§586g 源码面：「现有人口设定」整条零残留（无注册 / 控件 / apply / 动作 / 文案）',
+      !/id:\s*['"]set-pop['"]/.test(pSrc)
+      && pSrc.indexOf("name: '现有人口设定'") < 0
+      && !/plugin-input-/.test(pSrc)
+      && !/data-do="apply"/.test(pSrc)
+      && !/应用到所有城/.test(pSrc)
+      && !/GAME\.res\(c\)\.pop = v;/.test(pSrc)
+      /* 注册块写法是 `transient: true,`；框架 API 说明里的 `· transient: true = …` 不算残留 */
+      && !/transient:\s*true\s*,/.test(pSrc));
 
-    check('§586g 框架面：通用 plugin-action 分发 + transient 启动不重放 + 参数持久化',
+    check('§586g 框架面：插件箱通用 API 仍在（controls / plugin-action / 参数 / transient 分支）',
       /'plugin-action':\s*function/.test(pSrc)
       && /!p\.transient && st\[p\.id\]/.test(pSrc)
       && /PLUG\.getParam = function/.test(pSrc) && /PLUG\.setParam = function/.test(pSrc)
-      && /transient: true/.test(seg));
+      && /typeof p\.controls === 'function'/.test(pSrc));
 
-    check('§586g 运行面：插件成对注册，插件箱渲染出输入框与「应用到所有城」动作',
+    check('§586g 运行面：插件箱只剩人口常满一张卡，旧插件查不到也不渲染',
       (function () {
-        if (!G.plugins || !G.plugins.byId('set-pop')) return false;
-        var s = G.plugins.stats();
+        if (!G.plugins) return false;
+        var st = G.plugins.stats();
         var html = G.plugins.viewHTML();
-        return s.paired === s.total && s.ids.indexOf('set-pop') >= 0
-          && html.indexOf('plugin-input-set-pop') >= 0
-          && html.indexOf('data-do="apply"') >= 0
-          && html.indexOf('data-action="plugin-action"') >= 0;
+        return st.paired === st.total && st.total === 1
+          && st.ids.indexOf('full-pop') >= 0 && st.ids.indexOf('set-pop') < 0
+          && G.plugins.byId('set-pop') === null
+          && html.indexOf('plugin-input-') < 0
+          && html.indexOf('应用到所有城') < 0
+          && html.indexOf('现有人口设定') < 0
+          && html.indexOf('data-action="plugin-toggle"') >= 0;
       })(), G.plugins ? JSON.stringify(G.plugins.stats()) : 'no GAME.plugins');
 
-    check('§586g 功能面：enable → 两城存量变 7777 且上限函数逐引用不变；disable 不回滚',
+    check('§586g 功能面：真调 —— 退役后无任何路径能注入存量（enable/disable/toggle 全 false，存量不变）',
       (function () {
-        if (!G.plugins || !G.plugins.byId('set-pop')) return false;
+        if (!G.plugins) return false;
         var hadCity = !!(G.city && typeof G.city.all === 'function');
         var origAll = G.city && G.city.all, origRes = G.res;
-        var origMax = G.maxPopOf, origEff = G.effPopCapOf;
         var fake = [{ name: 'A', res: { pop: 10 } }, { name: 'B', res: { pop: 20 } }];
         if (!G.city) G.city = {};
         G.city.all = function () { return fake; };
         G.res = function (c) { return c.res; };
-        var old = G.plugins.getParam('set-pop', 9999);
-        G.plugins.setParam('set-pop', 7777);
         var ok = false;
         try {
-          var p = G.plugins.byId('set-pop');
-          var onOk = G.plugins.enable('set-pop', true) === true
-            && fake[0].res.pop === 7777 && fake[1].res.pop === 7777;
-          var capOk = G.maxPopOf === origMax && G.effPopCapOf === origEff;
-          var offOk = G.plugins.disable('set-pop', true) === true
-            && fake[0].res.pop === 7777 && fake[1].res.pop === 7777;
-          ok = onOk && capOk && offOk && !p.active;
+          /* 通用动作分发：伪造一个指向旧 id 的按钮，查不到插件 → 不写 pop */
+          if (G.reg && typeof G.reg.action === 'function') {
+            var el = document.createElement('BUTTON');
+            el.setAttribute('data-plugin', 'set-pop');
+            el.setAttribute('data-do', 'apply');
+            G.reg.action('plugin-action', el, { toast: function () {}, refresh: function () {} });
+          }
+          ok = G.plugins.enable('set-pop', true) === false
+            && G.plugins.disable('set-pop', true) === false
+            && G.plugins.toggle('set-pop') === false
+            && fake[0].res.pop === 10 && fake[1].res.pop === 20
+            && G.plugins.byId('set-pop') === null;
         } catch (e) { ok = false; }
-        /* 恢复桩，避免污染后续断言 */
         if (hadCity) G.city.all = origAll; else delete G.city.all;
         G.res = origRes;
-        G.plugins.setParam('set-pop', old);
         return ok;
       })(), '');
   })();
@@ -47711,7 +47722,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs = require('fs'), path = require('path');
     var pSrc = fs.readFileSync(path.join(__dirname, 'js', 'plugins.js'), 'utf8');
-    var fpSeg = pSrc.slice(pSrc.indexOf('var _origTickOnce'), pSrc.indexOf("id: 'set-pop'"));
+    /* v157.68：旧终点是 id:'set-pop'，该插件退役后 indexOf 返回 -1 会把切片打穿；
+       改用唯一且稳定的「启动恢复」IIFE 注释作终点。 */
+    var _fpEnd = pSrc.indexOf('/* ---------------- 启动恢复');
+    var fpSeg = pSrc.slice(pSrc.indexOf('var _origTickOnce'), _fpEnd > 0 ? _fpEnd : pSrc.length);
 
     check('§586i 源码面①：无限人口整条退役（无注册 / 无 999999 上限函数 / 上限出口零赋值）',
       pSrc.indexOf("id: 'infinite-pop'") < 0
@@ -47786,6 +47800,91 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§586i 台账面：v157.67 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');
       return arc.indexOf('v157.67') >= 0 && arc.indexOf('随时补足') >= 0;
+    })());
+  })();
+
+  /* ===================== §586j v157.68 3D 视野去杂色（两态 + 干净边界） =====================
+   * 老板：截图「杂色」；同一口径 v157.63 逐字：「要的是边界感，而不是在视野内增加渲染」。
+   * 规则变更（§0.7 三件套）：旧规则 = fog 三档在 globe 顶点色(1/0.78/0.34)、
+   *   贴地加亮六边形层(0.20/0.10/无)、线框色(冷蓝/灰蓝/隐形) 三处各自分档，
+   *   reveal 半径边缘交错 → 视野内部一片片硬边六边形深浅碎斑（实机截图实锤）。
+   * 新规则 = 已探明(含半明)原色、未探明整体压暗 0.34、视野内部零额外渲染，
+   *   只在明暗交界留一道干净的六边形格边。
+   * 守卫四层：① 源码面（buildFog 不再建任何几何层）
+   *   ② 源码面（两处 kCur 两态 + 线框统一冷蓝，无中间档）
+   *   ③ 行为面（vm 真调两个 paint 函数：fog=1 与 fog=2 同色、fog=0 = 0.34）
+   *   ④ 台账面（v157.68 在需求档案在册）
+   * ===================================================================== */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var mSrc = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var bfA = mSrc.indexOf('  function buildFog() {');
+    var bfB = mSrc.indexOf('  /* 线框按探明度上色', bfA);
+    var bf = (bfA >= 0 && bfB > bfA) ? mSrc.slice(bfA, bfB) : '';
+
+    check('§586j 源码面①：buildFog 不再按格铺加亮/云几何（视野内零额外渲染）',
+      bf.length > 100
+      && /paintGlobeFog\(\);/.test(bf) && /paintLineFog\(\);/.test(bf)
+      && !/makeMesh\(/.test(bf) && !/scene\.add\(/.test(bf)
+      && !/AdditiveBlending/.test(bf) && !/M\._cloudMats/.test(bf)
+      && !/_fogLit\s*=/.test(mSrc) && !/function makeMesh\(/.test(mSrc)
+      && !/function cloudMat\(/.test(mSrc));
+
+    check('§586j 源码面②：globe 顶点色两态 + 线框统一冷蓝，0.78 / 灰蓝中间档退役',
+      /kCur = \(vv >= 1\) \? 1 : 0\.34;/.test(mSrc)
+      && /kCur = \(v2 >= 1\) \? 1 : 0\.34;/.test(mSrc)
+      && !/vv === 1 \? 0\.78/.test(mSrc) && !/v2 === 1 \? 0\.78/.test(mSrc)
+      && /else \{ r = 0\.56; g = 0\.70; b = 0\.84; \}/.test(mSrc)
+      && !/v === 1\) \{ r = 0\.28/.test(mSrc));
+
+    var dbg586j = { s: '未执行' };
+    check('§586j 行为面：真调 paintGlobeFog / paintLineFog —— fog=1 与 fog=2 同色，fog=0 压暗 0.34',
+      (function () {
+        try {
+          var pgA = mSrc.indexOf('  function paintGlobeFog() {');
+          var pgB = mSrc.indexOf('  M.paintGlobeFog = paintGlobeFog;', pgA);
+          var plA = mSrc.indexOf('  function paintLineFog() {');
+          var plB = mSrc.indexOf('  /* ============================================================', plA);
+          if (pgA < 0 || pgB <= pgA || plA < 0 || plB <= plA) { dbg586j.s = '函数抽取失败'; return false; }
+          var pgSrc = mSrc.slice(pgA, pgB), plSrc = mSrc.slice(plA, plB);
+          /* 3 个顶点方向 = 三条坐标轴；贪心邻接把 ciCur 依次推到 0→1→2，
+             于是三次 F.get 分别拿到 fog 2 / 1 / 0（不需要 16641 个顶点）。 */
+          var arr = new Float32Array(9), base = new Float32Array(9), parr = new Float32Array(9);
+          for (var i = 0; i < 9; i++) {
+            var _k = Math.floor(i / 3), _j = i % 3;
+            base[i] = 1; parr[i] = (_j === _k) ? 1 : 0;
+          }
+          var attr = { count: 3, array: arr, needsUpdate: false };
+          var posAttr = { array: parr };
+          var M = {
+            _globe: { geometry: { getAttribute: function (k) { return k === 'color' ? attr : (k === 'position' ? posAttr : null); } } },
+            _globeColBase: base, _lineColAttr: null, _skyKeep: 0x0a1020
+          };
+          var ci = 0;
+          var SPn = {
+            nearestCell: function () { return ci++; },
+            adj: [[1], [2], []],
+            cells: [{ dir: [1, 0, 0] }, { dir: [0, 1, 0] }, { dir: [0, 0, 1] }],
+            uposCell: new Int32Array([0, 1, 2])
+          };
+          var GAME = { sphere: SPn, fog: { get: function (c) { return [2, 1, 0][c] || 0; } } };
+          new Function('M', 'GAME', pgSrc + '\nreturn paintGlobeFog;')(M, GAME)();
+          var k2 = arr[0], k1 = arr[3], k0 = arr[6];
+          var globeOk = Math.abs(k2 - 1) < 1e-6 && Math.abs(k1 - 1) < 1e-6
+            && Math.abs(k0 - 0.34) < 1e-6;
+          /* 线框：fog=2 的段(0..2) 与 fog=1 的段(6..8) 必须逐分量相等 */
+          var lineArr = new Float32Array(18);
+          M._lineColAttr = { array: lineArr, needsUpdate: false };
+          new Function('M', 'GAME', plSrc + '\nreturn paintLineFog;')(M, GAME)();
+          var lineOk = [0, 1, 2].every(function (q) { return Math.abs(lineArr[q] - lineArr[6 + q]) < 1e-6; });
+          dbg586j.s = 'globe k2=' + k2 + ' k1=' + k1 + ' k0=' + k0 + ' lineEqual=' + lineOk;
+          return globeOk && lineOk;
+        } catch (e) { dbg586j.s = 'EXC ' + (e && e.message); return false; }
+      })(), dbg586j.s);
+
+    check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
+      var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');
+      return arc.indexOf('v157.68') >= 0 && arc.indexOf('现有人口设定') >= 0 && arc.indexOf('杂色') >= 0;
     })());
   })();
 

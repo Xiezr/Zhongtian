@@ -1,5 +1,5 @@
 /* ============================================================
- * plugins.js — 插件箱（v157.64 建 / v157.65 扩 / v157.67 换人口插件 · 老板 2026-11-15「可插拔数值插件」）
+ * plugins.js — 插件箱（v157.64 建 / v157.65 扩 / v157.67 换人口插件 / v157.68 退役存量设定 · 老板 2026-11-15「可插拔数值插件」）
  * ------------------------------------------------------------
  * 需求原话：「给一个可插拔的插件，不影响原代码，实现功能是无限人口。
  *   创建一个插件箱，用于存放这种数值调整的插件，放到菜单上『自动』菜单的左边」
@@ -31,6 +31,12 @@
  *   · 新插件「人口常满」：运行时包装 GAME.tickOnce（在线主循环 / 离线逐秒补算
  *     共用的唯一时间刻度），每拍把每座城存量补到 GAME.effPopCapOf(city)；
  *   · 框架能力未新增，仍然是「底部 PLUG.register 一段」即可加插件。
+ *
+ * v157.68（老板「插件『现有人口设定』去除」）：
+ *   · 「现有人口设定」整条退役（注册块 / 控件 / 动作 / 文案 / 断言全清，留墓碑）；
+ *   · 插件箱此后只保留「人口常满」一张卡，且**再没有任何插件直接写存量数值**；
+ *   · 框架通用能力（controls / actions / getParam-setParam / transient）保留为插件箱 API，
+ *     供后续数值插件复用 —— 它们是容器能力，不是退役插件的实现残留。
  * ============================================================ */
 (function () {
   'use strict';
@@ -280,79 +286,21 @@
   });
 
   /* ============================================================
-   * 内置插件 ②：现有人口设定（v157.65）
+   * ⛔ 内置插件 ③（旧）：现有人口设定 —— v157.68 整条退役
    * ------------------------------------------------------------
-   * 老板：「加个插件，不改变人口上限，而改变现有人口数值」
-   *
-   * 与已退役的「无限人口」（v157.67 退役，原做法换 GAME.maxPopOf）不同：
-   * 这个**一个上限函数都不碰**，只写 GAME.res(city).pop —— 城池的存量数值。
-   * 与「人口常满」同时开启时，后者每拍补足会以当前上限为准覆盖这次注入。
-   *
-   * 为什么能稳住：state.js:4570 的增长口径是
-   *   `if (R.pop < maxPop) R.pop = Math.min(maxPop, R.pop + growth/3600*dtReal)`，
-   * 即 v89.185「只封增长、不削存量」—— 设定值超过上限时既不增长也不被拉回，
-   * 于是「上限照旧、人口变多」可以长期成立；离线补偿（state.js:3346）同口径。
-   * 辐射云 / 气候 / 遣散等既有减员规则照常生效（存量不是锁死，只是一次注入）。
-   *
-   * transient：_on 只在「开启」那一刻注入一次，刷新页面不重放 ——
-   * 否则每次载入都会把玩家此后正常增长的人口覆盖回设定值。
+   * 退役依据（老板逐字）：「插件『现有人口设定』去除」。
+   * 原做法（v157.65）：一次性把每座城 GAME.res(city).pop 注入成玩家填的数值，
+   *   transient 防刷新重放；带输入框控件 + 通用 plugin-action 动作。
+   * 去向：**没有继任者**。存量此后只由游戏既有规则与「人口常满」管理 ——
+   *   后者每拍以 GAME.effPopCapOf(city) 为准补足，不再接受任意手工注入。
+   * 已同步清除：注册块 / controls / apply / actions / 输入框 / 面板文案 /
+   *   smoke §586g 旧断言（改写为「零残留」反向守卫）。
+   * 历史交付留档：docs/_史料/交付/v15765-现有人口设定插件.md（史料不回改）。
    * ============================================================ */
-  PLUG.register({
-    id: 'set-pop',
-    name: '现有人口设定',
-    transient: true,
-    param: 9999,
-    desc: '把当前星球每座城的「现有幸存者」直接设为你填的数值（默认 9999，范围 1–999999）；' +
-      '人口上限（maxPopOf / effPopCapOf / 民心折算）一律不动。' +
-      '这是一次性注入，之后按游戏既有规则演化：因「只封增长、不削存量」，' +
-      '超过上限的人口会留在原地、不会被拉回。关闭插件不回滚，刷新页面也不会重放；' +
-      '想再改一次，改数字再点「应用到所有城」。',
-    controls: function (p) {
-      var v = Number(PLUG.getParam(p.id, p.param));
-      if (!isFinite(v) || v < 1) v = p.param;
-      return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;">' +
-        '<label for="plugin-input-' + p.id + '" style="color:var(--gold-light);font-size:var(--fs-sub);font-weight:700;">目标人口</label>' +
-        '<input type="number" id="plugin-input-' + p.id + '" value="' + v + '" min="1" max="999999" step="1" ' +
-        'style="width:110px;padding:4px 8px;font-size:var(--fs-sub);color:var(--text);' +
-        'background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:var(--r-sm);">' +
-        '<button class="btn sm gold" data-action="plugin-action" data-plugin="' + p.id + '" data-do="apply">应用到所有城</button>' +
-        '</div>';
-    },
-    /* 唯一写入口：只碰存量，不碰任何上限函数 */
-    apply: function (v) {
-      if (typeof GAME.res !== 'function' || !GAME.city || typeof GAME.city.all !== 'function') return 0;
-      var all = GAME.city.all() || [], n = 0;
-      for (var i = 0; i < all.length; i++) {
-        var c = all[i];
-        if (!c) continue;
-        try { GAME.res(c).pop = v; n++; } catch (e) { }
-      }
-      return n;
-    },
-    actions: {
-      apply: function (el, p) {
-        var raw = (typeof document !== 'undefined' && document.getElementById)
-          ? (document.getElementById('plugin-input-' + p.id) || {}).value : undefined;
-        var v = Math.floor(Number(raw));
-        if (!isFinite(v) || v < 1) v = p.param;
-        v = Math.max(1, Math.min(999999, v));
-        PLUG.setParam(p.id, v);
-        if (!p.active) PLUG.enable(p.id, true);       /* _on 会用刚存好的新值注入一次 */
-        var n = p.apply(v);                             /* 幂等：同值重写一次，覆盖 enable 失败的情形 */
-        if (GAME.ui && GAME.ui.toast) GAME.ui.toast('已把 ' + n + ' 座城的现有幸存者设为 ' + v + '（上限未改）');
-        if (GAME.ui && GAME.ui.renderView) GAME.ui.renderView('plugins');
-      }
-    },
-    _on: function () {
-      var v = Math.floor(Number(PLUG.getParam(this.id, this.param)));
-      if (!isFinite(v) || v < 1) v = this.param;
-      this.apply(Math.max(1, Math.min(999999, v)));
-    },
-    _off: function () { /* 存量不回滚：按「只封增长、不削存量」既有口径留在原地 */ }
-  });
 
   /* ---------------- 启动恢复：上次开着的插件重新生效 ----------------
-   * transient 插件跳过（一次性注入，刷新不重放，否则会覆盖此后正常增长的人口）。 */
+   * transient 插件跳过（一次性注入，刷新不重放）。当前在册插件无 transient，
+   * 该分支保留为插件箱 API，供后续一次性数值插件复用。 */
   (function () {
     var st = loadState();
     PLUG.list.forEach(function (p) {
