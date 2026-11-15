@@ -27983,7 +27983,12 @@ window.GAME = window.GAME || {};
     if (_MASK[key]) return _MASK[key];
     var m = document.createElement('canvas'); m.width = F; m.height = F;
     var mc = m.getContext('2d'), img = mc.createImageData(F, F);
-    var fade = Math.max(1, cell / 3);         /* v90.10：过渡带 = 边长 1/3（原 1/2 · 更早 1/4） */
+    /* v157.63（老板：「视野范围渲染出杂色，要边界感，不要视野内增加渲染」）：
+       原 fade = cell/3（约 1/3 边长的羽化带）→ 不同地形交界被柔化成半透渐变，
+       底下透出土壤/邻格色 → 海岸线读成"蓝绿噪点互渗"的抖动带（即老板说的杂色）。
+       收收到 cell/14（约 2px 干净切边）：交界从"柔化填充"变"清晰边界"，
+       同地形边仍 opaque（无缝连片），只在不同地形之间留一道干净的边。 */
+    var fade = Math.max(1, Math.round(cell / 14));
     for (var j = 0; j < F; j++) {
       for (var i = 0; i < F; i++) {
         var aL = wS ? 1 : (i + 0.5) / fade;
@@ -28476,9 +28481,10 @@ window.GAME = window.GAME || {};
     var _tMap = {};
     drawList.forEach(function (d) { _tMap[d.gx + ',' + d.gy] = d.terrain; });
     function _terrAt(gx, gy) { return _tMap[gx + ',' + gy] || null; }
+    /* v157.63：世界采样模式重新启用 edgeOf 边界描边（只在地形类型不同处画，不每格画线，
+       不会重现 v90.5「X 格纹」），与上方 rectMask 收掉的羽化噪声配套：交界变清晰边界。 */
     drawList.forEach(function (d) {
-      if (GAME.map.showWorld !== false && d.terrain !== 'city') return;   /* v90.5：世界采样下交界由羽化处理，不再画硬 AO/描边（否则残留"X"格纹） */
-      edgeOf(d.gx, d.gy, d.el, _terrAt);
+      if (d.terrain !== 'city') edgeOf(d.gx, d.gy, d.el, _terrAt);
     });
 
     /* v90.7（老板）：「地块线条可以有，隐约一点」—— 方格网铺一层**极淡的格线**，
