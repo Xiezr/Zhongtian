@@ -72,6 +72,12 @@
       if (typeof console !== 'undefined' && console.warn) console.warn('[goals.afterBattle]', e);
       out = null;
     }
+    /* v157.70：逐局构筑三选一挂在「一场仗打完，所有新系统在这里结账」的唯一出口。
+       自带 try/catch、不参与战果倍率 —— 出不出牌都不许影响已经落账的兵与资源。
+       守城战 / 无战果由 agenda.afterBattle 自己判掉；同一场仗按 rec.id 幂等。 */
+    if (GAME.agenda && GAME.agenda.afterBattle) {
+      try { GAME.agenda.afterBattle(rec, result, out); } catch (e) { /* 同上：不拖停主流程 */ }
+    }
     return out;
   };
 

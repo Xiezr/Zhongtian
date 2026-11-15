@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "38a352365d47e3c4",
+ "sourceHash": "d31dacbe162f6071",
  "layout": {
   "order": [
    "core",
@@ -92,6 +92,7 @@
    "ui-exped",
    "ui-report",
    "ui-config",
+   "agenda",
    "plugins",
    "main"
   ],
@@ -125,6 +126,7 @@
    "ui-exped",
    "ui-report",
    "ui-config",
+   "agenda",
    "plugins"
   ]
  },
@@ -215,6 +217,7 @@
   "ui-exped",
   "ui-report",
   "ui-config",
+  "agenda",
   "plugins",
   "main"
  ],
@@ -310,6 +313,7 @@
    "ui-exped",
    "ui-report",
    "ui-config",
+   "agenda",
    "plugins",
    "main"
   ]
@@ -320,9 +324,31 @@
  },
  "modules": [
   {
+   "name": "agenda",
+   "file": "js/agenda.js",
+   "lines": 619,
+   "bundle": "ui",
+   "duty": "agenda.js — 行动台（v157.70 · 5 个轻量决策玩法）",
+   "deps": [
+    "state",
+    "data",
+    "ui",
+    "climate",
+    "market",
+    "surge",
+    "ui-view",
+    "battle",
+    "icons",
+    "registry",
+    "domain",
+    "ui-fx",
+    "ui-exped"
+   ]
+  },
+  {
    "name": "battle",
    "file": "js/battle.js",
-   "lines": 5081,
+   "lines": 5122,
    "bundle": "war",
    "duty": "battle.js  回合制战斗（真实数值版）",
    "deps": [
@@ -341,6 +367,7 @@
     "ui",
     "fog",
     "ui-fx",
+    "agenda",
     "sphere",
     "story",
     "items",
@@ -485,7 +512,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7359,
+   "lines": 7413,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -506,12 +533,13 @@
   {
    "name": "deck",
    "file": "js/deck.js",
-   "lines": 159,
+   "lines": 166,
    "bundle": "core",
    "duty": "deck.js — 指令牌：战前带 5 张（v95 · E 卡牌构筑的最小形态）",
    "deps": [
     "state",
-    "data"
+    "data",
+    "agenda"
    ]
   },
   {
@@ -722,7 +750,7 @@
   {
    "name": "goals",
    "file": "js/goals.js",
-   "lines": 212,
+   "lines": 218,
    "bundle": "core",
    "duty": "goals.js — 作战目标 · 战果总装配（v95 · C2 + 第二批的统一入口）",
    "deps": [
@@ -734,6 +762,7 @@
     "idle",
     "state",
     "data",
+    "agenda",
     "trooplv",
     "muster",
     "renown"
@@ -801,7 +830,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4259,
+   "lines": 4274,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -834,6 +863,7 @@
     "faction",
     "colony",
     "placement",
+    "agenda",
     "prologue",
     "delve",
     "ui-core",
@@ -1567,7 +1597,7 @@
   {
    "name": "ui-exped",
    "file": "js/ui-exped.js",
-   "lines": 2121,
+   "lines": 2131,
    "bundle": "ui",
    "duty": "ui-exped.js　出征 · 城内布局 / 统一出征面板 / 计略 / 方案 / 辎重 / 战前推演",
    "deps": [
@@ -1579,6 +1609,7 @@
     "data",
     "ui-fx",
     "ui-modal",
+    "agenda",
     "prologue",
     "rules",
     "sphere",

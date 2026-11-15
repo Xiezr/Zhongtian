@@ -116,11 +116,18 @@
   DK.effOf = function (gen) {
     var out = { atk: 0, def: 0, loot: 0, rep: 0, loss: 0, wall: 0, wound: 0, note: '', refused: [] };
     var arr = DK.chosen();
+    /* v157.70：行动台的「临时指令牌」并入**这唯一出口**。
+       · DK.chosen() 返回副本，所以不写进 s.deck、不占 5 个牌位、不进永久牌组；
+       · 打完一仗由 agenda.afterBattle 清空 —— 用完即弃、不派遗产；
+       · 临时牌是"这一仗的战场指令"，不受带队将风格限制（否则玩家看不到为何没生效）；
+       · tactic.js（战前攻防）与 goals.js（战后战果）都读 effOf，两条链同时生效。 */
+    var _tempId = (GAME.agenda && GAME.agenda.tempCardIdOf) ? GAME.agenda.tempCardIdOf() : null;
+    if (_tempId && arr.indexOf(_tempId) < 0) arr.push(_tempId);
     if (!arr.length) return out;
     var names = [];
     arr.forEach(function (id) {
       /* v107：风格对不上的牌**不生效** —— 但它仍然占着牌位（选牌时就要想清楚）*/
-      if (!DK.usableOf(id, gen)) {
+      if (id !== _tempId && !DK.usableOf(id, gen)) {
         cards().forEach(function (c) {
           if (c.id === id) out.refused.push(c.name);
         });
@@ -136,7 +143,7 @@
         else if (c.eff === 'wall') out.wall += c.mul;
         else if (c.eff === 'wound') out.wound += c.mul;
         if (c.loss) out.loss -= c.loss;       /* 狂怒这类"有代价的牌" */
-        names.push(c.name);
+        names.push(c.name + (id === _tempId ? '(临时)' : ''));
       });
     });
     out.note = '🃏 ' + names.join('·')

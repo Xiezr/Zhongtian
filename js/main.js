@@ -71,6 +71,7 @@ import './bitmaps.js';
 import './portraits.js';
 import './story.js';
 import './ui.js';
+import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自注册到 GAME.reg / 包装 renderView） */
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -3362,7 +3363,9 @@ import './ui.js';
     var _objSend = (ui._expObj && (mode === 'scout' || mode === 'raid' || mode === 'occupy'))
       ? { kind: ui._expObj, rounds: 6 } : null;
     var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137,
-      { fromCityId: (ui._expFrom || null), obj: _objSend, duel: ui._expDuel });   /* v91.21 派出城 · v151 阵前请战 */
+      { fromCityId: (ui._expFrom || null), obj: _objSend, duel: ui._expDuel,
+        /* v157.70：路线**随军冻结** —— 出发后改行动台的选择不影响已在路上的队伍 */
+        routeId: (GAME.agenda && GAME.agenda.routeIdOf) ? GAME.agenda.routeIdOf() : null });   /* v91.21 派出城 · v151 阵前请战 */
     ui.toast(r.msg);
     if (r.ok) {
       ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
@@ -3375,6 +3378,18 @@ import './ui.js';
   /* 行军抵达回调（由 GAME.march.arrive 触发） */
   GAME.onMarchArrive = function (m, r) {
     GAME.refreshAll();
+    /* v157.70：即时结算（未进观战）的一仗也在这里出临时牌。
+       观战路径 r.result 为空 → agenda.afterBattle 按"无真实战果"判掉，
+       等 _settleBattle 走 goals.afterBattle 再出一次 —— 两条路径不会重复出牌。
+       只对接战方式生效：侦查 / 运输 / 采集抵达不该冒出三张牌。 */
+    var _md = (GAME.battle && GAME.battle.modeOf && m) ? GAME.battle.modeOf(m.modeId) : null;
+    if (GAME.agenda && GAME.agenda.afterBattle && _md && _md.battle === true) {
+      try {
+        GAME.agenda.afterBattle(
+          { id: 'march-' + (m.id || '?'), side: 'atk', target: { name: m.name || '一处目标' } },
+          (r && r.result) || {}, r);
+      } catch (e) { /* 出牌失败不许拖停抵达结算 */ }
+    }
     if (!r) return;
     /* ============================================================
      * v89.150（老板 5）：「不要主动直接弹出战斗界面，如果目前触发新战斗，提供一个弹窗，
@@ -4211,7 +4226,7 @@ import './ui.js';
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.69';
+  GAME.VERSION = 'v157.70';
   function boot() {
     fitAppSize();
     try {

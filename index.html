@@ -4635,6 +4635,9 @@
     <!-- v157.64（老板 2026-11-15「可插拔数值插件」）：插件箱 —— 数值调整类插件的容器，
          放「自动」左边（同属"让规则替你干活/改规则"的一类）。插件本体在 js/plugins.js，
          全部运行时接入（renderView 包装 + reg 动作分发 + navSet 补图标），零改既有 js 源码。 -->
+    <!-- v157.70（老板 2026-11-16「全做」）：行动台 —— 5 个轻量决策玩法的整页入口，
+         与「插件 / 自动」同属"让规则替你干活/改规则"的一类，放在插件左边。 -->
+    <div class="tab tab-more" data-view="agenda"><i class="ti" data-nav="agenda"></i>行动台</div>
     <div class="tab tab-more" data-view="plugins"><i class="ti" data-nav="plugin"></i>插件</div>
     <div class="tab tab-more" data-view="auto"><i class="ti" data-nav="auto"></i>自动</div>
     <div class="tab tab-more" data-view="settings"><i class="ti" data-nav="settings"></i>设置</div>
@@ -4763,9 +4766,9 @@
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=38a35236"></script>
-<script src="js/bundle-core.js?v=38a35236"></script>
-<script src="js/bundle-war.js?v=38a35236"></script>
-<script src="js/bundle-ui.js?v=38a35236"></script>
+<script src="vendor/three.min.js?v=d31dacbe"></script>
+<script src="js/bundle-core.js?v=d31dacbe"></script>
+<script src="js/bundle-war.js?v=d31dacbe"></script>
+<script src="js/bundle-ui.js?v=d31dacbe"></script>
 </body>
 </html>

@@ -12670,8 +12670,10 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
          加了模块两边都要加，否则本守卫假红）。 */
       'placement', 'belt', 'planetgen',
       'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config',
-      /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致 */
-      'plugins', 'main'];
+      /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致
+         v157.70：行动台（5 个轻量决策玩法）插在 plugins 之前 —— plugins 必须仍是
+         ui bundle 的倒数第二个（§586 有断言守这条），否则守卫假红。 */
+      'agenda', 'plugins', 'main'];
     var h = crypto.createHash('sha256');
     try {
       ORDER.forEach(function (m) {
@@ -12735,8 +12737,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var MODS = ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'fog', 'growth', 'climate', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'placement', 'belt', 'planetgen',
       'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config',
-      /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致 */
-      'plugins', 'main'];
+      /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致
+         v157.70：行动台（5 个轻量决策玩法）插在 plugins 之前 */
+      'agenda', 'plugins', 'main'];
     var bad = [];
     MODS.forEach(function (f) {
       var p = path.join(jsDir, f + '.js');
@@ -48812,7 +48815,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /coldLoss/.test(gSrc) && /fireLoss/.test(gSrc)
       && /shantyLoss/.test(sSrc) && /villageLoss/.test(sSrc)
       && /mutMulOf/.test(stSrc)
-      && /GAME\.VERSION = 'v157\.69'/.test(mSrc),
+      && /GAME\.VERSION = 'v157\.70'/.test(mSrc),
       'growth / surge / state / main 四处');
 
     var arcK = fsK.readFileSync(pK.join(__dirname, '需求档案.md'), 'utf8');
@@ -48820,6 +48823,202 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /^## v157\.69 /m.test(arcK) && /\| v157\.69 \|/.test(arcK)
       && arcK.indexOf('没有实质游戏内容支持这样的设定和通知') >= 0,
       '档案 v157.69 总览行 + 明细段');
+  })();
+
+  /* ===================== §586l v157.70「全做」5 个轻量决策玩法 =====================
+   * 老板 2026-11-16「全做」：把调研筛出的 5 个玩法一次落地。
+   * 判据照 AGENTS.md:313 —— 只改文本、不改玩家能按的按钮 / 能看到的后果 /
+   * 能算的账，就不该进游戏。所以本段**不数文案**，只验四处：
+   *   ① 接线面：静态清单 / 顶栏 tab / 视图包装 / reg 注册 / 五个玩法的消费点
+   *   ② 数据面：DATA.AGENDA 唯一数值表，预估与结算读同一张 routes.list
+   *   ③ vm 真调行为面：订单真扣货真给钱、商队护卫费只扣一次、封路随圈半径变化、
+   *      临时牌进 effOf 且打完即弃、月度 tick 真刷单
+   *   ④ 平凡解防护：每条行为断言都要求数值真的变了（不是 0===0 的绿）
+   * ================================================================================ */
+  (function () {
+    var fsL = require('fs'), pL = require('path'), vmL = require('vm');
+    var aSrc = fsL.readFileSync(pL.join(__dirname, 'js', 'agenda.js'), 'utf8');
+    var dSrcL = fsL.readFileSync(pL.join(__dirname, 'js', 'data.js'), 'utf8');
+    var mSrcL = fsL.readFileSync(pL.join(__dirname, 'js', 'main.js'), 'utf8');
+    var bSrcL = fsL.readFileSync(pL.join(__dirname, 'js', 'battle.js'), 'utf8');
+    var eSrcL = fsL.readFileSync(pL.join(__dirname, 'js', 'ui-exped.js'), 'utf8');
+    var dkSrcL = fsL.readFileSync(pL.join(__dirname, 'js', 'deck.js'), 'utf8');
+    var goSrcL = fsL.readFileSync(pL.join(__dirname, 'js', 'goals.js'), 'utf8');
+    var hSrcL = fsL.readFileSync(pL.join(__dirname, 'index.html'), 'utf8');
+    var mjL = JSON.parse(fsL.readFileSync(pL.join(__dirname, 'js', 'modules.json'), 'utf8'));
+
+    check('§586l 接线面①：agenda 在静态清单 / 分包 / 顶栏 / 视图四处都真的接上',
+      mjL.layout.order.indexOf('agenda') >= 0
+      && mjL.layout.uiSplit.indexOf('agenda') >= 0
+      && mjL.order.indexOf('agenda') >= 0
+      && mjL.bundles.ui.indexOf('agenda') >= 0
+      && mjL.bundles.ui.indexOf('plugins') === mjL.bundles.ui.length - 2   /* 老断言口径不许被挤坏 */
+      && /import '\.\/agenda\.js'/.test(mSrcL)
+      && /data-view="agenda"/.test(hSrcL) && /data-nav="agenda"/.test(hSrcL)
+      && /data-view="agenda"[\s\S]*?data-nav="agenda"[\s\S]*?<\/div>[\s\S]*?data-view="plugins"/.test(hSrcL)
+      && /_agendaPatched/.test(aSrc) && /navSet\.agenda/.test(aSrc)
+      && /id: 'agenda'/.test(aSrc) && /tick: function \(force\)/.test(aSrc),
+      'order/uiSplit/bundles.ui/main.js/index.html/agenda.js 六处');
+
+    check('§586l 数据面：DATA.AGENDA 五组配置齐，且路线系数被结算与预估两侧共同消费',
+      (function () {
+        var CFG = (GAME.DATA && GAME.DATA.AGENDA) || {};
+        return CFG.orders && CFG.orders.templates && CFG.orders.templates.length >= 3
+          && CFG.lanes && CFG.lanes.list && CFG.lanes.list.length >= 3
+          && CFG.routes && CFG.routes.list && CFG.routes.list.length >= 3
+          && CFG.draft && CFG.forecast
+          && /DATA\.AGENDA\s*=/.test(dSrcL)
+          && /routeLootMulOf\(opts\.routeId\)/.test(bSrcL)
+          && /routeMarchMulOf\(_routeId\)/.test(bSrcL)
+          && /routeSupplyOf\(_routeId\)/.test(bSrcL)
+          && /routeLootMulOf\(GAME\.agenda\.routeIdOf\(\)\)/.test(eSrcL)
+          && /routeId: rec\.routeId/.test(bSrcL) && /routeId: m\.routeId/.test(bSrcL)
+          && /routeId: \(GAME\.agenda/.test(mSrcL);
+      })(),
+      'orders/lanes/routes/draft/forecast + 出发/抵达/预估/落账同源');
+
+    check('§586l 接线面②：临时牌并进 deck.effOf 唯一出口，战斗两条路径都能触发（且不重复）',
+      /tempCardIdOf/.test(dkSrcL) && /arr\.push\(_tempId\)/.test(dkSrcL)
+      && /agenda\.afterBattle\(rec, result, out\)/.test(goSrcL)
+      && /GAME\.agenda\.afterBattle\(/.test(mSrcL)
+      && /_md\.battle === true/.test(mSrcL)
+      && /lastDraftBattle === key/.test(aSrc)
+      && /rf\.atkLoss == null && rf\.defLoss == null/.test(aSrc),
+      'deck / goals / onMarchArrive / 幂等与挂起判据');
+
+    /* ---------------- vm 真调：独立 GAME 桩跑完整五个玩法 ---------------- */
+    var RK = { grain: 99999, wood: 99999, stone: 99999, iron: 99999 };
+    var logsL = [], toastsL = [], REGSL = [], boxL = { innerHTML: '' };
+    var fakeDocL = { querySelector: function () { return boxL; } };
+    var AGL = JSON.parse(JSON.stringify((GAME.DATA && GAME.DATA.AGENDA) || {}));
+    var cardsL = JSON.parse(JSON.stringify((GAME.DATA && GAME.DATA.DECK && GAME.DATA.DECK.cards) || []));
+    var radiusL = 55;
+    var GL = {
+      DATA: { AGENDA: AGL, DECK: { pick: 5, cards: cardsL }, CALENDAR: { secPerYear: 57600 } },
+      state: { world: { elapsed: 0 }, gold: 10000, rep: 0, agenda: null },
+      utils: { fmt: function (n) { return String(Math.round(n || 0)); } },
+      res: function () { return RK; }, resName: function (k) { return k; },
+      currentCity: function () { return { id: 'c1', name: '取证城' }; },
+      goldAdd: function (n) { GL.state.gold += n; },
+      log: function (msg) { logsL.push(msg); },
+      refreshView: function () { },
+      market: {
+        isFair: function () { return false; },
+        priceOf: function () { return 1; },
+        fairIn: function () { return 3; }
+      },
+      climate: { tempOf: function () { return 10; }, isCold: function () { return false; }, coldIn: function () { return -1; } },
+      surge: {
+        centerOf: function () { return { x: 0, y: 0, n: 1 }; },
+        inCloud: function (x, y) { return Math.max(Math.abs(x), Math.abs(y)) > radiusL; },
+        monthsLeft: function () { return 5; }
+      },
+      battle: { lootEstOf: function () { return { grain: 100, wood: 100, stone: 100, iron: 100, gold: 10 }; } },
+      ui: { toast: function (mz) { toastsL.push(mz); }, renderView: function () { } },
+      icons: { navSet: {} },
+      reg: { add: function (s) { REGSL.push(s); } },
+      yearOf: function () { return { name: '丰年', note: '年号影响产量' }; }
+    };
+    vmL.runInNewContext(aSrc, { window: { GAME: GL }, document: fakeDocL, console: console }, { filename: 'agenda.js' });
+    var A = GL.agenda, aL = A.stateOf();
+    check('§586l 行为面①：自注册 + 月度 tick 真刷出 3 张订单（防 0===0 平凡解）',
+      REGSL.length === 1 && REGSL[0].id === 'agenda'
+      && typeof REGSL[0].tick === 'function' && Object.keys(REGSL[0].actions).length >= 9
+      && A.tick().orders === 3 && aL.orders.length === 3
+      && A.tick() === null,
+      'mods=' + REGSL.length + ' · actions=' + (REGSL[0] ? Object.keys(REGSL[0].actions).length : 0)
+        + ' · 订单=' + aL.orders.length);
+
+    /* ① 订单：真扣货 → 真给旧币与声望 → 真出账 */
+    var o0 = aL.orders[0], r0 = RK.grain, g0 = GL.state.gold, rep0 = GL.state.rep;
+    var takeL = A.orderTake(o0.id), dlvL = A.orderDeliver(o0.id);
+    check('§586l 行为面②：接单→交付真扣资源、真给旧币与声望（不是只弹一句播报）',
+      takeL.ok === true && dlvL.ok === true
+      && RK.grain < r0 && GL.state.gold > g0 && GL.state.rep > rep0
+      && aL.doneCount === 1 && aL.orders.length === 2
+      && logsL.some(function (x) { return x.indexOf('交付') >= 0; }),
+      '净水粮 ' + r0 + '→' + RK.grain + ' · 旧币 ' + g0 + '→' + GL.state.gold
+        + ' · 声望 ' + rep0 + '→' + GL.state.rep);
+
+    /* ③ 商路：护卫费只扣一次 + 真扣货 + 真落流水账 */
+    A.lanePick('waste'); A.laneGuard(true);
+    var i0 = RK.iron, g1 = GL.state.gold, stW = A.laneStateOf(AGL.lanes.list[2]);
+    var sendL = A.laneSend();
+    var netExpect = -stW.guardCost + (sendL.earn || 0);
+    check('§586l 行为面③：发货真扣 800 货、护卫费只扣一次、流水账可逐笔核对',
+      sendL.ok === true && RK.iron === i0 - stW.qty
+      && GL.state.gold - g1 === netExpect && stW.guardCost > 0
+      && aL.laneSent === 1 && aL.laneLog.length === 1
+      && aL.laneLog[0].guardCost === stW.guardCost
+      && logsL.some(function (x) { return x.indexOf('商队走') >= 0; }),
+      '废钢 ' + i0 + '→' + RK.iron + ' · 旧币 ' + g1 + '→' + GL.state.gold
+        + '（期望净变 ' + netExpect + '）');
+
+    /* ③ 封路：半径一收，最外那条真的变 blocked（不是写死的文案） */
+    var blockedBefore = A.lanesOf().filter(function (x) { return x.blocked; }).length;
+    radiusL = 20;
+    var lsAfter = A.lanesOf();
+    check('§586l 行为面④：辐射云半径收缩后，外围商路真的被封、近路仍可走',
+      blockedBefore === 0 && lsAfter.filter(function (x) { return x.blocked; }).length >= 1
+      && lsAfter.some(function (x) { return x.id === 'waste' && x.blocked; })
+      && lsAfter.some(function (x) { return x.id === 'ridge' && !x.blocked; })
+      && A.laneSend().ok === false,
+      '封路数 ' + blockedBefore + '→' + lsAfter.filter(function (x) { return x.blocked; }).length);
+
+    /* ② 路线：预估与结算读同一张表 */
+    var estCut = A.routeEstOf('cut', { kind: 'wild', lv: 3 });
+    check('§586l 行为面⑤：路线三系数与预估同源（行军/补给/战果来自同一张 routes.list）',
+      A.routeMarchMulOf('cut') === 0.75 && A.routeSupplyOf('cut') === 400
+      && A.routeLootMulOf('cut') === 1.35
+      && estCut && estCut.lootWith && estCut.lootWith.grain === 135
+      && A.setRouteId('cut') === 'cut' && A.routeIdOf() === 'cut'
+      && A.routeLootMulOf(A.routeIdOf()) === 1.35,
+      '穿荒近道 ×0.75 / −400 粮 / ×1.35 · 估掠 grain=135');
+
+    /* ⑤ 临时牌：打完出 3 张 → 选 1 张 → 下一仗用完即弃（不进永久牌组） */
+    var d1 = A.afterBattle({ id: 'bt1', side: 'atk', target: { name: '取证据点' } },
+      { atkLoss: 10, defLoss: 20, rounds: 3 }, null);
+    var pickId = d1 && d1.cards[0];
+    var d1again = A.afterBattle({ id: 'bt1', side: 'atk', target: { name: '取证据点' } },
+      { atkLoss: 10, defLoss: 20, rounds: 3 }, null);
+    var pickL = A.draftPick(pickId);
+    /* ⚠️ 必须在 d2 之前快照：check() 的条件表达式是**整个序列跑完**才求值的，
+       那时 tempCard 已被"下一仗用完即弃"清掉。首版在这里直接读活值 → 假红。 */
+    var snapTemp = A.tempCardIdOf(), snapDraft = aL.draft;
+    var d2 = A.afterBattle({ id: 'bt2', side: 'atk', target: { name: '第二处' } },
+      { atkLoss: 5, defLoss: 8, rounds: 2 }, null);
+    check('§586l 行为面⑥：三选一幂等 / 选中只生效一仗 / 打完即弃不派遗产',
+      d1 && d1.cards.length === 3 && d1again === d1
+      && pickL.ok === true && snapTemp === pickId && snapDraft === null
+      && d2 && d2.cards.length === 3 && A.tempCardIdOf() === null
+      && aL.deck === undefined,
+      'draft=' + (d1 ? d1.cards.join(',') : 'null') + ' · 选中=' + snapTemp
+        + ' · 下一仗后 temp=' + A.tempCardIdOf());
+
+    /* ④ 年景预告：纯信息层，但必须真的读出可预告项（非空） */
+    var fcL = A.forecastOf();
+    check('§586l 行为面⑦：年景预告读出真实出口（气温/严寒/大集/辐射云/四种价/年号）',
+      fcL.length >= 9 && fcL.some(function (x) { return x.k === '下月气温'; })
+      && fcL.some(function (x) { return x.k.indexOf('价') > 0; })
+      && fcL.some(function (x) { return x.k === '今年' && x.v === '丰年'; }),
+      '预告项 ' + fcL.length + ' 条');
+
+    /* 整页：玩家真的能按到 5 个玩法的按钮（先把待选态摆出来） */
+    A.orderTake(aL.orders[0].id);
+    A.afterBattle({ id: 'bt3', side: 'atk', target: { name: '第三处' } },
+      { atkLoss: 1, defLoss: 1, rounds: 1 }, null);
+    GL.ui.renderView('agenda');
+    check('§586l 整页面：行动台渲染出 5 个玩法与全部可点动作（不是空页）',
+      boxL.innerHTML.length > 1500
+      && /data-action="agenda-order-take"/.test(boxL.innerHTML)
+      && /data-action="agenda-order-deliver"/.test(boxL.innerHTML)
+      && /data-action="agenda-lane-send"/.test(boxL.innerHTML)
+      && /data-action="agenda-lane-guard"/.test(boxL.innerHTML)
+      && /data-action="agenda-route-pick"/.test(boxL.innerHTML)
+      && /data-action="agenda-draft-pick"/.test(boxL.innerHTML)
+      && /下月预告/.test(boxL.innerHTML) && /逐局构筑/.test(boxL.innerHTML),
+      'HTML ' + boxL.innerHTML.length + ' 字符 · 动作 '
+        + (boxL.innerHTML.match(/data-action="agenda-/g) || []).length + ' 个');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

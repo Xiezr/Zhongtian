@@ -1212,6 +1212,7 @@
       target: U.deep(target), modeId: modeId,
       atkArmy: U.deep(atkArmy), genId: genId,
       cityId: opts.cityId || null, scheme: opts.scheme || null,
+      routeId: opts.routeId || null,   /* v157.70：路线随军冻结，抵达落账读它 */
       /* ⛔ v89.198（老板「清除战法这个玩法」）：随军战法（ops）字段随玩法全撤退役。 */
       sim: { scArmy: U.deep(simIn.scArmy || {}), scVal: simIn.scVal || 0,
              scGen: simIn.scGen ? U.deep(simIn.scGen) : null,
@@ -1698,6 +1699,7 @@
     try {
       resp = GAME.battle.expedition(rec.target, rec.modeId, rec.atkArmy, rec.genId,
         { arrived: true, cityId: rec.cityId, scheme: rec.scheme,
+          routeId: rec.routeId || null,        /* v157.70：观战/沙盘路径也读随军冻结的路线 */
           _result: result, _sim: rec.sim });
     } catch (e) { err = e; }
     /* 英雄状态收尾（等价 arrive 的 idle 设置） */
@@ -4217,9 +4219,14 @@
         /* v60（需求 4/6）：**城市**用该城自己的派生库存做战利品来源
            （"侦查看到的数" = "打完搬回来的数"，一个出口）；
            野地/据点仍走 genLoot 的按档位生成。 */
+        /* v157.70：路线战果系数 —— 与行动台表格、出征面板「目标估掠」读同一张
+           DATA.AGENDA.routes.list。routeId 是出发时冻结在 march/battle rec 上的那份，
+           不是"结算当下行动台选了什么"，避免路上改选择刷战果。 */
+        var _routeMul = (GAME.agenda && GAME.agenda.routeLootMulOf)
+          ? GAME.agenda.routeLootMulOf(opts.routeId) : 1;
         var loot = (t.kind === 'city' && t.npc)
-          ? GAME.npcLoot(t.npc, mode.id, raidBonus)
-          : GAME.battle.genLoot(t, resMul * raidBonus);
+          ? GAME.npcLoot(t.npc, mode.id, raidBonus * _routeMul)
+          : GAME.battle.genLoot(t, resMul * raidBonus * _routeMul);
         /* v89.114（老板「掠夺返回的物资数量与军队总负重有关」）：
            战利品总重 ≤ **随军载重**（幸存部队，扣去去程已载辎重）。
            超载时按比例缩减，余数留在原处（战报里明示"未能装下"，下次可再取）。 */
@@ -5377,6 +5384,25 @@
         }
       }
     }
+    /* ============================================================
+     * v157.70（行动台 · 远征路线）：出发补给与行军倍率在**这道唯一闸口**落地。
+     *   · 补给 = DATA.AGENDA.routes.list[routeId].supply（净水粮），
+     *     校验与扣减都在扣兵之前 —— 不能让兵已出门才发现粮不够；
+     *   · 行军时长 × marchMul；战果 × lootMul 在抵达落账处读同一张表。
+     * routeId 由 extra 冻结进 m.routeId，出发后改行动台不影响这趟。
+     * ============================================================ */
+    var _routeId = (extra && extra.routeId) || null;
+    var _agenda = GAME.agenda;
+    var _supply = (_agenda && _agenda.routeSupplyOf) ? _agenda.routeSupplyOf(_routeId) : 0;
+    var _Rs = null;
+    if (_supply > 0) {
+      _Rs = GAME.res(city);
+      var _haveG = Math.floor(_Rs.grain || 0);
+      if (_haveG < _supply) {
+        return { ok: false, msg: '这条路线要带净水粮 ' + U.fmt(_supply) + '（现有 '
+          + U.fmt(_haveG) + '）—— 换条路线或先囤粮' };
+      }
+    }
     /* v86（老板「按计划进行」· G1）：计谋 —— 校验与计费在出发时完成；
        效果由抵达时的 expedition 读 opts.scheme（行军途中不占战斗状态）。 */
     var scheme = null;
@@ -5388,6 +5414,7 @@
     }
 
     for (var a in army) GAME.city.armySub(city, { [a]: army[a] });
+    if (_supply > 0 && _Rs) _Rs.grain = (_Rs.grain || 0) - _supply;   /* v157.70：路线补给与兵力同一时刻出门 */
     var cargoTxt = '';
     if (cargo) {
       var _Rc = GAME.res(city);
@@ -5414,6 +5441,10 @@
       var _bx = GAME.schemeOf('benxi');
       total = Math.round(total / (1 + (_bx ? _bx.eff.marchPct : 0)));
     }
+    /* v157.70：路线行军倍率（与行动台表格、DATA.AGENDA.routes.list 同一张表） */
+    if (_agenda && _agenda.routeMarchMulOf) {
+      total = Math.max(1, Math.round(total * _agenda.routeMarchMulOf(_routeId)));
+    }
     /* ⛔ v89.198：围困行军 ×1.5（围师必久）随战法全撤退役 —— 出征一律基准时长。 */
     s.marches = s.marches || [];
     var m = {
@@ -5426,6 +5457,7 @@
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */
       roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
       obj: (extra && extra.obj) || null,       /* v144.5：作战目标（护送/斩首）随军走 */
+      routeId: _routeId,                       /* v157.70：路线随军冻结（出发后改选择不影响这趟） */
       duel: (extra && extra.duel !== undefined) ? !!extra.duel : undefined,  /* v151：阵前是否请战 */
     };
     s.marches.push(m);
@@ -5436,8 +5468,16 @@
       try { GAME.fog.revealPath({ ci: city.ci }, { ci: t.ci }, GAME.fog.TERRAIN); } catch (e) { /* 视野失败不阻断出征 */ }
     }
     var left = Math.max(0, total / GAME.timeScale());
+    /* v157.70：出发日志把这趟的路线账写清（补给了多少粮 / 战果系数），玩家能对着面板核对 */
+    var routeTxt = '';
+    if (_agenda && _agenda.routeOf && _routeId) {
+      var _rr = _agenda.routeOf(_routeId);
+      if (_rr) routeTxt = ' · 路线「' + _rr.name + '」'
+        + (_supply > 0 ? '（补给 净水粮 −' + U.fmt(_supply) + '）' : '')
+        + ' · 战果 ×' + (_rr.lootMul || 1).toFixed(2);
+    }
     GAME.log.war('🛫 ' + (gen ? gen.name + ' 率军' : '增援部队') + '出发 → ' + t.name + '（' + mode.name
-      + cargoTxt
+      + cargoTxt + routeTxt
       + ' · 行军 ' + U.durExact(left) + ' · 速度 ' + GAME.march.speedText(army, { cityId: city.id }, to, gen) + '）');
     if (GAME.sfx) GAME.sfx('march');      /* v89.93（E4）：出征音 */
     return {
@@ -5503,6 +5543,7 @@
     try {
       r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
         { arrived: true, cityId: m.cityId, scheme: m.scheme || null,
+          routeId: m.routeId || null,         /* v157.70：路线随军，抵达按出发时那条结算 */
           cargo: m.cargo || null, obj: m.obj || null, duel: m.duel });   /* v144.5 作战目标 / v151 阵前请战 */
     } catch (e) { err = e; }
     /* v92：抵达 = 这一带并入已知（全明）。**不论战果** —— 人已经站在那儿了，

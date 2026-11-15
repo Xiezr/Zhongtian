@@ -1878,10 +1878,20 @@ import './ui.js';
     } else if (GAME.battle.lootEstOf) {
       est = GAME.battle.lootWeightOf(GAME.battle.lootEstOf(t, mul));
     }
+    /* v157.70：估掠与抵达落账读**同一张**路线表（battle.js 的 _routeMul 同源）。
+       行动台里选了「穿荒近道」，这里的目标估掠就变多，抵达后战利品也真的变多 ——
+       不是一句文案，面板与战果同一份系数。 */
+    var _routeMul = (GAME.agenda && GAME.agenda.routeLootMulOf)
+      ? GAME.agenda.routeLootMulOf(GAME.agenda.routeIdOf()) : 1;
+    var _routeName = (GAME.agenda && GAME.agenda.routeOf)
+      ? ((GAME.agenda.routeOf(GAME.agenda.routeIdOf()) || {}).name || '') : '';
+    est = Math.round(est * _routeMul);
     var over = est > cap;
     box.innerHTML = '🚚 随军载重 <b style="color:var(--gold-light);">' + U.fmt(cap) + '</b>' +
-      '　目标估掠 约 <b>' + U.fmt(est) + '</b>' +
-      (over
+      '　目标估掠 约 <b>' + U.fmt(est) + '</b>'
+      + (_routeMul !== 1 ? '　<span style="opacity:.85;">（含路线「' + _routeName
+        + '」战果 ×' + _routeMul.toFixed(2) + '）</span>' : '')
+      + (over
         ? '　<span style="color:var(--red-light);font-weight:700;">⚠ 库藏超出运力，只能搬回载重内的部分' +
           '（编入运输平台 / 板车可提高搬运量）</span>'
         : '　<span style="color:var(--green-ok);">✓ 运力可尽取</span>');
