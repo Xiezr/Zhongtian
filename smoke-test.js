@@ -47565,6 +47565,70 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })());
   })();
 
+  /* ===================== §586g v157.65 现有人口设定插件 =====================
+   * 老板：「加个插件，不改变人口上限，而改变现有人口数值」
+   * 守卫四层：① 源码面（set-pop 段只写 res.pop，不得出现任何上限函数赋值）
+   *          ② 框架面（通用 plugin-action 分发 + transient 不重放 + 参数持久化）
+   *          ③ 运行面（成对注册、插件箱渲染出输入框与动作按钮）
+   *          ④ 功能面（桩造两座城：enable → 存量变 7777、上限函数逐引用不变；disable 不回滚）
+   * ===================================================================== */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var pSrc = fs.readFileSync(path.join(__dirname, 'js', 'plugins.js'), 'utf8');
+    var seg = pSrc.slice(pSrc.indexOf("id: 'set-pop'"));
+
+    check('§586g 源码面：set-pop 只写 GAME.res(c).pop，段内无任何上限函数赋值',
+      seg.length > 0 && /GAME\.res\(c\)\.pop = v;/.test(seg)
+      && !/GAME\.maxPopOf\s*=/.test(seg) && !/GAME\.effPopCapOf\s*=/.test(seg)
+      && !/GAME\.popGrowthOf\s*=/.test(seg));
+
+    check('§586g 框架面：通用 plugin-action 分发 + transient 启动不重放 + 参数持久化',
+      /'plugin-action':\s*function/.test(pSrc)
+      && /!p\.transient && st\[p\.id\]/.test(pSrc)
+      && /PLUG\.getParam = function/.test(pSrc) && /PLUG\.setParam = function/.test(pSrc)
+      && /transient: true/.test(seg));
+
+    check('§586g 运行面：插件成对注册，插件箱渲染出输入框与「应用到所有城」动作',
+      (function () {
+        if (!G.plugins || !G.plugins.byId('set-pop')) return false;
+        var s = G.plugins.stats();
+        var html = G.plugins.viewHTML();
+        return s.paired === s.total && s.ids.indexOf('set-pop') >= 0
+          && html.indexOf('plugin-input-set-pop') >= 0
+          && html.indexOf('data-do="apply"') >= 0
+          && html.indexOf('data-action="plugin-action"') >= 0;
+      })(), G.plugins ? JSON.stringify(G.plugins.stats()) : 'no GAME.plugins');
+
+    check('§586g 功能面：enable → 两城存量变 7777 且上限函数逐引用不变；disable 不回滚',
+      (function () {
+        if (!G.plugins || !G.plugins.byId('set-pop')) return false;
+        var hadCity = !!(G.city && typeof G.city.all === 'function');
+        var origAll = G.city && G.city.all, origRes = G.res;
+        var origMax = G.maxPopOf, origEff = G.effPopCapOf;
+        var fake = [{ name: 'A', res: { pop: 10 } }, { name: 'B', res: { pop: 20 } }];
+        if (!G.city) G.city = {};
+        G.city.all = function () { return fake; };
+        G.res = function (c) { return c.res; };
+        var old = G.plugins.getParam('set-pop', 9999);
+        G.plugins.setParam('set-pop', 7777);
+        var ok = false;
+        try {
+          var p = G.plugins.byId('set-pop');
+          var onOk = G.plugins.enable('set-pop', true) === true
+            && fake[0].res.pop === 7777 && fake[1].res.pop === 7777;
+          var capOk = G.maxPopOf === origMax && G.effPopCapOf === origEff;
+          var offOk = G.plugins.disable('set-pop', true) === true
+            && fake[0].res.pop === 7777 && fake[1].res.pop === 7777;
+          ok = onOk && capOk && offOk && !p.active;
+        } catch (e) { ok = false; }
+        /* 恢复桩，避免污染后续断言 */
+        if (hadCity) G.city.all = origAll; else delete G.city.all;
+        G.res = origRes;
+        G.plugins.setParam('set-pop', old);
+        return ok;
+      })(), '');
+  })();
+
   /* ===================== §587 球面坐标系（摆位不变量） =====================
    * 背景：v156.19 老板「地图上城堡方向错乱，底部垂直于与球心的连线」。
    *   根因 = 对齐法线之后又用 `q × R(**n**, θ)` 绕**世界法线**右乘转身 →

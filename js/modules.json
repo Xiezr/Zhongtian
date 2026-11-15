@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "2ee8387c22c555ca",
+ "sourceHash": "2abe18280366aabf",
  "layout": {
   "order": [
    "core",
@@ -984,15 +984,16 @@
   {
    "name": "plugins",
    "file": "js/plugins.js",
-   "lines": 204,
+   "lines": 315,
    "bundle": "ui",
-   "duty": "plugins.js — 插件箱（v157.64 · 老板 2026-11-15「可插拔数值插件」）",
+   "duty": "plugins.js — 插件箱（v157.64 建 / v157.65 扩 · 老板 2026-11-15「可插拔数值…",
    "deps": [
     "ui",
     "ui-view",
+    "ui-fx",
     "icons",
     "registry",
-    "ui-fx",
+    "cities",
     "ui-shell"
    ]
   },
