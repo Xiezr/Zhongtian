@@ -34238,7 +34238,12 @@ if (GAME.reg) {
 
     /* ① 云里的城 */
     (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
-      if (!c || !SG.cityInCloud(c)) return;
+      if (!c) return;
+      if (!SG.cityInCloud(c)) {
+        /* 离开云 → 清掉"已公告"标记，下次再进云会重新提示一次（不跨城共享） */
+        if (st.surgeAnnounced) delete st.surgeAnnounced[c.id];
+        return;
+      }
       out.cities++;
 
       /* 棚户先死（外面没有遮蔽，也没有人给他们送水） */
@@ -34255,9 +34260,19 @@ if (GAME.reg) {
         var lose = Math.max(0, Math.round(pop * (d.popLoss == null ? 0.002 : d.popLoss)));
         if (lose > 0) { R.pop = Math.max(1, pop - lose); out.popLost += lose; }
       }
+      /* v157.62：公告只在「首次进云」触发一次。
+         原写法：每条城每月重发同一条 → 永久在云里的城每月刷一条系统消息
+         （GAME.log 自带的 1 游戏日去重窗口远小于 1 月，拦不住 → 这就是"重复发布"）。
+         月度掉人 / 掉棚户照常发生，但不再刷屏；玩家仍可在辐射云面板看到「N 座城已在云里」。
+         若某城 id 缺失则回退到名字键，避免多城共享同一标记而漏提示。 */
       if (GAME.log && GAME.log.war) {
-        GAME.log.war('☁ ' + c.name + '已经落在辐射云里（离圈心 ' + Math.round(SG.distOfPoint(c.x, c.y))
-          + ' 格 > 圈 ' + r + ' 格）—— 人会一点一点往里搬。');
+        if (!st.surgeAnnounced) st.surgeAnnounced = {};
+        var _key = (c.id != null) ? c.id : ('_' + (c.name || '?'));
+        if (!st.surgeAnnounced[_key]) {
+          st.surgeAnnounced[_key] = 1;
+          GAME.log.war('☁ ' + c.name + '已经落在辐射云里（离圈心 ' + Math.round(SG.distOfPoint(c.x, c.y))
+            + ' 格 > 圈 ' + r + ' 格）—— 人会一点一点往里搬。');
+        }
       }
     });
 
