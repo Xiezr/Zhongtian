@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "8edbbb832a5b6a65",
+ "sourceHash": "38a352365d47e3c4",
  "layout": {
   "order": [
    "core",
@@ -485,7 +485,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7358,
+   "lines": 7359,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -1308,17 +1308,14 @@
   {
    "name": "taint",
    "file": "js/taint.js",
-   "lines": 199,
+   "lines": 169,
    "bundle": "core",
    "duty": "taint.js — 强是要付账的（v94.1 · 废土内核 F「代价」）",
    "deps": [
-    "village",
-    "state",
     "cities",
+    "state",
     "data",
-    "relic",
-    "sphere",
-    "growth"
+    "relic"
    ]
   },
   {

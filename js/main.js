@@ -4211,7 +4211,7 @@ import './ui.js';
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.68';
+  GAME.VERSION = 'v157.69';
   function boot() {
     fitAppSize();
     try {

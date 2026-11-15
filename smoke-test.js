@@ -48727,6 +48727,101 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       'growth.js ' + gsX.length + ' 字符 · 降级痕迹 ' + decayHits + ' 处');
   })();
 
+  /* ===================== §586k v157.69 污染「变质线掉人」整条退役 =====================
+   * 规则变更（老板拍板「退役空设定」，逐字「没有实质游戏内容支持这样的设定和通知」）：
+   *   越过变质线不再扣棚户 / 不再搬村社 / 不再发那条军情；污染代价只剩
+   *   mutMulOf 产量折损 + clean 净化两条玩家能对上账的实在内容。
+   * 旧版 smoke 一条断言都没守这套结算（它才空转了这么久）—— 本段是补盲区，
+   * 不是放宽判据：① 源码零残留 ② 数据零参数 ③ vm 真调 6 个月行为 ④ 保留面 ⑤ 台账。
+   * ================================================================================ */
+  (function () {
+    var fsK = require('fs'), pK = require('path'), vmK = require('vm');
+    var tSrc = fsK.readFileSync(pK.join(__dirname, 'js', 'taint.js'), 'utf8');
+    var dSrc = fsK.readFileSync(pK.join(__dirname, 'js', 'data.js'), 'utf8');
+    var gSrc = fsK.readFileSync(pK.join(__dirname, 'js', 'growth.js'), 'utf8');
+    var sSrc = fsK.readFileSync(pK.join(__dirname, 'js', 'surge.js'), 'utf8');
+    var stSrc = fsK.readFileSync(pK.join(__dirname, 'js', 'state.js'), 'utf8');
+    var mSrc = fsK.readFileSync(pK.join(__dirname, 'js', 'main.js'), 'utf8');
+    var tCode = tSrc.replace(/\/\*[\s\S]*?\*\//g, '');
+    var dCode = dSrc.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    check('§586k 源码面①：taint.js 里「变质线掉人」整条零残留（无军情播报 / 无扣棚户 / 无村社外迁）',
+      tSrc.length > 3000
+      && !/GAME\.log\.war/.test(tCode)
+      && !/c\.shanty\s*=/.test(tCode)
+      && !/rec\.pop\s*=/.test(tCode)
+      && !/shantyLossAt/.test(tSrc)
+      && !/villageLoss/.test(tSrc)
+      && !/到了变质线/.test(tSrc)
+      && !/没能撑过这个月/.test(tSrc)
+      && !/var U = GAME\.utils/.test(tCode)
+      && /return \{ month: m \};/.test(tCode),
+      'taint.js ' + tSrc.length + ' 字符 · 掉人痕迹 '
+        + (tCode.match(/c\.shanty\s*=|rec\.pop\s*=|GAME\.log\.war/g) || []).length + ' 处');
+
+    check('§586k 源码面②：DATA.TAINT 两枚退役参数清零，DATA.SURGE 同名参数保留在岗',
+      !/shantyLossAt/.test(dCode)
+      && !/villageLoss: 0\.004/.test(dCode)
+      && /villageLoss: 0\.05/.test(dCode)
+      && /bad: 120,/.test(dCode)
+      && /cleanAt: 25/.test(dCode),
+      'TAINT / SURGE 参数面');
+
+    var TK = (GAME.DATA && GAME.DATA.TAINT) || {}, SK = (GAME.DATA && GAME.DATA.SURGE) || {};
+    check('§586k 数据面：运行时 TAINT 表确实没有这两枚键，SURGE 表仍在',
+      !('shantyLossAt' in TK) && !('villageLoss' in TK)
+      && TK.bad === 120 && TK.cleanAt === 25 && TK.mutLoss === 0.20
+      && SK.villageLoss === 0.05,
+      'TAINT 键：' + Object.keys(TK).join(','));
+
+    /* vm 真调：同一份污染源跑满 6 个月，量「人 / 村社 / 军情」三处有没有被动过 */
+    var cityK = { id: 'k1', name: '取证城', taint: 3000, shanty: 260, ci: 1,
+      cells: [{ build: { id: 'house', lvl: 4 } }] };
+    var vilK = { pop: 900 }, resK = { iron: 99999, stone: 99999 }, logsK = [];
+    var GK = {
+      DATA: { TAINT: JSON.parse(JSON.stringify(TK)), CALENDAR: { secPerYear: 57600 } },
+      state: { world: { elapsed: 0 }, taintMonth: null },
+      city: { all: function () { return [cityK]; },
+        sub: function (c, k, n) { resK[k] = (resK[k] || 0) - n; } },
+      log: { war: function (m) { logsK.push(m); } },
+      res: function () { return resK; },
+      resName: function (k) { return k; },
+      growth: { shantyOf: function (c) { return c.shanty | 0; } },
+      relic: { addOf: function () { return 0; }, mulOf: function () { return 1; } },
+      village: { listAll: function () { return ['v1']; }, peek: function () { return vilK; } },
+      sphere: { distOf: function () { return 1; }, roughDistOf: function () { return 1; } }
+    };
+    vmK.runInNewContext(tSrc, { window: { GAME: GK } }, { filename: 'taint.js' });
+    var TNK = GK.taint, t0K = cityK.taint, retsK = [];
+    for (var mK = 0; mK < 6; mK++) {
+      GK.state.world.elapsed = mK * 4800;
+      retsK.push(TNK.tick());
+    }
+    var t1K = cityK.taint, mutK = TNK.mutMulOf(cityK), cleanK = TNK.clean(cityK);
+    check('§586k 行为面：真调 6 个月月结 —— 棚户 / 村社 / 军情三处零变化，而污染账确实在推进（防平凡解）',
+      retsK.length === 6 && !!retsK[0] && retsK[0].first === true
+      && cityK.shanty === 260 && vilK.pop === 900 && !vilK.dead
+      && logsK.length === 0
+      && t1K < t0K - 10
+      && mutK < 1 && cleanK.ok === true && TNK.of(cityK) < t1K,
+      'shanty=' + cityK.shanty + ' · 村社=' + vilK.pop + ' · 军情=' + logsK.length
+        + ' · 污染 ' + t0K + '→' + t1K + '→' + TNK.of(cityK)
+        + ' · 折损=' + mutK.toFixed(2));
+
+    check('§586k 保留面：棚户的寒潮 / 火 / 辐射云代价与污染产量折损消费点照旧在岗',
+      /coldLoss/.test(gSrc) && /fireLoss/.test(gSrc)
+      && /shantyLoss/.test(sSrc) && /villageLoss/.test(sSrc)
+      && /mutMulOf/.test(stSrc)
+      && /GAME\.VERSION = 'v157\.69'/.test(mSrc),
+      'growth / surge / state / main 四处');
+
+    var arcK = fsK.readFileSync(pK.join(__dirname, '需求档案.md'), 'utf8');
+    check('§586k 台账面：v157.69 与老板原话在册（需求档案）',
+      /^## v157\.69 /m.test(arcK) && /\| v157\.69 \|/.test(arcK)
+      && arcK.indexOf('没有实质游戏内容支持这样的设定和通知') >= 0,
+      '档案 v157.69 总览行 + 明细段');
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));

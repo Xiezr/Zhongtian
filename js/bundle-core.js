@@ -6786,9 +6786,10 @@ window.GAME = window.GAME || {};
     perLvl: 0.08,             /* 每座建筑每级每月产这么多污染（"工业"的代价） */
     decay: 3.2,               /* 每月自然衰减（雨水、风、旧植被） */
     warn: 60,                 /* 警戒线（界面转黄） */
-    bad: 120,                 /* 变质线（开始死人） */
-    shantyLossAt: 0.02,       /* 越过 bad：每 100 点污染，棚户每月死这么多 */
-    villageLoss: 0.004,       /* 云外的村社也在被污染逼走 */
+    bad: 120,                 /* 变质线（产量开始折损 · v157.69 起不再掉人） */
+    /* ⛔ v157.69 墓碑：污染侧「棚户月度死人」与「村社月度外迁」两枚参数整条退役
+       —— 老板「没有实质游戏内容支持这样的设定和通知」，那套结算只剩后台扣数字 + 一句军情。
+       注意 SURGE 表里另有一枚同名参数，属辐射云系统，仍在用，未动。 */
     cleanCost: { iron: 400, stone: 600 },   /* 净化一次 */
     cleanAt: 25,              /* 一次净化去掉这么多 */
     /* v144.4（F 落地）：**变异** —— 变质城（>= bad）的产量折损上限（越脏越深）。 */
@@ -33762,17 +33763,25 @@ if (GAME.reg) {
  *   · 来源：建筑总等级（越多越高的城，污染越重）—— 用"工业密度"近似，
  *     不新增建筑，也不改任何既有产出口；
  *   · 自净：每月一个常数 + 科技（净水厂）；
- *   · 越过警戒线：界面转黄；越过变质线：**人开始走**。
+ *   · 越过警戒线：界面转黄；越过变质线：**产量开始折损**（`mutMulOf`）。
+ *   · 玩家的花钱出口：`clean()`（净化一次，把账压下一截）。
  *
  * ⚠️ 刻意不扣"民心"（`heartsComfort` 是全局量，一扣会污染器械/征兵等
  *   与污染毫无关系的系统 —— v93.5 用棚户试过，e2e 立刻抓到）。
- *   代价落在**人**身上：棚户先死，村社往外搬。这也更像废土。
+ *
+ * ⛔ v157.69 墓碑：「越过变质线 → 棚户每月死人 / 村社往外搬」整条退役。
+ *   撤销依据：老板逐字「没有实质游戏内容支持这样的设定和通知」。
+ *   取证：那条军情播报每次月结都发（无首次跨线标记），宣称的 130 人
+ *   只是后台一个数字按月腰斩，玩家侧既无事件、也无可见账、更无可执行应对
+ *   （净化一次只压 25 点，而存档污染已达 2620+）—— 是「假动作」。
+ *   去向：污染代价收敛到真正存在的两条（产量折损 + 净化），
+ *   人口与村社不再由污染改动；棚户的寒潮 / 火 / 辐射云代价照旧
+ *   （见 growth.js / surge.js / climate.js）。
  * ============================================================ */
 (function () {
   'use strict';
   var GAME = window.GAME = window.GAME || {};
   var TN = GAME.taint = {};
-  var U = GAME.utils;
 
   function D() { return (GAME.DATA && GAME.DATA.TAINT) || {}; }
 
@@ -33813,6 +33822,12 @@ if (GAME.reg) {
 
   /* ============================================================
    * tick —— 每月结一次账（按秒会让它变成"数字在跳"）
+   * ------------------------------------------------------------
+   * v157.69：这里只做一件事 —— **把污染账按月推进**。
+   * 「越过变质线就掉人 / 掉村社」整条退役：那套结算没有对应的玩家可见事件、
+   * 可见账目或可执行应对，只剩每月一句军情叙事，属「假动作」（见文件头墓碑）。
+   * 污染真正的代价在 `mutMulOf`（产量折损，state.js 消费）与 `clean`（花钱出口），
+   * 两者都是玩家在界面上能对上账的实在内容。
    * ============================================================ */
   TN.tick = function (force) {
     var st = GAME.state;
@@ -33822,55 +33837,11 @@ if (GAME.reg) {
     if (st.taintMonth == null) { st.taintMonth = m; return { first: true, month: m }; }
     st.taintMonth = m;
 
-    var d = D();
-    var out = { month: m, bad: 0, lost: 0 };
-    var resist = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('resist') : 1;   /* 旧诊所：1 → 0.65 */
-    resist = Math.max(0.2, resist);
-
     (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
       if (!c) return;
-      var t = Math.max(0, TN.of(c) + TN.deltaOf(c));
-      c.taint = Math.round(t * 10) / 10;
-      var lv = TN.levelOf(c);
-      if (lv.id !== 'bad') return;
-      out.bad++;
-      /* 一次只处理最脏的 8 座城：这是"压力"，不是全境同时崩 */
-      if (out.bad > 8) return;
-
-      /* ① 棚户先死（城外，最脏的地方） */
-      var sh = (GAME.growth && GAME.growth.shantyOf) ? GAME.growth.shantyOf(c) : 0;
-      if (sh > 0) {
-        var over = Math.max(0, t - (d.bad == null ? 120 : d.bad)) / 100;
-        var die = Math.round(sh * Math.min(0.5, (d.shantyLossAt == null ? 0.02 : d.shantyLossAt) * over) * resist);
-        if (die > 0) {
-          c.shanty = Math.max(0, sh - die);
-          out.lost += die;
-          if (GAME.log && GAME.log.war) {
-            GAME.log.war('☢ ' + c.name + '城外的污染到了变质线，棚户里 ' + U.numText(die, 0) + ' 个人没能撑过这个月。');
-          }
-        }
-      }
-      /* ② 附近的村社也在往外搬（只影响**新系统**，不动老产量） */
-      if (GAME.village && GAME.village.listAll) {
-        var list = GAME.village.listAll();
-        var moved = 0;
-        for (var i = 0; i < list.length; i++) {
-          var vci = list[i];
-          if (c.ci == null || !GAME.sphere || !GAME.sphere.distOf) continue;
-          var dd = GAME.sphere.roughDistOf ? GAME.sphere.roughDistOf({ ci: c.ci }, { ci: vci })
-            : GAME.sphere.distOf({ ci: c.ci }, { ci: vci });
-          if (dd > 4) continue;
-          var rec = GAME.village.peek ? GAME.village.peek(vci) : null;
-          if (!rec || rec.dead || rec.heldBy) continue;
-          var n = Math.max(1, Math.round((rec.pop || 0) * (d.villageLoss == null ? 0.004 : d.villageLoss) * resist));
-          rec.pop = Math.max(0, (rec.pop || 0) - n);
-          if (rec.pop <= 0) rec.dead = 'taint';
-          moved += n;
-        }
-        out.lost += moved;
-      }
+      c.taint = Math.round(Math.max(0, TN.of(c) + TN.deltaOf(c)) * 10) / 10;
     });
-    return out;
+    return { month: m };
   };
 
   /* ============================================================
