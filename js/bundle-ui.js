@@ -34499,7 +34499,7 @@ ui.openDuel = function (fid, moveId) {
 
 /* ---- plugins.js ---- */
 /* ============================================================
- * plugins.js — 插件箱（v157.64 建 / v157.65 扩 · 老板 2026-11-15「可插拔数值插件」）
+ * plugins.js — 插件箱（v157.64 建 / v157.65 扩 / v157.67 换人口插件 · 老板 2026-11-15「可插拔数值插件」）
  * ------------------------------------------------------------
  * 需求原话：「给一个可插拔的插件，不影响原代码，实现功能是无限人口。
  *   创建一个插件箱，用于存放这种数值调整的插件，放到菜单上『自动』菜单的左边」
@@ -34525,6 +34525,12 @@ ui.openDuel = function (fid, moveId) {
  *   · param:     默认值；PLUG.getParam / setParam 存 localStorage（不进存档）
  *   · transient: true = 一次性插件：开关状态不跨会话、刷新页面不重放 _on
  *                （否则「设定存量」会在每次载入时把玩家之后正常增长的人口覆盖回去）
+ *
+ * v157.67（老板「无限人口上限视为999999没什么用，去掉吧，改为人口总为现有上限人口，随时补足」）：
+ *   · 无限人口整条退役（含上限替换函数，留墓碑）；**上限出口此后零改动**；
+ *   · 新插件「人口常满」：运行时包装 GAME.tickOnce（在线主循环 / 离线逐秒补算
+ *     共用的唯一时间刻度），每拍把每座城存量补到 GAME.effPopCapOf(city)；
+ *   · 框架能力未新增，仍然是「底部 PLUG.register 一段」即可加插件。
  * ============================================================ */
 (function () {
   'use strict';
@@ -34532,11 +34538,10 @@ ui.openDuel = function (fid, moveId) {
   var PLUG = GAME.plugins = { list: [] };
   var LS_KEY = 'dsdb.plugins.v1';
 
-  /* v157.65：无限人口的上限函数单独具名声明 —— 插件只做「引用替换」，
-     不写 `GAME.maxPopOf = function(...)`：那是重新定义同名全局函数，会被 audit.js
-     判成「跨文件重复定义（domain, plugins）」（v157.64 门禁遗留的 audit 红单即源于此）。
-     改成引用赋值后语义更准确：开启=换引用、关闭=逐引用恢复，游戏里从未出现第二份定义。 */
-  function infinitePopCap() { return 999999; }
+  /* ⛔ v157.67：无限人口（上限 999,999 的替换函数）整条退役 —— 老板判定
+     「上限视为999999没什么用」。自此**没有任何插件替换上限出口**：
+     maxPopOf / effPopCapOf / popGrowthOf 的引用永远保持 domain.js 原函数。
+     去向 = 下方「人口常满」插件（改存量、不动上限、随拍补足）。 */
 
   /* ---------------- 注册 ----------------
    * spec：{ id, name, desc, _on, _off }
@@ -34707,28 +34712,70 @@ ui.openDuel = function (fid, moveId) {
   }
 
   /* ============================================================
-   * 内置插件 ①：无限人口
+   * ⛔ 内置插件 ①（旧）：无限人口 —— v157.67 整条退役
    * ------------------------------------------------------------
-   * domain.js 的幸存者上限**唯一基准**是 GAME.maxPopOf（居所+专精+孢囊），
-   * effPopCapOf（民心折算）/ popGrowthOf（增速基数）/ 迁入封顶全部从它派生 ——
-   * 换掉这一个函数，整条消费链（增长目标、增速、显示、迁入）同步生效，
-   * 这正是 v89.185「唯一出口」架构给运行时插件留的缝。
-   * 口径：开启后上限视为 999,999；关闭恢复原函数。
-   * 增速随上限放大（fillHours 固定时间补满），已涨上去的人口不回收。
+   * 原做法：把 GAME.maxPopOf 换成「恒 999,999」的引用，让整条派生链放大。
+   * 退役依据（老板逐字）：「我觉得插件的无限人口，上限视为999999没什么用，去掉吧，
+   *   改为人口总为现有上限人口，随时补足」。
+   * 去向 = 下面的「人口常满」：不再改上限，只让存量恒等于现有上限。
    * ============================================================ */
+
+  /* ---------------- 人口常满：唯一写入口 + 节拍包装（v157.67） ----------------
+   * 口径（唯一出口）：上限读 GAME.effPopCapOf(city) —— 界面 "pop / cap" 的分母，
+   *   也是 state.js tickOnce 里人口爬升的目标（居所基准经民心折算）。
+   *   maxPopOf / effPopCapOf / popGrowthOf 三个上限出口的引用一律不碰。
+   * 补足 = 每拍 GAME.tickOnce 跑完后逐城把 GAME.res(city).pop 设为当前上限；
+   *   tickOnce 是在线主循环与离线逐秒补算共用的唯一时间刻度，所以减员
+   *   （辐射云 / 气候 / 遣散）与上限提升（造居所 / 民心回升）都在下一拍跟上。
+   * 「总为」= 真相等（上限下降时也同步回落）—— 插件期间的显式口径；
+   *   关闭后游戏既有「只封增长、不削存量」立即恢复，最后一刻的存量不回滚。
+   * ------------------------------------------------------------------ */
+  var _origTickOnce = null;
+
+  function topUpAllPop() {
+    if (!GAME.state || typeof GAME.effPopCapOf !== 'function' || typeof GAME.res !== 'function') return 0;
+    var all = (GAME.city && typeof GAME.city.all === 'function')
+      ? GAME.city.all() : (GAME.state.cities || []);
+    var n = 0;
+    for (var i = 0; i < all.length; i++) {
+      var c = all[i];
+      if (!c) continue;
+      try {
+        var cap = GAME.effPopCapOf(c);
+        if (!isFinite(cap) || cap < 0) continue;
+        var R = GAME.res(c);
+        if (R) { R.pop = cap; n++; }
+      } catch (e) { /* 单城异常不影响其它城，也不影响原来的 tick */ }
+    }
+    return n;
+  }
+
+  /* 具名包装函数：只做「引用替换」，不写 GAME.tickOnce = function(...) ——
+     与 v157.65 的教训同族（避免 audit.js 判跨文件重复定义）。 */
+  function fullPopTick() {
+    var r = typeof _origTickOnce === 'function' ? _origTickOnce.apply(this, arguments) : undefined;
+    topUpAllPop();
+    return r;
+  }
+
   PLUG.register({
-    id: 'infinite-pop',
-    name: '无限人口',
-    desc: '幸存者上限视为 999,999 —— 居所与民心不再约束人口；增速随上限同步放大' +
-      '（按固定补满时长爬升，约 2 小时到顶）。关闭后恢复原上限，已增长的人口不回收。',
+    id: 'full-pop',
+    name: '人口常满',
+    desc: '每座城的现有幸存者始终等于该城当前的人口上限（界面 pop / cap 的分母，' +
+      '由 GAME.effPopCapOf 唯一给出：居所基准经民心折算）；上限本身一个都不改。' +
+      '每拍自动补足：掉人（辐射云 / 气候 / 遣散）下一拍补回；造居所或民心回升、' +
+      '上限变高也同步跟上；开启瞬间先补一次。上限下降时人口同步回落（插件期间的显式口径）；' +
+      '关闭后恢复游戏既有「只封增长、不削存量」，已有人口不回滚。',
     _on: function () {
-      if (typeof GAME.maxPopOf !== 'function') return;
-      this._origMaxPop = GAME.maxPopOf;
-      GAME.maxPopOf = infinitePopCap;   /* 换引用（非重新定义同名函数，见上方注释） */
+      if (typeof GAME.tickOnce !== 'function') throw new Error('tickOnce 尚未就绪');
+      _origTickOnce = GAME.tickOnce;
+      GAME.tickOnce = fullPopTick;   /* 换引用 */
+      topUpAllPop();                 /* 开启即满，不必等下一拍 */
     },
     _off: function () {
-      if (typeof this._origMaxPop === 'function') GAME.maxPopOf = this._origMaxPop;
-      this._origMaxPop = null;
+      if (GAME.tickOnce === fullPopTick && typeof _origTickOnce === 'function')
+        GAME.tickOnce = _origTickOnce;   /* 逐引用恢复 */
+      _origTickOnce = null;
     }
   });
 
@@ -34737,8 +34784,9 @@ ui.openDuel = function (fid, moveId) {
    * ------------------------------------------------------------
    * 老板：「加个插件，不改变人口上限，而改变现有人口数值」
    *
-   * 与「无限人口」的分工：那个换 GAME.maxPopOf（上限基准）；
+   * 与已退役的「无限人口」（v157.67 退役，原做法换 GAME.maxPopOf）不同：
    * 这个**一个上限函数都不碰**，只写 GAME.res(city).pop —— 城池的存量数值。
+   * 与「人口常满」同时开启时，后者每拍补足会以当前上限为准覆盖这次注入。
    *
    * 为什么能稳住：state.js:4570 的增长口径是
    *   `if (R.pop < maxPop) R.pop = Math.min(maxPop, R.pop + growth/3600*dtReal)`，
@@ -39027,7 +39075,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.66';
+  GAME.VERSION = 'v157.67';
   function boot() {
     fitAppSize();
     try {

@@ -47520,7 +47520,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   创建一个插件箱，用于存放这种数值调整的插件，放到菜单上『自动』菜单的左边」
    * 守卫三层：① 登记面（页签位置 / modules.json layout / renderView 包装原样放行）
    *          ② 运行面（GAME.plugins 注册表 · 插件 _on/_off 成对）
-   *          ③ 功能面（enable 后 maxPopOf 恒 999999；disable 后**逐引用**恢复原函数）
+   *          ③ 功能面（插件开关的引用替换/逐引用恢复）
+   * ⚠️ v157.67 规则变更（老板「无限人口上限视为999999没什么用，去掉吧，改为人口总为
+   *   现有上限人口，随时补足」）：功能面与运行面/视图面的插件 id 已按新口径重写，
+   *   旧「enable → maxPopOf 恒 999999」断言不得复活；完整行为断言见 §586i。
    * ===================================================================== */
   (function () {
     var fs = require('fs'), path = require('path');
@@ -47538,19 +47541,31 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /return _origRenderView\(v\);/.test(pSrc)
       && /GAME\.icons\.navSet\.plugin/.test(pSrc)
       && /GAME\.reg\.add\(\{\s*\n?\s*id: 'plugins'/.test(pSrc));
-    check('§586f 运行面：GAME.plugins 注册表就位，插件 _on/_off 成对',
+    check('§586f 运行面：GAME.plugins 注册表就位，插件 _on/_off 成对（人口常满在册 · 无限人口已退役）',
       !!(G.plugins && typeof G.plugins.register === 'function' && typeof G.plugins.toggle === 'function')
-      && (function () { var s = G.plugins.stats(); return s.total >= 1 && s.paired === s.total && s.ids.indexOf('infinite-pop') >= 0; })(),
+      && (function () {
+        var s = G.plugins.stats();
+        return s.total >= 1 && s.paired === s.total
+          && s.ids.indexOf('full-pop') >= 0 && s.ids.indexOf('infinite-pop') < 0;
+      })(),
       G.plugins ? JSON.stringify(G.plugins.stats()) : 'no GAME.plugins');
-    check('§586f 功能面：无限人口 enable → maxPopOf 恒 999999；disable → 恢复原函数引用',
+    check('§586f 功能面：人口常满 enable → 换 tickOnce 引用且三个上限出口零改动；disable → 逐引用恢复（v157.67 新规则）',
       (function () {
-        var orig = G.maxPopOf;
-        if (typeof orig !== 'function') return false;
-        var okOn = G.plugins.enable('infinite-pop', true) === true
-          && G.maxPopOf !== orig && G.maxPopOf() === 999999;
-        var okOff = G.plugins.disable('infinite-pop', true) === true
-          && G.maxPopOf === orig;
-        return okOn && okOff;
+        var origTick = G.tickOnce, origMax = G.maxPopOf, origEff = G.effPopCapOf, origGrow = G.popGrowthOf;
+        var origAll = G.city && G.city.all;
+        if (typeof origTick !== 'function' || !G.city) return false;
+        G.city.all = function () { return []; };   /* 挡住真实城池，避免污染后续断言 */
+        var ok = false;
+        try {
+          var okOn = G.plugins.enable('full-pop', true) === true
+            && G.tickOnce !== origTick
+            && G.maxPopOf === origMax && G.effPopCapOf === origEff && G.popGrowthOf === origGrow;
+          var okOff = G.plugins.disable('full-pop', true) === true
+            && G.tickOnce === origTick;
+          ok = okOn && okOff;
+        } catch (e) { ok = false; }
+        finally { G.city.all = origAll; }
+        return ok;
       })());
     check('§586f 视图面：renderView(\'plugins\') 渲染插件箱（开关按钮 + 就地重绘动作）',
       (function () {
@@ -47561,7 +47576,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           : null;
         var html = String((box && box.innerHTML) || '');
         return html.indexOf('插件箱') >= 0 && html.indexOf('data-action="plugin-toggle"') >= 0
-          && html.indexOf('infinite-pop') >= 0;
+          && html.indexOf('full-pop') >= 0 && html.indexOf('infinite-pop') < 0;
       })());
   })();
 
@@ -47680,6 +47695,98 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var same = trial(false);
     check('§586h 运行面②：同星球正常路径不回归（1 条 🏚️ · 野地移除）',
       same.hits === 1 && same.left === 0, JSON.stringify(same));
+  })();
+
+  /* ===================== §586i v157.67 人口常满（无限人口退役） =====================
+   * 老板逐字：「我觉得插件的无限人口，上限视为999999没什么用，去掉吧，
+   *   改为人口总为现有上限人口，随时补足」
+   * 规则变更（§0.7 三件套）：旧「换上限 → 999999」整条退役；新规则 =
+   *   存量恒等于 GAME.effPopCapOf(city) + 每拍 GAME.tickOnce 后补足。
+   *   §586f 的功能/运行/视图断言已按新口径重写，本段另配行为断言（真调，不看 grep）。
+   * 守卫四层：① 源码面（旧插件零残留 / 包装形态 / 上限出口零赋值）
+   *   ② 运行面（开启即满 · 减员下一拍补回 · 上限升/降同步）
+   *   ③ 关闭面（逐引用恢复 tickOnce、上限三出口引用不变、不再自动补）
+   *   ④ 台账面（档案在册 + 老板原话逐字）
+   * ===================================================================== */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var pSrc = fs.readFileSync(path.join(__dirname, 'js', 'plugins.js'), 'utf8');
+    var fpSeg = pSrc.slice(pSrc.indexOf('var _origTickOnce'), pSrc.indexOf("id: 'set-pop'"));
+
+    check('§586i 源码面①：无限人口整条退役（无注册 / 无 999999 上限函数 / 上限出口零赋值）',
+      pSrc.indexOf("id: 'infinite-pop'") < 0
+      && !/function infinitePopCap/.test(pSrc)
+      && !/return 999999;/.test(pSrc)
+      && !/GAME\.maxPopOf\s*=/.test(pSrc)
+      && !/GAME\.effPopCapOf\s*=/.test(pSrc)
+      && !/GAME\.popGrowthOf\s*=/.test(pSrc));
+
+    check('§586i 源码面②：full-pop 只包装 tickOnce，唯一写入口把存量设为 effPopCapOf(c)',
+      fpSeg.length > 200
+      && /GAME\.tickOnce = fullPopTick;/.test(fpSeg)
+      && /_origTickOnce\.apply\(this, arguments\)/.test(fpSeg)
+      && /var cap = GAME\.effPopCapOf\(c\)/.test(fpSeg)
+      && /R\.pop = cap;/.test(fpSeg)
+      && /GAME\.res\(c\)/.test(fpSeg));
+
+    var dbg586i = { s: '未执行' };
+    check('§586i 运行面：开启即满 → 减员下一拍补回 → 上限升/降都同步；上限三出口引用不变',
+      (function () {
+        if (!G.plugins || !G.plugins.byId('full-pop') || !G.state) { dbg586i.s = '前置缺失'; return false; }
+        var bkAll = G.city && G.city.all, bkRes = G.res, bkEff = G.effPopCapOf, bkTick = G.tickOnce;
+        var bkMax = G.maxPopOf, bkGrow = G.popGrowthOf, bkCities = G.state.cities;
+        var fake = [{ name: 'A', res: { pop: 10 } }, { name: 'B', res: { pop: 20 } }];
+        var caps = [100, 200], ticks = 0;
+        function effStub(c) { return caps[fake.indexOf(c)] || 0; }
+        /* 插件 _on 保存的是这份计数桩，_off 逐引用恢复到它；bkTick 只用于 finally 还原真函数 */
+        var tickStub = function () { ticks++; };
+        /* 双保险：city.all() 与 state.cities 都指向 fake —— 插件两条取城路径同源，
+           避免 smoke 里前序用例把 city.all 还原成 undefined 时插件掉回真实城池（探针即走后一条） */
+        if (G.city) G.city.all = function () { return fake; };
+        G.state.cities = fake;
+        G.res = function (c) { return c.res || (c.res = {}); };
+        G.effPopCapOf = effStub;
+        G.tickOnce = tickStub;
+        var ok = false;
+        try {
+          var on = G.plugins.enable('full-pop', true) === true;
+          var full0 = on && fake[0].res.pop === 100 && fake[1].res.pop === 200;  /* 开启即满 */
+          fake[0].res.pop = 3;                                                   /* 模拟减员 */
+          G.tickOnce();
+          var refill = fake[0].res.pop === 100 && ticks === 1;                     /* 下一拍补回 */
+          caps[1] = 350;                                                           /* 上限提高 */
+          G.tickOnce();
+          var capUp = fake[1].res.pop === 350;
+          caps[0] = 60;                                                            /* 上限回落 */
+          G.tickOnce();
+          var capDown = fake[0].res.pop === 60;                                      /* 「总为」= 真相等 */
+          var capsUntouched = G.maxPopOf === bkMax && G.popGrowthOf === bkGrow
+            && G.effPopCapOf === effStub;
+          var off = G.plugins.disable('full-pop', true) === true && G.tickOnce === tickStub;
+          fake[0].res.pop = 7;
+          G.tickOnce();                                                             /* 关闭后不再补 */
+          var noMore = fake[0].res.pop === 7 && ticks === 4;
+          ok = on && full0 && refill && capUp && capDown && capsUntouched && off && noMore;
+          dbg586i.s = 'on=' + on + ' full0=' + full0 + ' refill=' + refill
+            + ' capUp=' + capUp + ' capDown=' + capDown + ' capsUntouched=' + capsUntouched
+            + ' off=' + off + ' noMore=' + noMore + ' A=' + fake[0].res.pop
+            + ' B=' + fake[1].res.pop + ' ticks=' + ticks
+            + ' cityAll=' + typeof (G.city && G.city.all);
+        } catch (e) { ok = false; dbg586i.s += ' throw=' + (e && e.message); }
+        finally {
+          var fp = G.plugins.byId('full-pop');
+          if (fp && fp.active) G.plugins.disable('full-pop', true);
+          if (G.city) G.city.all = bkAll;
+          G.state.cities = bkCities;
+          G.res = bkRes; G.effPopCapOf = bkEff; G.tickOnce = bkTick;
+        }
+        return ok;
+      })(), dbg586i.s);
+
+    check('§586i 台账面：v157.67 与老板原话在册（需求档案）', (function () {
+      var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');
+      return arc.indexOf('v157.67') >= 0 && arc.indexOf('随时补足') >= 0;
+    })());
   })();
 
   /* ===================== §587 球面坐标系（摆位不变量） =====================
