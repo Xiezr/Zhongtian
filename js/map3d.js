@@ -665,7 +665,45 @@ import './gltf.js';
     return [_cellCol[ci * 3], _cellCol[ci * 3 + 1], _cellCol[ci * 3 + 2]];
   };
 
-  function sphBiome(e, dy, d) {
+  /* ============================================================
+   * v157.75（老板「高空中看地块边界锯齿状，一种比较别扭的渲染方式」）
+   * ------------------------------------------------------------
+   * 病根：globe 顶点色是**每顶点硬取最近格**（`SP.nearestCell` → `cellColorOf`），
+   * 于是每种地形都成了「一块块六边形硬边色块」—— 高空看就是拼贴 + 锯齿。
+   * 改法：取最近格 c0 与**次近邻格** c1（必在 `SP.adj[ci0]` 里，六边形邻接，最多 6 次点积），
+   * 按「谁更近」插值：格边界处两者等距 → t≈0.5（自然过渡），格心处 c0 独占 → t≈0。
+   * ⚠️ 只给 globe 顶点用（`sphBiome` 的 soft 分支）；**地表近景仍走硬边** ——
+   *    那里地块本来就是六边形拼的，糊了反而看不出「我站在哪一格」。
+   * ============================================================ */
+  function _cellColorSoft(d, ci0, dot0) {
+    /* ⚠️ 不要在这里调 `M.cellColorOf()` —— 它每次都走一遍 `buildCellColors()`
+       的版本缓存校验（拼三段字符串再比），99846 顶点 × 2 次会把首屏构建拖慢到
+       出现「正在构建星球…100%」卡住。直接读已经建好的 `_cellCol` 数组。 */
+    if (!_cellCol) { buildCellColors(); if (!_cellCol) return null; }
+    var c0 = [_cellCol[ci0 * 3], _cellCol[ci0 * 3 + 1], _cellCol[ci0 * 3 + 2]];
+    var adj = SP.adj && SP.adj[ci0];
+    if (!adj || !adj.length) return c0;
+    var best = -2, bj = -1;
+    for (var i = 0; i < adj.length; i++) {
+      var cc = SP.cells[adj[i]];
+      if (!cc || !cc.dir) continue;
+      var dt = cc.dir[0] * d[0] + cc.dir[1] * d[1] + cc.dir[2] * d[2];
+      if (dt > best) { best = dt; bj = adj[i]; }
+    }
+    if (bj < 0) return c0;
+    var c1 = [_cellCol[bj * 3], _cellCol[bj * 3 + 1], _cellCol[bj * 3 + 2]];
+    var a0 = Math.max(1e-6, 1 - dot0), a1 = Math.max(1e-6, 1 - best);
+    var t = a0 / (a0 + a1);                     /* 格边界 ≈0.5 / 格心 ≈0 */
+    /* v157.75b（实机教训）：`buildCellColors` 已经在**格级别**做过两轮 35% 邻域平滑，
+       顶点级再混满 0.5 等于平滑两次 —— agl=110 整屏糊成一片、没有层次。
+       限到 0.28：边界台阶软化一半，地块内部的明暗/纹理留住。 */
+    t = Math.min(t, 0.5) * 0.56;
+    return [c0[0] + (c1[0] - c0[0]) * t,
+            c0[1] + (c1[1] - c0[1]) * t,
+            c0[2] + (c1[2] - c0[2]) * t];
+  }
+
+  function sphBiome(e, dy, d, soft) {
     var s = seed3(), P = SP.PLANET || {};
     var t = 'lake';
     var ci = (SP.nearestCell && d) ? SP.nearestCell(d) : -1;
@@ -675,7 +713,13 @@ import './gltf.js';
     } catch (eCt) { t = e < 0 ? 'lake' : 'plain'; }
     /* 用**平滑后的格色**（含海拔/坡度/气候/邻域过渡） */
     var cc = null;
-    if (ci >= 0) cc = M.cellColorOf(ci);
+    if (ci >= 0) {
+      if (soft && d && SP.cells[ci] && SP.cells[ci].dir) {
+        var _d0c = SP.cells[ci].dir;
+        var _dot0 = _d0c[0] * d[0] + _d0c[1] * d[1] + _d0c[2] * d[2];
+        cc = _cellColorSoft(d, ci, _dot0) || M.cellColorOf(ci);
+      } else cc = M.cellColorOf(ci);
+    }
     var m = cc ? [cc[0], cc[1], cc[2]] : (TERRAIN_RGB[t] || TERRAIN_RGB.plain).slice();
     /* 高频颗粒（近看木有塑料感；只调亮暗不改色） */
     if (d) {
@@ -3138,7 +3182,9 @@ import './gltf.js';
         pos.push(dx * rr, dy * rr, dz * rr);
         nor.push(dx, dy, dz);                              /* 法线=位置方向（球面朝外 · 不受绕向影响）*/
         uv.push(i / K, j / K);
-        var c = sphBiome(e, dy, [dx, dy, dz]);
+        /* v157.75：`soft=true` —— 顶点级邻格软混合，消除「一格一色」的六边形硬边。
+           地表近景（1186 / 1325 / 1362 三处调用）不传，保持地块硬边。 */
+        var c = sphBiome(e, dy, [dx, dy, dz], true);
         col.push(c[0] / 255, c[1] / 255, c[2] / 255);
       }
       for (var z = 0; z < K; z++) for (var x = 0; x < K; x++) {

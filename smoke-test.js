@@ -49083,6 +49083,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     }
     var pairN = Object.keys(pairsM).length;
     var avgD = pairN ? sumD / pairN : 0;
+    /* v157.75：降饱和后不能只盯 RGB 距 —— 再压一个平均饱和度上限，
+       防「下一轮为了好辨认又把颜色调回假彩」 */
+    function satMp(c) {
+      var mx = Math.max(c[0], c[1], c[2]), mn = Math.min(c[0], c[1], c[2]);
+      return mx ? (mx - mn) / mx : 0;
+    }
+    var avgSatM = KEYS.reduce(function (s, k) { return s + satMp(rgbOf(HEX[k])); }, 0) / KEYS.length;
 
     check('§586m 源码面：3D 地形色改为 DATA.TERRAIN.color 派生，不再另写字面量',
       /var TERRAIN_RGB = \(function \(\)/.test(mSrcM)
@@ -49093,16 +49100,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /地形色唯一来源/.test(dSrcM),
       'data.js 含 v157.71 墓碑 · map3d.js 派生形态已就位 · 字面量已消失');
 
-    check('§586m 数据面：七色齐全 + 21 组两两距离 + 色差下限（防平凡解）',
-      hexN === 7 && pairN === 21 && minD >= 60 && avgD >= 130,
+    /* v157.75：下限从 60/130 调到 50/115（降饱和的必然代价），
+       但加一条**平均饱和度 ≤0.45** 的上限 —— 区分度不能靠"越调越艳"来换。 */
+    check('§586m 数据面：七色齐全 + 21 组两两距离 + 区分度下限 + 饱和度上限',
+      hexN === 7 && pairN === 21 && minD >= 50 && avgD >= 115 && avgSatM <= 0.45,
       'hex=' + hexN + '/7 · 距离组=' + pairN + '/21 · 最小=' + minD.toFixed(1)
-        + '(' + minPair + ') · 平均=' + avgD.toFixed(1));
+        + '(' + minPair + ') · 平均=' + avgD.toFixed(1)
+        + ' · 平均饱和=' + avgSatM.toFixed(3) + '(上限 0.45)');
 
+    /* v157.75：降饱和把 zhaoze-forest 从 62.5 压到 52.8（这对本来就靠色相青/绿 + 饱和度 0.24/0.54 分，
+       不是靠 RGB 距），所以这一对的下限单独放到 50，另两对仍要求 60。 */
     check('§586m 旧近色对确实被拉开（plain/desert、zhaoze/forest、plain/caoyuan）',
-      pairsM['plain-desert'] >= 60 && pairsM['zhaoze-forest'] >= 60
+      pairsM['plain-desert'] >= 60 && pairsM['zhaoze-forest'] >= 50
       && pairsM['plain-caoyuan'] >= 60,
       'plain-desert ' + (pairsM['plain-desert'] || 0).toFixed(1) + '(旧32.1) · '
-        + 'zhaoze-forest ' + (pairsM['zhaoze-forest'] || 0).toFixed(1) + '(旧40.6) · '
+        + 'zhaoze-forest ' + (pairsM['zhaoze-forest'] || 0).toFixed(1) + '(旧40.6/峰值62.5) · '
         + 'plain-caoyuan ' + (pairsM['plain-caoyuan'] || 0).toFixed(1) + '(旧43.0)');
 
     /* 运行面 = vm 真调派生 IIFE（比只读运行时更强）。
@@ -49202,6 +49214,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       '旧淡出=' + (mo.indexOf('camO.dist - R * 1.15') >= 0)
         + ' · 旧背景压白=' + (mo.indexOf('M._cloudWhite') >= 0)
         + ' · 新淡出曲线=' + /\(_agl - _hC \* 0\.09\) \/ \(_hC \* 0\.46\)/.test(mo));
+  })();
+
+  /* ============================================================
+   * §586p（v157.75 · 老板「高空中看地块颜色太非自然、边界锯齿状」）
+   * 接线面：globe 顶点走**邻格软混合**（消六边形硬边），地表近景三处仍硬边。
+   * 反向面：不许把 soft 顺手传给近景调用 —— 那里地块本就该有清晰格边。
+   * 下限：邻格遍历 + 插值公式仍在（防"把函数掏空换绿"）。
+   * ============================================================ */
+  (function () {
+    var fsP = require('fs'), pP = require('path');
+    var mp = fsP.readFileSync(pP.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    check('§586p 接线面：globe 顶点走邻格软混合，地表近景仍硬边',
+      /function _cellColorSoft\(d, ci0, dot0\)/.test(mp)
+      && /var c = sphBiome\(e, dy, \[dx, dy, dz\], true\);/.test(mp)
+      && /if \(soft && d && SP\.cells\[ci\] && SP\.cells\[ci\]\.dir\)/.test(mp)
+      && !/sphBiome\(e, d\[1\], d, true\)/.test(mp)
+      && !/sphBiome\(q\.e, dd\[1\], dd, true\)/.test(mp)
+      && !/sphBiome\(eCnat, ctrD\[1\], ctrD, true\)/.test(mp)
+      && /var a0 = Math\.max\(1e-6, 1 - dot0\), a1 = Math\.max\(1e-6, 1 - best\)/.test(mp)
+      && /var t = a0 \/ \(a0 \+ a1\)/.test(mp),
+      'soft 函数 / 顶点调用 / 闸门 / 三处近景硬边 / 插值公式逐项');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
