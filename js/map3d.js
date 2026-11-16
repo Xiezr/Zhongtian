@@ -493,8 +493,13 @@ import './gltf.js';
     var mat = new THREE.ShaderMaterial({
       /* v157.73：`uIn` = 「相机正在云层里」的浓度（钟形，见下方每帧更新）。
          只给壳加浓用 —— 球壳在壳面上必然透明（`edge` 归零），单靠它做不出穿越感，
-         真正的穿越感来自云片掠过 + 背景压白，这里只是让"云墙扑过来"更实。 */
-      uniforms: { uTime: { value: 0 }, uFade: { value: 1 }, uIn: { value: 0 } },
+         真正的穿越感来自云片掠过 + 背景压白，这里只是让"云墙扑过来"更实。
+         v157.84：`uClean` = 近景云纹抑制（0 = 只有均匀薄雾，1 = 全云）。
+         为什么需要：壳的 alpha 在**球面正面**最强（rim≈1 → edge=1、cloudMask=1），
+         所以从 100~200 米俯瞰时，头顶那层 fbm 云正好盖在海面上 —— 就是老板截图里
+         那片"雾状色斑"。高空看整球时云是观感加分，贴近看地面时云就是脏。
+         口径：agl 120→380 米线性 0→1（远景满云，中近景只剩 8% 均匀底雾）。 */
+      uniforms: { uTime: { value: 0 }, uFade: { value: 1 }, uIn: { value: 0 }, uClean: { value: 1 } },
       vertexShader: [
         'varying vec3 vP;',
         'varying vec3 vN;',
@@ -508,7 +513,7 @@ import './gltf.js';
         '}'
       ].join('\n'),
       fragmentShader: [
-        'uniform float uTime; uniform float uFade; uniform float uIn;',
+        'uniform float uTime; uniform float uFade; uniform float uIn; uniform float uClean;',
         'varying vec3 vP; varying vec3 vN; varying vec3 vW;',
         'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }',
         'float n31(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);',
@@ -552,9 +557,12 @@ import './gltf.js';
         '  float cloudMask = smoothstep(0.30, 0.85, rim);',
         /* v157.73：`* (1 + uIn*1.35)` —— 跨层瞬间把壳整体加浓，配合云片形成"云墙"；
            clamp 到 1，避免两层叠加后过曝成纯白块。 */
-        '  float a = (dens * cloudMask * 0.92 + 0.08) * edge * ' + atmA().toFixed(3) + ' * uFade * (1.0 + uIn * 1.35);',
+        /* v157.84：云纹乘 `uClean` —— 近景（agl<380）逐渐去掉成团的云，
+           只留 0.08 的均匀底雾。0.92 的云权重与 0.08 的底雾是**两项**，别合并。 */
+        '  float dens2 = dens * uClean;',
+        '  float a = (dens2 * cloudMask * 0.92 + 0.08) * edge * ' + atmA().toFixed(3) + ' * uFade * (1.0 + uIn * 1.35);',
         '  if (a > 1.0) a = 1.0;',
-        '  vec3 col = mix(vec3(0.76, 0.80, 0.87), vec3(0.98, 0.99, 1.0), dens);',
+        '  vec3 col = mix(vec3(0.76, 0.80, 0.87), vec3(0.98, 0.99, 1.0), dens2);',
         '  gl_FragColor = vec4(col, a);',
         '}'
       ].join('\n'),
@@ -3541,7 +3549,11 @@ import './gltf.js';
         '  /* 逐像素距离衰减：越远的像素细浪越淡（不做这个，镜头一动就是一片摩尔纹闪烁） */',
         '  float camD = length(vView);',
         '  float dFade = 1.0 - smoothstep(140.0, 430.0, camD);',
-        '  float amp = 0.42 * clamp(vFar, 0.0, 1.0) * (0.32 + 0.68 * dFade);',
+        /* v157.84（老板「还有色斑」）：amp 0.42 → 0.24。
+           法线扰动一强，diff / fres / spec 三项同时被放大 —— 在近景（agl 8~60）
+           读出来就是一层"亮蓝色斑团"糊在海面上（实测 agl=35 时成片出现）。
+           0.24 仍保留浪纹起伏，但不再形成可辨认的团块。 */
+        '  float amp = 0.24 * clamp(vFar, 0.0, 1.0) * (0.32 + 0.68 * dFade);',
         '  N = normalize(N - (hT - h0) / e * T * amp - (hB - h0) / e * B * amp);',
         '  /* 主光：画面左上方（与场景太阳一致的方向感） */',
         '  vec3 Ld = normalize(vec3(0.45, 0.80, 0.40));',
@@ -3551,7 +3563,9 @@ import './gltf.js';
         '  float spec = pow(max(dot(N, H), 0.0), 42.0);',
         '  float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);',
         '  vec3 col = uColor * (0.55 + 0.55 * diff);',
-        '  col += vec3(0.95, 0.97, 1.00) * spec * 0.34;',
+        /* v157.84：0.34 → 0.24 —— 近景浪脊上的高光点在低分辨率下读作"白色麻点"
+           （老板截图中海面那层细小亮点）。保留高光（水感来源），只降强度。 */
+        '  col += vec3(0.95, 0.97, 1.00) * spec * 0.24;',
         '  col += vec3(0.12, 0.20, 0.28) * fres;',
         '  gl_FragColor = vec4(col, 1.0);',
         '}',
@@ -6484,12 +6498,62 @@ import './gltf.js';
       var _in = Math.max(0, 1 - Math.abs(_k) / 0.35);
       M._skyMat.uniforms.uFade.value = _fade;
       if (M._skyMat.uniforms.uIn) M._skyMat.uniforms.uIn.value = _in;
+      /* v157.84：近景云纹抑制 —— agl 120→380 米线性 0→1。
+         120 米以下只剩 8% 均匀底雾（没有成团云影压在海面上），380 米以上看整球满云。 */
+      if (M._skyMat.uniforms.uClean) {
+        M._skyMat.uniforms.uClean.value = Math.max(0, Math.min(1, (_agl - 120) / 260));
+      }
       if (M._sky) M._sky.visible = _fade > 0.02;
+      /* ============================================================
+       * v157.84（老板「还有色斑」· 附截图：海面一片雾状白斑）
+       * ------------------------------------------------------------
+       * 病根：云雾层是**按"离云层多近"持续显示**的 ——
+       *     _in = 1 − |agl − hC| / (0.35·hC)     （hC = atmH ≈ 55 米）
+       *   于是 **agl 在 36~74 米之间时 _in > 0，而 55 米处 _in = 1**；
+       *   2D 层拿它当不透明度铺 26 团圆白斑（0.82 峰值），云片再叠 0.31。
+       *   实测（`.workbuddy/tools/show/probe_v15784_veil.js`）：
+       *     agl 130 → veil 0 ｜ 74 → 0.013 ｜ **55 → 1.000（整屏白斑）** ｜ 45 → 0.481 ｜ 30 → 0
+       *   而 55 米正是"拉近看地图"最常用的高度 —— 玩家一停在那儿，海面就永远糊一层
+       *   雾状斑块，看起来就是「还有色斑」。截图实测与老板那张完全同型。
+       *
+       * 正解：**穿云是"事件"，不是"状态"**。
+       *   · `_inBurst` —— 只有**跨过云层高度那一下**（side 翻转）触发，0.9 秒二次衰减；
+       *     这才是"穿过云层"的语义：云扫过去，然后放开。停住不糊。
+       *   · `_inHaze` —— 真停在云层高度（±5 米）时给 **8% 均匀薄白**（无斑块纹理），
+       *     保留"在云里"的一点体感，但它是均匀的"雾"，不是一块块的"脏"。
+       *   · 瞬移（切城/读档，单帧 |Δagl| > 400 米）不算穿越，不触发白幕。
+       * ⚠️ 与 v157.74「滚轮只管高度、不要自动转相机方向」不冲突：本段只改**雾的浓度**，
+       *    一个角度都不动。
+       * ============================================================ */
+      var _dAgl = (_agl - (M._veilAglLast == null ? _agl : M._veilAglLast));
+      M._veilAglLast = _agl;
+      /* 滞回 ±2 米：相机停在云层高度时 agl 会在 hC 上下微抖（阻尼收敛），
+         没有滞回就会每抖一次触发一轮白幕 —— 那等于把"色斑"换个方式又请回来。 */
+      if (M._veilSide == null) {
+        M._veilSide = (_agl >= _hC) ? 1 : -1;              /* 首帧只记基准，不触发 */
+      } else if (Math.abs(_dAgl) > 400) {
+        M._veilSide = (_agl >= _hC) ? 1 : -1; M._veilAt = 0;   /* 瞬移跨层：不铺白幕 */
+      } else {
+        var _cross = (M._veilSide === 1 && _agl < _hC - 2)
+          || (M._veilSide === -1 && _agl > _hC + 2);
+        if (_cross) { M._veilSide = -M._veilSide; M._veilAt = Date.now(); }
+      }
+      var _age = M._veilAt ? (Date.now() - M._veilAt) : 1e9;
+      var _x = _age < 900 ? (1 - _age / 900) : 0;
+      var _burst = _x * _x;                               /* 二次衰减：起手浓、尾段快散 */
+      /* ⚠️ 峰值**不能**再乘 `_in`：`_in` 是"离云层多近"，跨层那一刻 agl 已经掉到
+         hC−20 附近（钟形窗口 ±19 米的边缘），乘上去就恒等于 0 ——
+         实测第一版就是这么把"穿云感"一起修没的（滚轮全程 veil=0.000）。
+         穿越是事件：事件本身给浓度，衰减交给 `_burst`。 */
+      M._cloudVeil = 0.62 * _burst;                       /* 2D 云斑：只在穿越用 */
+      M._cloudHaze = (Math.abs(_agl - _hC) < 5)
+        ? (1 - Math.abs(_agl - _hC) / 5) * 0.08 : 0;      /* 停在云里：均匀薄白 */
 
-      /* 云片：**只有跨层那几秒才亮**（乘 _in）—— 总览时完全收掉，
-         否则 44 片半透明云会在球面上糊一层薄雾，把刚修好的地形色又压灰。 */
+      /* 云片：**只有跨层那几秒才亮**（乘 _inBurst）—— 总览时完全收掉，
+         否则 44 片半透明云会在球面上糊一层薄雾，把刚修好的地形色又压灰。
+         v157.84：由 `_in`（接近度，会长时间 >0）改为 `_in`×穿越衰减 —— 停住不亮。 */
       if (M._puffs) {
-        var _pOp = _fade * _in * 0.62;
+        var _pOp = _fade * _burst * 0.62;
         M._puffs.visible = _pOp > 0.01;
         if (M._puffs.visible) {
           var _ph0 = Date.now() / 9000;
@@ -6505,8 +6569,10 @@ import './gltf.js';
       /* 穿云浓度交给 **2D 合成层**去画（见下方 render 之后的云雾段）。
          ⚠️ 这里原本想改 `scene.background` 压白，**实测无效**：轨道相机始终朝球心
             俯视，3D 几何铺满整屏，background 一个像素都露不出来 —— agl=55 的实机截图
-            是放大的地表纹理，一点云感都没有。2D 层与视角无关，才是「糊一屏」的正确出口。 */
-      M._cloudVeil = _in;
+            是放大的地表纹理，一点云感都没有。2D 层与视角无关，才是「糊一屏」的正确出口。
+         ⛔ v157.84：这里原有 `M._cloudVeil = _in;` —— **删掉**。它把"离云层多近"
+            直接当浓度写回，会覆盖上面算好的"穿越事件"值，等于没改（实测 agl 停在 55
+            仍是 1.000）。浓度唯一来源在 `_inBurst` / `_inHaze` 两行。 */
     }
     R3.render(scene, cam);
     var ctx = target2d.getContext('2d');
@@ -6525,6 +6591,15 @@ import './gltf.js';
      * 观感设计：固定种子生成 42 团柔和云斑（四向复制保证平铺无缝），
      *   两张不同速度的偏移让云「从画面掠过」，而不是一张静止的白幕。
      * ============================================================ */
+    /* v157.84：「停在云里」= 均匀薄白（8% 上限，无斑块纹理）。
+       与下方的云斑（穿越用）刻意分开：均匀的雾不会读成"脏斑"，
+       而一团团的圆斑铺满屏一定会。 */
+    if (M._cloudHaze > 0.004) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(226,233,242,' + M._cloudHaze.toFixed(3) + ')';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.restore();
+    }
     if (M._cloudVeil > 0.012) {
       try {
         if (!M._veilTex) {

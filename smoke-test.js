@@ -48365,9 +48365,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§593① 大气壳边缘走确定性淡出（edge = smoothstep(视线夹角)）',
       /float rim = clamp\(dot\(normalize\(vN\), normalize\(cameraPosition - vW\)\)/.test(seg)
       && /float edge = smoothstep\(/.test(seg), 'fragment 里有 rim + edge');
-    check('§593② 噪声被赶出边缘区（cloudMask 只在中正面生效）',
+    /* 规则变更（v157.84）：`dens` → `dens2`（= dens × uClean，近景云纹抑制）。
+       原因：壳的 alpha 在**球面正面**本来最强（rim≈1 → edge=1、cloudMask=1），
+       从 100~200 米俯瞰时那层 fbm 云正好盖在海面上 = 老板说的"色斑"。
+       所以云纹必须再乘一个按高度收的 uClean。
+       ⚠️ 本条只改「乘的对象」，判定目标不变：噪声仍必须被 cloudMask 赶出边缘区。 */
+    check('§593② 噪声被赶出边缘区（cloudMask 只在中正面生效；v157.84 起云纹先乘 uClean）',
       /float cloudMask = smoothstep\(/.test(seg)
-      && /dens \* cloudMask/.test(seg), 'dens 与 cloudMask 相乘');
+      && /dens2 \* cloudMask/.test(seg)
+      && /float dens2 = dens \* uClean;/.test(seg), 'dens2 与 cloudMask 相乘');
     check('§593③ 反退化：不再把 smoothstep 直接乘在 fbm 的 alpha 上',
       seg.length > 0 && !/a \*= smoothstep\(/.test(seg),
       '旧写法 `a *= smoothstep(...)` 已不存在');
@@ -49554,6 +49560,96 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§586s 默认面：自转默认关（spinOn=false），按钮 setSpin 保留',
       /M\.spinOn = false;/.test(mp) && /M\.setSpin = function \(on\) \{/.test(mp),
       'spinOn=false + setSpin 在岗');
+  })();
+
+  /* ============================================================
+   * §586t（v157.84 · 老板「还有色斑。给我自检100遍求求了」）
+   * ------------------------------------------------------------
+   * 病根：云雾层按「离云层多近」**持续显示**：
+   *     _in = 1 − |agl − hC| / (0.35·hC)   （hC = atmH ≈ 55 米）
+   *   agl 36~74 米之间恒 > 0，**55 米处 = 1.000**，2D 层拿它当不透明度
+   *   铺 26 团圆白斑（×0.82），云片再叠 0.31 → 整屏雾状白斑。
+   *   而 55 米正是"拉近看地图"的常用高度 —— 一停在那儿海面就永远糊着。
+   *   实测（`.workbuddy/tools/show/probe_v15784_veil.js`）：
+   *     agl 130→veil 0 ｜ 74→0.013 ｜ **55→1.000** ｜ 45→0.481 ｜ 30→0
+   *   与老板截图逐项同型（大片雾斑 + 海色被抬亮）。
+   *
+   * 新口径：**穿云是事件，不是状态**
+   *   · `_burst` —— 只由「跨过 hC」那一下触发，0.9 秒二次衰减；
+   *   · `_cloudVeil = 0.62 × _burst`（**不乘 _in**：跨层那刻 agl 已掉到钟形窗口
+   *     边缘，乘上去恒等于 0 —— 第一版就是这么把穿云感一起修没的，实测 veil 全程 0）；
+   *   · `_cloudHaze` —— 真停在 hC±5 米时给 8% 均匀薄白（无斑块纹理）；
+   *   · ±2 米滞回 —— 停在云层高度时 agl 微抖不许反复触发；
+   *   · 单帧 |Δagl| > 400 米视为瞬移（切城/读档），不铺白幕。
+   *
+   * 四层守卫：
+   *   ① 结构面：事件式三件套（_burst / veil / haze）都在
+   *   ② 反向证据：`M._cloudVeil = _in;`（旧状态式）与 `_in * _burst`（哑火版）都 0 处
+   *   ③ 数值面：真算衰减曲线 —— 峰值 0.62 / 0.9 秒归零 / 停 5 秒仍 0
+   *   ④ 行为面：云片走 `_fade * _burst`，不再受接近度长期驱动
+   * ============================================================ */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
+
+    check('§586t 结构面：云雾 = 穿越事件（side 翻转 + 0.9s 二次衰减 + ±2m 滞回 + ±5m 薄雾）',
+      /M\._cloudVeil = 0\.62 \* _burst;/.test(mp)
+      && /var _burst = _x \* _x;/.test(mp)
+      && /_veilSide === 1 && _agl < _hC - 2/.test(mp)
+      && /_veilSide === -1 && _agl > _hC \+ 2/.test(mp)
+      && /M\._cloudHaze = \(Math\.abs\(_agl - _hC\) < 5\)/.test(mp),
+      '事件三件套 + 双向滞回在岗');
+
+    /* 反向证据：两条错误写法都不许复活
+       ① `M._cloudVeil = _in;` —— 旧的状态式（覆盖事件值，实测停在 55 米仍是 1.000）
+       ② `_in * _burst` —— 哑火版（_in 在跨层时已≈0，穿云感消失） */
+    check('§586t 反向证据：状态式(`= _in;`) 与哑火式(`_in * _burst`) 计数均为 0',
+      (mp.match(/\n\s*M\._cloudVeil = _in;\n/g) || []).length === 0
+      && (mp.match(/_in \* _burst/g) || []).length === 0,
+      '旧式 0 处 · 哑火式 0 处');
+
+    /* 数值面：真算时间曲线（公式与源码一致，防"注释对了实现错了"） */
+    check('§586t 数值面：峰值 0.62 · 0.9 秒归零 · 停 5 秒仍 0 · 薄雾只覆盖 hC±5',
+      (function () {
+        function veil(age) {
+          var x = age < 900 ? (1 - age / 900) : 0;
+          return 0.62 * x * x;
+        }
+        var v0 = veil(0), v300 = veil(300), v900 = veil(900), v5000 = veil(5000);
+        function haze(agl, hC) {
+          return (Math.abs(agl - hC) < 5) ? (1 - Math.abs(agl - hC) / 5) * 0.08 : 0;
+        }
+        var ok = v0 > 0.6 && v0 <= 0.62 + 1e-9
+          && v300 > 0.2 && v300 < v0
+          && v900 === 0 && v5000 === 0
+          && haze(55, 55) === 0.08 && haze(55, 45) === 0 && haze(60, 55) === 0;
+        check('§586t 数值面：veil(0)=' + v0.toFixed(3) + ' · veil(300ms)=' + v300.toFixed(3)
+          + ' · veil(900ms)=' + v900 + ' · haze(hC)=0.08 · haze(hC−10)=0', ok, '');
+        return ok;
+      })(), '衰减曲线真算');
+
+    check('§586t 行为面：云片走 `_fade * _burst`（不再被接近度长期驱动）',
+      /var _pOp = _fade \* _burst \* 0\.62;/.test(mp)
+      && !/_pOp = _fade \* _in \* 0\.62/.test(mp),
+      '_pOp 口径已换');
+
+    /* ---- 同批修的另两处"远景色斑"来源（都在海面） ----
+       ① 大气云壳的 fbm 云纹在**球面正面**最强（rim≈1 → edge=1、cloudMask=1），
+          从 100~200 米俯瞰时正好盖在海面上 → 必须有 `uClean` 按高度抑制；
+       ② 海面法线扰动 amp 0.42 + spec 0.34 会把 diff/fres/spec 同时放大，
+          近景读作"亮蓝色斑团 + 白色麻点" → 降到 0.24 / 0.24。 */
+    check('§586t 云壳面：uClean 近景抑制在岗（agl 120→380 线性），云纹乘 dens2',
+      /uClean: \{ value: 1 \}/.test(mp)
+      && /float dens2 = dens \* uClean;/.test(mp)
+      && /dens2 \* cloudMask \* 0\.92/.test(mp)
+      && /M\._skyMat\.uniforms\.uClean\.value = Math\.max\(0, Math\.min\(1, \(_agl - 120\) \/ 260\)\)/.test(mp),
+      'uClean + dens2 在岗');
+
+    check('§586t 海面面：法线扰动 amp=0.24 · 镜面 0.24（降"亮蓝斑团/白麻点"）',
+      /float amp = 0\.24 \* clamp\(vFar, 0\.0, 1\.0\)/.test(mp)
+      && /spec \* 0\.24;/.test(mp)
+      && !/float amp = 0\.42 \* clamp/.test(mp),
+      'amp 0.24 · spec 0.24');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
