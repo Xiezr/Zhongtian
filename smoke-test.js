@@ -36535,24 +36535,31 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return '贴地一格 ×' + (M3._zoomCurveProbe(1.7, 100) / 1.7).toFixed(2)
           + ' → 4000 米一格 ×' + (M3._zoomCurveProbe(4000, 100) / 4000).toFixed(3);
       })());
-      c243('§243①r 视线跨阈值连续：交班衰减 62 米满值 → 95 米归零（旧版此处跳 75°）', (function () {
-        var M3 = GAME.map3d;
-        if (!M3 || !M3._handoffMulProbe) return false;
-        var a = M3._handoffMulProbe(62), b = M3._handoffMulProbe(78), c = M3._handoffMulProbe(95);
-        var mono = true, prev = 2;
-        for (var x = 50; x <= 100; x += 2) {
-          var v = M3._handoffMulProbe(x);
-          if (v > prev + 1e-9) mono = false;
-          prev = v;
-        }
-        /* 进地表必须"接手当前真实视线"（而不是强设 −15），否则又回到硬切 */
-        return Math.abs(a - 1) < 1e-6 && b > 0.2 && b < 0.8 && Math.abs(c) < 1e-6 && mono
-          && m243.indexOf('var _tooSteep = _elPrev < (-65 * Math.PI / 180)') >= 0
+      /* v157.74（老板「滚轮只管高度，不要再自动转移那个相机的方向」）——
+         规则反转：旧版这条要求「交班衰减 62m 满值 → 95m 归零」，
+         那正是**高度驱动视线融合**、也就是"滚轮一动画面自己转"的来源，已整条退役。
+         新口径判据（三件套）：
+           ① 反向证据：`_handoffMul` 函数 / `_handoffMulProbe` 探针 / `var _hEl` 全部不得复活
+              （用"定义/赋值形态"判，不用"字样"——墓碑注释里允许提到它们）；
+           ② 正向：`_lpEff` **直接等于** `camO.lookPitch`，没有叠加任何高度项；
+           ③ 保留面：进地表那一刻仍「接手当前真实视线」—— 那是模式切换的交接，不是滚轮转向。 */
+      c243('§243①r 滚轮只管高度：视线不随高度自动转移（交班融合 v157.74 退役）', (function () {
+        var noHandoff = !/function _handoffMul\s*\(/.test(m243)
+          && !/_handoffMulProbe\s*=/.test(m243)
+          && !/var _hEl\s*=/.test(m243)
+          && !/_hm\s*=\s*_handoffMul\(/.test(m243);
+        var direct = /var _lpEff = camO\.lookPitch;/.test(m243);
+        /* 下限：placeCamera 与"看球心"基准仍在（不能把整段删空换绿） */
+        var baseOk = m243.indexOf('function placeCamera()') >= 0
+          && m243.indexOf('cam.quaternion.copy(camO.quat)') >= 0;
+        /* 保留面：进地表接手真实视线（与滚轮无关的模式切换） */
+        var takeOver = m243.indexOf('var _tooSteep = _elPrev < (-65 * Math.PI / 180)') >= 0
           && m243.indexOf('M._surfDir = _prevF.clone().normalize()') >= 0;
+        return noHandoff && direct && baseOk && takeOver;
       })(), (function () {
-        var M3 = GAME.map3d; if (!M3) return '';
-        return '62m=' + M3._handoffMulProbe(62).toFixed(2) + ' · 78m=' + M3._handoffMulProbe(78).toFixed(2)
-          + ' · 95m=' + M3._handoffMulProbe(95).toFixed(2);
+        return '交班定义残留=' + (/function _handoffMul\s*\(/.test(m243) || /var _hEl\s*=/.test(m243))
+          + ' · _lpEff 直取=' + /var _lpEff = camO\.lookPitch;/.test(m243)
+          + ' · 进地表接手=' + (m243.indexOf('M._surfDir = _prevF.clone().normalize()') >= 0);
       })());
       })();
       /* ============================================================

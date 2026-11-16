@@ -5366,7 +5366,8 @@ import './gltf.js';
   /* 探针出口（只读纯函数）：滚轮曲线与交班衰减 —— 给 smoke 断言用，
      不在别处调用。`_zoomCurveProbe(agl, dy)` 返回"这一格滚到哪"。 */
   M._zoomCurveProbe = function (agl, dy) { return _zoomStepTo(Math.max(0.6, +agl || 0.6), dy == null ? 100 : dy); };
-  M._handoffMulProbe = function (rAlt) { return _handoffMul(+rAlt || 0); };
+  /* ⛔ v157.74：交班衰减探针随 `_handoffMul` 一起退役 —— 老板
+     「滚轮只管高度，不要再自动转移那个相机的方向」，高度不再驱动视线。 */
 
   /* ============================================================
    * v157.50（老板「62 米阈值处视线仍是硬切，要求全面平滑」）
@@ -5387,10 +5388,10 @@ import './gltf.js';
     return t * t * (3 - 2 * t);
   }
   /* 交班衰减窗口：62 米（AGL_SURF+HYST）满值 → 95 米归零。 */
-  function _handoffMul(rAlt) {
-    return 1 - _smoothstep01((M.AGL_SURF || 55) + (M.AGL_HYST == null ? 7 : M.AGL_HYST),
-      95, rAlt);
-  }
+  /* ⛔ v157.74 退役：`_handoffMul(rAlt)` 曾是「按离地高度把视线融合回看球心」的权重
+     （62m = 1 → 95m = 0）。它让**滚轮一动画面就自己转**，与老板
+     「滚轮只管高度，不要再自动转移那个相机的方向」直接冲突，整条删除。
+     现在 `placeCamera` 里 `_lpEff` 只等于玩家自己的 `lookPitch`。 */
 
   function placeCamera() {    /* ============================================================
      * v156.55（老板「右键的相机，我希望是相机绕球心运动，
@@ -5766,24 +5767,14 @@ import './gltf.js';
     /* v156.59：直接用四元数（含 roll）——球可以自由倾倒，这才是"空间中的自由球"。
        lookYaw/lookPitch 作为**局部**偏移左乘（中键转头用）。 */
     cam.quaternion.copy(camO.quat);
-    /* v157.50：**交班偏移**（出地表时接过来的视线差）随高度连续衰减，
-       与玩家自己的 lookPitch 同层相加。62 米处满值（画面与地表一模一样）→
-       95 米归零（完全回正成"看球心"）。这一条就是"62 米处不再硬切 75°"的本体。 */
-    var _hEl = 0;
-    if (M._surfDir && !camO.lookPitch) {
-      /* ⚠️ 必须**每帧由 `_surfDir` 派生**，不能只在"出地表那一帧记一次"：
-         反向滚回来时那次记录早已衰减到 0（实测 out8 归零后，in23 仍是 −90 → 进地表
-         又是一次 75° 硬切）。每帧派生 = 上行下行共用同一条曲线，天然对称。
-         玩家自己抬过头（lookPitch）时不干预 —— 他的视角优先，进地表照旧接手。 */
-      var _hm = _handoffMul(_rAlt);
-      if (_hm > 0.0001) {
-        var _u3 = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]).normalize();
-        var _sd3 = M._surfDir.clone().normalize();
-        var _elS3 = Math.asin(Math.max(-1, Math.min(1, _sd3.dot(_u3))));
-        _hEl = (_elS3 + Math.PI / 2) * _hm;      /* 轨道基准（看球心）= −90° */
-      }
-    }
-    var _lpEff = camO.lookPitch + _hEl;
+    /* ⛔ v157.74（老板 2026-11-16「滚轮只管高度，不要再自动转移那个相机的方向」）：
+       v157.50 的**交班偏移**（`_hEl`）整条退役 —— 它按离地高度把视线从地表方向
+       连续融合回「看球心」（62m 满值 → 95m 归零），于是**滚轮一动，画面自己就转**。
+       现在 `_lpEff` 只等于玩家自己的 `lookPitch`，没有任何高度驱动的项：
+         · 滚轮 → 只改 `camO.dist`；· 朝向 → 只有右键能改。
+       ⚠️ 退役的是「按高度渐变」这一条；进退地表那一刻的方向交接仍保留（见上方
+          `_surfDir` / `_prevF` 分支），那是**模式切换**、不是滚轮转向。 */
+    var _lpEff = camO.lookPitch;
     if (camO.lookYaw || _lpEff) {
       cam.quaternion.multiply(new THREE.Quaternion().setFromEuler(
         new THREE.Euler(Math.max(-1.55, Math.min(1.55, _lpEff)), camO.lookYaw, 0, 'YXZ')));
