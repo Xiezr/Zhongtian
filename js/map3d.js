@@ -430,7 +430,10 @@ import './gltf.js';
        抬到大气层基准高度 R + ATM_H —— 这才是一层罩住整颗星球的**完整大气层**。 */
     var g = new THREE.SphereGeometry(R + atmH(), 128, 84);
     var mat = new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uFade: { value: 1 } },
+      /* v157.73：`uIn` = 「相机正在云层里」的浓度（钟形，见下方每帧更新）。
+         只给壳加浓用 —— 球壳在壳面上必然透明（`edge` 归零），单靠它做不出穿越感，
+         真正的穿越感来自云片掠过 + 背景压白，这里只是让"云墙扑过来"更实。 */
+      uniforms: { uTime: { value: 0 }, uFade: { value: 1 }, uIn: { value: 0 } },
       vertexShader: [
         'varying vec3 vP;',
         'varying vec3 vN;',
@@ -444,7 +447,7 @@ import './gltf.js';
         '}'
       ].join('\n'),
       fragmentShader: [
-        'uniform float uTime; uniform float uFade;',
+        'uniform float uTime; uniform float uFade; uniform float uIn;',
         'varying vec3 vP; varying vec3 vN; varying vec3 vW;',
         'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }',
         'float n31(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);',
@@ -486,7 +489,10 @@ import './gltf.js';
         '  float rim = clamp(dot(normalize(vN), normalize(cameraPosition - vW)), 0.0, 1.0);',
         '  float edge = smoothstep(0.0, 0.45, rim);',
         '  float cloudMask = smoothstep(0.30, 0.85, rim);',
-        '  float a = (dens * cloudMask * 0.92 + 0.08) * edge * ' + atmA().toFixed(3) + ' * uFade;',
+        /* v157.73：`* (1 + uIn*1.35)` —— 跨层瞬间把壳整体加浓，配合云片形成"云墙"；
+           clamp 到 1，避免两层叠加后过曝成纯白块。 */
+        '  float a = (dens * cloudMask * 0.92 + 0.08) * edge * ' + atmA().toFixed(3) + ' * uFade * (1.0 + uIn * 1.35);',
+        '  if (a > 1.0) a = 1.0;',
         '  vec3 col = mix(vec3(0.76, 0.80, 0.87), vec3(0.98, 0.99, 1.0), dens);',
         '  gl_FragColor = vec4(col, a);',
         '}'
@@ -497,6 +503,73 @@ import './gltf.js';
     M._sky.renderOrder = 22;
     M._skyMat = mat;
     scene.add(M._sky);
+
+    /* ============================================================
+     * v157.73（老板「如何做到拉近距离时穿越云层的感觉」）
+     * ------------------------------------------------------------
+     * 为什么不能只靠上面那层球壳：相机**穿过壳面**时，`edge = smoothstep(0, 0.45, rim)`
+     * 必然归零（v156.34 为修自转闪烁定下的"轮廓处淡出"），那一刻壳是透明的 ——
+     * 穿过去只会"少一层半透明"，不会有任何被云裹住的感觉。
+     *
+     * 所以补一层**云片**（Sprite）：铺在 R + ATM_H 上下约 ±0.6×ATM_H 的带子里，
+     * 相机拉近穿层时，它们从镜头前一片片掠过 —— 这才是"在云里"的来源。
+     *   · 固定在球面上（不跟相机走）：相机平移/缩放时才有透视掠过感；
+     *   · 高度分 5 档错开：穿层是"一层一层"，不是同高一片；
+     *   · 44 片、单片直径 ≈ R*0.09，unlit + depthWrite:false，成本与一片草相当；
+     *   · 不参与任何判定、不遮操作，纯观感（与 v157.68「视野内不加渲染」不冲突：
+     *     那些限制针对**地表探明度**那套几何，云在天上，且只在穿层的几秒里浓）。
+     * ============================================================ */
+    if (M._puffs) {
+      scene.remove(M._puffs);
+      M._puffs.traverse(function (o) {
+        if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+      });
+      M._puffs = null;
+    }
+    (function buildPuffs() {
+      var grp = new THREE.Group();
+      var tex = (function () {
+        var S = 128, cv2 = document.createElement('canvas');
+        cv2.width = S; cv2.height = S;
+        var g2 = cv2.getContext('2d');
+        /* 三团偏移的柔和斑叠成不规则云块 —— 单个径向渐变更像"雾球"，不像云 */
+        function blob(cx, cy, rr, aa) {
+          var gr = g2.createRadialGradient(cx, cy, 0, cx, cy, rr);
+          gr.addColorStop(0, 'rgba(255,255,255,' + aa.toFixed(3) + ')');
+          gr.addColorStop(0.55, 'rgba(248,250,253,' + (aa * 0.45).toFixed(3) + ')');
+          gr.addColorStop(1, 'rgba(244,248,252,0)');
+          g2.fillStyle = gr;
+          g2.beginPath(); g2.arc(cx, cy, rr, 0, Math.PI * 2); g2.fill();
+        }
+        blob(S * 0.50, S * 0.52, S * 0.44, 0.85);
+        blob(S * 0.29, S * 0.41, S * 0.29, 0.52);
+        blob(S * 0.71, S * 0.57, S * 0.27, 0.48);
+        var t = new THREE.CanvasTexture(cv2);
+        t.minFilter = THREE.LinearFilter;      /* 云片近看就糊，不需要 mipmap */
+        t.generateMipmaps = false;
+        if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+      })();
+      var hC = atmH(), N = 44, gold = 2.399963;   /* 黄金角 → 球面均匀撒点 */
+      for (var i2 = 0; i2 < N; i2++) {
+        var y2 = 1 - (i2 + 0.5) / N * 2;
+        var rr2 = Math.sqrt(Math.max(0, 1 - y2 * y2));
+        var th2 = i2 * gold;
+        var dir2 = [Math.cos(th2) * rr2, y2, Math.sin(th2) * rr2];
+        /* 5 档高度错开：±0.48×hC 为主，另加 ±0.12×hC 的微扰 */
+        var rad2 = R + hC + (i2 % 5 - 2) * hC * 0.24 + (i2 % 3 - 1) * hC * 0.08;
+        var sp = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: tex, transparent: true, depthWrite: false, depthTest: true, opacity: 0
+        }));
+        sp.position.set(dir2[0] * rad2, dir2[1] * rad2, dir2[2] * rad2);
+        var sc = R * (0.085 + (i2 % 7) * 0.007);
+        sp.scale.set(sc, sc * 0.62, 1);        /* 压扁：云层是横着摊的，不是圆球 */
+        sp.renderOrder = 21;
+        grp.add(sp);
+      }
+      M._puffs = grp;
+      scene.add(grp);
+    })();
   }
   M.buildSkyClouds = buildSkyClouds;
 
@@ -5975,15 +6048,119 @@ import './gltf.js';
     }
     if (M._skyMat && M._skyMat.uniforms && M._skyMat.uniforms.uTime) {
       M._skyMat.uniforms.uTime.value = (Date.now() % 3600000) / 1000;
-      /* v155f：近景（贴地/看水面）**把云淡出** —— 否则云壳挡在相机与地面之间，一片糊 */
-      var _fade = Math.max(0, Math.min(1, (camO.dist - R * 1.15) / (R * 0.55)));
+      /* ============================================================
+       * v157.73（老板「如何做到拉近距离时穿越云层的感觉」）
+       * ------------------------------------------------------------
+       * 旧口径（v155f）：`uFade = (dist − R*1.15) / (R*0.55)` —— 离地 45 米就开始淡，
+       *   而云壳在 R+ATM_H(55)：**相机还没碰到云，云先没了**，穿过去当然毫无感觉。
+       * 新口径拆成两件正交的事，别再混：
+       *   ① `uFade` —— 只负责「别糊地面」：离地 ≥ 0.55×hC(≈30m) 全显示，
+       *      30 → 5 米之间线性收到 0（贴地时云在头顶 50 米、正俯视看不到，省性能）；
+       *   ② `uIn`   —— 只负责「在云里」：以 |离地 − hC| / (0.35×hC) 的**钟形**，
+       *      跨层 ±19 米内从 1 掉到 0，同时驱动云片浓度与背景压白。
+       * 两者正交：100 米看云海（fade=1 / in=0）、55 米穿层（fade=1 / in=1）、
+       * 贴地 2 米（fade≈0 / in=0）。
+       * ============================================================ */
+      var _hC = atmH();
+      var _agl = camO.dist - R;
+      var _fade = Math.max(0, Math.min(1, (_agl - _hC * 0.09) / (_hC * 0.46)));
+      var _k = (_agl - _hC) / _hC;
+      var _in = Math.max(0, 1 - Math.abs(_k) / 0.35);
       M._skyMat.uniforms.uFade.value = _fade;
+      if (M._skyMat.uniforms.uIn) M._skyMat.uniforms.uIn.value = _in;
       if (M._sky) M._sky.visible = _fade > 0.02;
+
+      /* 云片：**只有跨层那几秒才亮**（乘 _in）—— 总览时完全收掉，
+         否则 44 片半透明云会在球面上糊一层薄雾，把刚修好的地形色又压灰。 */
+      if (M._puffs) {
+        var _pOp = _fade * _in * 0.62;
+        M._puffs.visible = _pOp > 0.01;
+        if (M._puffs.visible) {
+          var _ph0 = Date.now() / 9000;
+          var _kids = M._puffs.children;
+          for (var _pi = 0; _pi < _kids.length; _pi++) {
+            /* 每片相位错开：穿层时是"一片片掠过"，不是整屏同时亮 */
+            var _ph = 0.72 + 0.28 * Math.sin(_ph0 + _pi * 0.7);
+            _kids[_pi].material.opacity = Math.min(0.9, _pOp * _ph);
+          }
+        }
+      }
+
+      /* 穿云浓度交给 **2D 合成层**去画（见下方 render 之后的云雾段）。
+         ⚠️ 这里原本想改 `scene.background` 压白，**实测无效**：轨道相机始终朝球心
+            俯视，3D 几何铺满整屏，background 一个像素都露不出来 —— agl=55 的实机截图
+            是放大的地表纹理，一点云感都没有。2D 层与视角无关，才是「糊一屏」的正确出口。 */
+      M._cloudVeil = _in;
     }
     R3.render(scene, cam);
     var ctx = target2d.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);
     ctx.drawImage(wcv, 0, 0, cw, ch);
+    /* ============================================================
+     * v157.73（老板「如何做到拉近距离时穿越云层的感觉」）
+     * ------------------------------------------------------------
+     * 穿云雾：相机跨过云层高度（R + ATM_H）前后 ±0.35×ATM_H 内，
+     * 在 **2D 合成层**铺一层缓慢漂移的云斑，把画面短暂糊住再放开。
+     *
+     * 为什么必须画在这一层（而不是 3D）：
+     *   · 轨道相机**始终朝球心俯视**，3D 几何铺满整屏 → `scene.background` 露不出来；
+     *   · 球壳在**壳面上必然透明**（`edge` 归零，v156.34 为修自转闪烁定的）→ 穿层那刻没云；
+     *   · 2D 层与视角无关，是唯一能「糊一屏」的出口，成本只是几次 Canvas 填充。
+     * 观感设计：固定种子生成 42 团柔和云斑（四向复制保证平铺无缝），
+     *   两张不同速度的偏移让云「从画面掠过」，而不是一张静止的白幕。
+     * ============================================================ */
+    if (M._cloudVeil > 0.012) {
+      try {
+        if (!M._veilTex) {
+          var VS = 512, vc = document.createElement('canvas');
+          vc.width = vc.height = VS;
+          var vg = vc.getContext('2d');
+          var vseed = 20261116;                   /* 固定种子：截图可复现，不用 Math.random */
+          var vrnd = function () { vseed = (vseed * 1664525 + 1013904223) >>> 0; return vseed / 4294967296; };
+          /* v157.73 调参：42 团 × 半径 0.10~0.27 实测太碎，像"霉斑"而不是云团；
+             改成 26 团 × 0.16~0.38（大团、少而柔），提白到 238,243,250。 */
+          for (var vi = 0; vi < 26; vi++) {
+            var vx = vrnd() * VS, vy = vrnd() * VS;
+            var vrr = VS * (0.16 + vrnd() * 0.22);
+            var vaa = 0.20 + vrnd() * 0.26;
+            /* 3×3 复制：斑块跨贴图边界时两边都有，平铺才不出现硬缝 */
+            for (var vdx = -1; vdx <= 1; vdx++) {
+              for (var vdy = -1; vdy <= 1; vdy++) {
+                var gv = vg.createRadialGradient(vx + vdx * VS, vy + vdy * VS, 0,
+                  vx + vdx * VS, vy + vdy * VS, vrr);
+                gv.addColorStop(0, 'rgba(238,243,250,' + vaa.toFixed(3) + ')');
+                gv.addColorStop(1, 'rgba(238,243,250,0)');
+                vg.fillStyle = gv;
+                vg.beginPath();
+                vg.arc(vx + vdx * VS, vy + vdy * VS, vrr, 0, Math.PI * 2);
+                vg.fill();
+              }
+            }
+          }
+          M._veilTex = vc;
+        }
+        if (!M._veilPat) M._veilPat = ctx.createPattern(M._veilTex, 'repeat');
+        var _va = Math.min(0.80, M._cloudVeil * 0.82);
+        /* 第一层：原尺寸，慢漂移 */
+        var _vox = (Date.now() / 52) % 512, _voy = (Date.now() / 78) % 512;
+        ctx.save();
+        ctx.globalAlpha = _va;
+        ctx.translate(-_vox, -_voy);
+        ctx.fillStyle = M._veilPat;
+        ctx.fillRect(0, 0, cw + 512, ch + 512);
+        ctx.restore();
+        /* 第二层：0.62 倍缩放 + 反向漂移 —— 单层平铺在 1280 宽上会露出重复节奏，
+           叠一层不同尺度就看不出来了（只在穿层的 1 秒内画，性能可忽略）。 */
+        var _vox2 = (Date.now() / 34) % 512, _voy2 = (Date.now() / 61) % 512;
+        ctx.save();
+        ctx.globalAlpha = _va * 0.55;
+        ctx.scale(0.62, 0.62);
+        ctx.translate(-_vox2, -_voy2);
+        ctx.fillStyle = M._veilPat;
+        ctx.fillRect(0, 0, (cw + 512) / 0.62, (ch + 512) / 0.62);
+        ctx.restore();
+      } catch (eVeil) { /* 云雾失败不挡渲染 */ }
+    }
     /* v90.83：**当前星球标识**（左下常驻）—— 换球后一眼可辨"现在是哪颗"（生成/进入星球后即时更新）。
        放左下：右上被地形/行政检索栏占用。 */
     /* v131：前传不画这条 —— 那时候玩家是**一个人**在野外，不是一颗星球的统治者；

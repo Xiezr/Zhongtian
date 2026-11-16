@@ -49172,6 +49172,31 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         + ' · map3d 已脱钩=' + (mdN.indexOf('GAME.jianghuActsAt(') < 0));
   })();
 
+  /* ============================================================
+   * §586o（v157.73 · 老板「如何做到拉近距离时穿越云层的感觉」）
+   * 两层：① 源码形态（uIn 钟形 / 2D 云雾 / 双尺度平铺）
+   *      ② 反向证据（旧的「离地 45 米就淡光」公式与无效的背景压白必须消失）
+   * ============================================================ */
+  (function () {
+    var fso = require('fs'), po = require('path');
+    var mo = fso.readFileSync(po.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    check('§586o 源码面：穿云走 2D 合成层（uIn 钟形 + 云纹双尺度平铺）',
+      /uIn: \{ value: 0 \}/.test(mo)
+      && /M\._cloudVeil = _in;/.test(mo)
+      && /M\._cloudVeil > 0\.012/.test(mo)
+      && /createPattern\(M\._veilTex, 'repeat'\)/.test(mo)
+      && /ctx\.scale\(0\.62, 0\.62\)/.test(mo)
+      && /var _in = Math\.max\(0, 1 - Math\.abs\(_k\) \/ 0\.35\)/.test(mo),
+      'uIn/veil/pattern/0.62 二次平铺/钟形 ±0.35 均在');
+    check('§586o 反向面：旧「离地 45 米就淡光」公式与无效的背景压白已消失',
+      mo.indexOf('camO.dist - R * 1.15') < 0
+      && mo.indexOf('M._cloudWhite') < 0
+      && /\(_agl - _hC \* 0\.09\) \/ \(_hC \* 0\.46\)/.test(mo),
+      '旧淡出=' + (mo.indexOf('camO.dist - R * 1.15') >= 0)
+        + ' · 旧背景压白=' + (mo.indexOf('M._cloudWhite') >= 0)
+        + ' · 新淡出曲线=' + /\(_agl - _hC \* 0\.09\) \/ \(_hC \* 0\.46\)/.test(mo));
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));
