@@ -967,6 +967,9 @@
    * 最后再叠一点高频颗粒（近看不糊）。
    * ============================================================ */
   var _cellCol = null, _cellColVer = '';
+  /* v157.86：`_cellColorSoft` 每次调用顺手写出这三个值（顶点→格映射），
+     buildGlobe 循环读取后存成 `M._globeVtxCell`，供已探索提亮使用。 */
+  var _lastSoft = { ci0: -1, ci1: -1, t: 0 };
   function buildCellColors() {
     var SPn = GAME.sphere;
     if (!SPn || !SPn.cells) return;
@@ -1053,7 +1056,7 @@
       var dt = cc.dir[0] * d[0] + cc.dir[1] * d[1] + cc.dir[2] * d[2];
       if (dt > best) { best = dt; bj = adj[i]; }
     }
-    if (bj < 0) return c0;
+    if (bj < 0) { _lastSoft.ci0 = ci0; _lastSoft.ci1 = -1; _lastSoft.t = 0; return c0; }
     var c1 = [_cellCol[bj * 3], _cellCol[bj * 3 + 1], _cellCol[bj * 3 + 2]];
     var a0 = Math.max(1e-6, 1 - dot0), a1 = Math.max(1e-6, 1 - best);
     var t = a0 / (a0 + a1);                     /* 格边界 ≈0.5 / 格心 ≈0 */
@@ -1061,6 +1064,9 @@
        顶点级再混满 0.5 等于平滑两次 —— agl=110 整屏糊成一片、没有层次。
        限到 0.28：边界台阶软化一半，地块内部的明暗/纹理留住。 */
     t = Math.min(t, 0.5) * 0.56;
+    /* v157.86：顺手把「顶点→最近格/次近格/混合权重」写出去 —— buildGlobe 用它
+       做**已探索提亮**的顶点级软插值（不自算第二遍 nearestCell，零额外成本）。 */
+    _lastSoft.ci0 = ci0; _lastSoft.ci1 = bj; _lastSoft.t = t;
     return [c0[0] + (c1[0] - c0[0]) * t,
             c0[1] + (c1[1] - c0[1]) * t,
             c0[2] + (c1[2] - c0[2]) * t];
@@ -1383,7 +1389,7 @@
       if (M._shellMat) M._shellMat.opacity = M._surf ? 0.12 : 0.6;
       /* v157.76：探明边界线同样只在太空模式亮 —— 站在地上时它是"地图语言"，
          会变成地上一条莫名其妙的亮线（同 v157 让城色块/插旗退场的理由）。 */
-      if (_fogEdgeMesh) _fogEdgeMesh.visible = !M._surf && _fogEdgeSegs > 0;
+      /* ⛔ v157.86：边界线已整条删除，这里不再有「地表模式隐藏边界」的判断。 */
       /* ============================================================
        * v157：地表模式 = **只看世界，不看地图符号**
        * ------------------------------------------------------------
@@ -3529,6 +3535,7 @@
       function (u, v) { return [u, v, 1]; }, function (u, v) { return [-u, v, -1]; }
     ];
     var pos = [], col = [], nor = [], idx = [], uv = [];
+    var _vx0 = [], _vx1 = [], _vxt = [];      /* v157.86：每顶点的 c0/c1/混合权重 */
     FACES.forEach(function (fn) {
       var base = pos.length / 3;
       /* ============================================================
@@ -3556,6 +3563,7 @@
            地表近景（1186 / 1325 / 1362 三处调用）不传，保持地块硬边。 */
         var c = sphBiome(e, dy, [dx, dy, dz], true);
         col.push(c[0] / 255, c[1] / 255, c[2] / 255);
+        _vx0.push(_lastSoft.ci0); _vx1.push(_lastSoft.ci1); _vxt.push(_lastSoft.t);
       }
       for (var z = 0; z < K; z++) for (var x = 0; x < K; x++) {
         var a = base + z * VW + x, b = a + 1, c2 = a + VW, d = c2 + 1;
@@ -3566,6 +3574,11 @@
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    /* v157.86：**原始顶点色副本** —— 「已探索提亮」每次迷雾变化都从它乘回来。
+       ⚠️ 必须在 setAttribute 之后取（BufferAttribute 会自己复制一份 Float32Array，
+          `col` 原数组不会被就地改写，副本与原色永远同源）。 */
+    M._globeColBase = new Float32Array(col);
+    M._globeVtxCell = { ci0: _vx0, ci1: _vx1, t: _vxt };
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
@@ -3582,6 +3595,12 @@
        之前没有这个出口，只能用 _collider（半径 R+0.6 的光滑球）当基准，
        量出来的偏差全是假的 —— 差点据此误判。 */
     M._globe = globe;
+    /* v157.86：**建完立刻重画一次"已探索提亮"**。
+       ⚠️ 这是本轮踩到的真坑：`buildGlobe` 会用 sphBiome 的原色**重建整条 color 属性**，
+       而 fog 版本没变 → `buildFog()` 不会再被调用 → 提亮被静默抹掉。
+       探针实测：把 LIT 压到 0.05 画面也不变黑，关掉 globe 才看到
+       "正在构建星球…100%"—— 说明每次都在重建，改的色根本没上屏。 */
+    try { paintGlobeExplore(); } catch (ePG0) { }
     /* v156.71：记录"这块网格是按哪颗星球建的" —— 分层自检据此判断
        数据层与渲染层是否同源。不做这个记录时，脱节在画面上只表现为
        "边界线飘着""地形对不上"，没有数字可查。 */
@@ -4020,226 +4039,17 @@
    * 两条历史弯路别再走（v157e 已记录）：贴地压暗层 → 外轮廓多边形棱；
    * 统一球壳 → 露出浅色斑块。压暗是「颜色」的事，就在顶点色上做。
    * ============================================================ */
-  /* ============================================================
-   * v157.76：**探明边界线**（独立图层，不是地块线框）
-   * ------------------------------------------------------------
-   * 为什么必须独立成层：
-   *   老板 v157.56 拍板「线条太杂，不要边线」→ `M.TILE_LINES = false`，
-   *   地块六边形线框整层 opacity 归零。把边界色染在那层上 = 画在隐形图层。
-   *   而重开 TILE_LINES 会把 24.5 万段线全放出来，正是老板嫌的"杂"。
-   * 所以：**只画探明边界那一圈**——几何只含「一侧已探明 / 一侧未探明」的边，
-   *   新局视野小时只有一百来段，视野铺开后也就几千段，量级与全网格差两个数量级。
-   *
-   * 这是「视野范围」在 3D 里**唯一**的视觉标识（地形色一律原色，v157.76 压暗已退役）。
-   * 缓冲按需增长复用：避免每次迷雾推进都 new 一份 GPU buffer。
-   * ============================================================ */
-  var _fogEdgeMesh = null, _fogEdgeBuf = null, _fogEdgeSegs = 0, _fogEdgeIdxCap = 0;
-  var _fogEdgeUv = null;          /* v157.82：横向渐变用的 UV（每顶点 2 float） */
-
-  /* ============================================================
-   * v157.82：边界的**横截面渐变**纹理（1 维，横向 64px）
-   * ------------------------------------------------------------
-   * 老板：「目前这个边界看起来太突兀了」。单层实心带无论多细都是一根"白棍"。
-   * 真实做柔光的通行做法是让**带的横截面**自带透明度梯度：
-   *   边缘 → 全透明 · 中间 → 淡亮 · 边缘 → 全透明
-   * 这样一条几何就长成"一道光"，而不是"一条线"，且只要一次 draw call。
-   * ============================================================ */
-  function _fogEdgeGradTex() {
-    if (M._fogEdgeTex) return M._fogEdgeTex;
-    try {
-      var cv = document.createElement('canvas');
-      cv.width = 64; cv.height = 4;
-      var c2 = cv.getContext('2d');
-      if (!c2) return null;
-      var gg = c2.createLinearGradient(0, 0, 64, 0);
-      /* v157.82b：**单侧衰减** —— u=0 是边界线本身（最亮），u=1 是向内侧 W 距离处（全透明）。
-         降亮度试过两轮（0.42→0.30 + 白→青）仍然是"一根线"，说明问题在形态不在亮度：
-         骑在边上的窄带一定读作线，而线一定显出六边形硬折角。
-         改成"从边界向里渗出来的一层光"，边界感由亮度梯度给出，不再有实线轮廓。 */
-      /* v157.82c：**对称双坡** —— u=0.5 是边界线（中心），两侧各衰减到全透明。
-         峰值只有 0.20：单看很淡，但带宽 9 世界单位（≈3/4 格），
-         叠加起来是"一圈光"。前几版之所以读作线，是因为带宽太窄
-         （5.5 单位投影只有几像素），渐变根本没地方发生。 */
-      gg.addColorStop(0.00, 'rgba(150,214,232,0)');
-      gg.addColorStop(0.22, 'rgba(178,226,244,0.055)');
-      gg.addColorStop(0.44, 'rgba(202,239,251,0.145)');
-      gg.addColorStop(0.50, 'rgba(214,245,253,0.20)');
-      gg.addColorStop(0.56, 'rgba(202,239,251,0.145)');
-      gg.addColorStop(0.78, 'rgba(178,226,244,0.055)');
-      gg.addColorStop(1.00, 'rgba(150,214,232,0)');
-      c2.fillStyle = gg;
-      c2.fillRect(0, 0, 64, 4);
-      var t = new THREE.CanvasTexture(cv);
-      t.minFilter = THREE.LinearFilter;
-      t.magFilter = THREE.LinearFilter;
-      t.wrapS = THREE.ClampToEdgeWrapping;
-      t.wrapT = THREE.ClampToEdgeWrapping;
-      t.needsUpdate = true;
-      M._fogEdgeTex = t;
-      return t;
-    } catch (eT) { return null; }
-  }
-
-  function buildFogBoundary() {
-    var SPn = GAME.sphere, up = SPn && SPn.upos, uc = SPn && SPn.uposCell, F = GAME.fog;
-    if (!up || !uc || !F || typeof THREE === 'undefined') return;
-    var other = ensureEdgeOther();
-    if (!other) return;
-
-    var i, o, ob, segs = 0;
-    for (i = 0; i < uc.length; i++) {
-      ob = other[i];
-      if (ob < 0) continue;
-      if ((F.get(uc[i]) > 0) === (F.get(ob) > 0)) continue;
-      segs++;
-    }
-
-    /* 每段边 → 一片**骑在边界上的柔光带**（6 顶点 / 4 三角形）。
-       为什么不用 LineSegments：WebGL 的 linewidth 在绝大多数平台被忽略（永远 1px），
-       1px 亮线在高空只剩亚像素。三角面片是唯一能控制宽度的做法。
-       为什么是"单侧内渐隐"而不是"骑在边上的对称带"：对称带一定读作一根线，
-       而线一定显出六边形硬折角（三轮实机图都验证过）。单侧渐隐读作"一层光"。 */
-    var needFloats = segs * 6 * 3;   /* v157.82c：6 顶点/段（3 横向 × 2 端） */
-    if (!_fogEdgeBuf || _fogEdgeBuf.length < needFloats) {
-      var cap = Math.max(6144, needFloats * 2);
-      _fogEdgeBuf = new Float32Array(cap);
-      /* v157.82：UV 与 position 同步扩容（每顶点 2 float = position 的 2/3 长度） */
-      _fogEdgeUv = new Float32Array(Math.floor(cap / 3) * 2);
-      if (_fogEdgeMesh) {
-        scene.remove(_fogEdgeMesh);
-        try { _fogEdgeMesh.geometry.dispose(); } catch (e0) { }
-        _fogEdgeMesh = null;
-      }
-    }
-    if (!_fogEdgeMesh) {
-      var geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(_fogEdgeBuf, 3));
-      geo.setAttribute('uv', new THREE.BufferAttribute(_fogEdgeUv, 2));
-      geo.setDrawRange(0, 0);
-      /* 缓冲按需预留、未用部分是 0：不显式给包围球，three 某些路径会拿整条缓冲
-         算 boundingSphere → 报 NaN 刷控制台。这条带永远跟着地球，用大球包住即可。 */
-      geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1e9);
-      var mat = new THREE.MeshBasicMaterial({
-        /* 颜色：**亮青**。地形主色是绿 / 黄 / 蓝 / 灰岩 / 雪白，纯白在荒漠与雪地上
-           几乎看不见（实机截图为证）；亮青在三类底色上都跳得出来，又不像品红那样"花"。 */
-        /* ============================================================
-         * v157.82（老板：「球体有点透明，能看到视野范围的边界……边界太突兀了」）
-         * ------------------------------------------------------------
-         * ① **恢复 depthTest**。v157.79 关掉它是为了"永远看得见"，副作用是
-         *    边界无视前后遮挡 —— 球背面的边被画到正面来，看起来就像"球是透明的"。
-         *    而 Mesh 的 `polygonOffset` 是**生效的**（只有 GL_LINES 无效），
-         *    所以靠它可以压住 z-fighting，不需要把带子抬起来（抬高就是那个"壳"）。
-         * ② **横截面渐变**。单层实心带无论多细都是一根"白棍"；给它贴一张
-         *    横向渐变（边缘透明 → 中心淡亮 → 边缘透明），一条几何就长成"一道光"。
-         *    带宽同时加大（半宽 0.55→1.6）让光晕有余量，但中心不透明度只有 0.42，
-         *    叠起来是柔和的边界感，不是抢眼的硬线。
-         * ============================================================ */
-        map: _fogEdgeGradTex(),
-        transparent: true, opacity: 1,
-        side: THREE.DoubleSide, depthWrite: false, depthTest: true,
-        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8
-      });
-      _fogEdgeMesh = new THREE.Mesh(geo, mat);
-      _fogEdgeMesh.renderOrder = 40;   /* v157.79：HUD 级，画在所有 3D 元素之上 */
-      _fogEdgeMesh.frustumCulled = false;
-      scene.add(_fogEdgeMesh);
-      _fogEdgeIdxCap = 0;
-    }
-
-    /* v157.82c：`HW` 是**对称半宽**（带子骑在边界上，两侧各 HW）。
-       球半径 300、40962 格 → 一格约 12 单位；HW=4.5 → 总宽 9 ≈ 3/4 格。
-       ⚠️ 宽度是这个方案的关键：窄了就是线、宽了才成光。
-          但也不能无限宽，否则会盖到未探明区（等于泄露边界外情报）。 */
-    var HW = 4.5;
-    /* 抬升只用来防 z-fighting（几乎贴地）；可见性由 polygonOffset + depthTest 负责。
-       ⚠️ 千万别再靠"抬高"解决遮挡 —— 那就是 v157.79 之前那个浮起的"壳"。 */
-    var LIFT = 0.12;
-    var k = 0, u = 0;
-    for (i = 0; i < uc.length; i++) {
-      ob = other[i];
-      if (ob < 0) continue;
-      if ((F.get(uc[i]) > 0) === (F.get(ob) > 0)) continue;
-      o = i * 6;
-      var x1 = up[o], y1 = up[o + 1], z1 = up[o + 2];
-      var x2 = up[o + 3], y2 = up[o + 4], z2 = up[o + 5];
-      var L1 = Math.sqrt(x1 * x1 + y1 * y1 + z1 * z1) || 1;
-      var L2 = Math.sqrt(x2 * x2 + y2 * y2 + z2 * z2) || 1;
-      var k1 = (L1 + LIFT) / L1, k2 = (L2 + LIFT) / L2;
-      var ax = x1 * k1, ay = y1 * k1, az = z1 * k1;
-      var bx = x2 * k2, by = y2 * k2, bz = z2 * k2;
-      /* ============================================================
-       * v157.82c：6 顶点 = 3 个横向位置(+s / 中线 / −s) × 2 端(A,B)。
-       * ------------------------------------------------------------
-       * 为什么回到**对称**：上一版让每条边各自朝自己的格中心偏移，
-       *   相邻边在六边形拐角处方向突变 → 带子错开，实机读作一条**白色虚线**。
-       *   对称带的两端位置只由边本身决定（A±s、B±s），相邻边共享顶点，拐角连续。
-       * 为什么 6 顶点而不是 4：4 顶点只有"两侧"两个横向采样，贴渐变只能是硬边；
-       *   加一个**中线**顶点后，横截面可以做"两侧透明 → 中线微亮"，一条带自带柔光。
-       * ============================================================ */
-      var mx = (ax + bx) / 2, my = (ay + by) / 2, mz = (az + bz) / 2;
-      var ml = Math.sqrt(mx * mx + my * my + mz * mz) || 1;
-      var nx = mx / ml, ny = my / ml, nz = mz / ml;
-      var dx = bx - ax, dy = by - ay, dz = bz - az;
-      var sx = ny * dz - nz * dy, sy = nz * dx - nx * dz, sz = nx * dy - ny * dx;
-      var sl = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1;
-      sx = sx / sl * HW; sy = sy / sl * HW; sz = sz / sl * HW;
-      /* A 端：+s / 中线 / −s */
-      _fogEdgeBuf[k++] = ax + sx; _fogEdgeBuf[k++] = ay + sy; _fogEdgeBuf[k++] = az + sz;
-      _fogEdgeBuf[k++] = ax;      _fogEdgeBuf[k++] = ay;      _fogEdgeBuf[k++] = az;
-      _fogEdgeBuf[k++] = ax - sx; _fogEdgeBuf[k++] = ay - sy; _fogEdgeBuf[k++] = az - sz;
-      /* B 端：+s / 中线 / −s */
-      _fogEdgeBuf[k++] = bx + sx; _fogEdgeBuf[k++] = by + sy; _fogEdgeBuf[k++] = bz + sz;
-      _fogEdgeBuf[k++] = bx;      _fogEdgeBuf[k++] = by;      _fogEdgeBuf[k++] = bz;
-      _fogEdgeBuf[k++] = bx - sx; _fogEdgeBuf[k++] = by - sy; _fogEdgeBuf[k++] = bz - sz;
-      /* uv：u 横向 0 → 0.5(中线) → 1，v 区分 A/B 端 */
-      _fogEdgeUv[u++] = 0;   _fogEdgeUv[u++] = 0;
-      _fogEdgeUv[u++] = 0.5; _fogEdgeUv[u++] = 0;
-      _fogEdgeUv[u++] = 1;   _fogEdgeUv[u++] = 0;
-      _fogEdgeUv[u++] = 0;   _fogEdgeUv[u++] = 1;
-      _fogEdgeUv[u++] = 0.5; _fogEdgeUv[u++] = 1;
-      _fogEdgeUv[u++] = 1;   _fogEdgeUv[u++] = 1;
-    }
-    _fogEdgeSegs = segs;
-
-    var g2 = _fogEdgeMesh.geometry;
-    g2.attributes.position.needsUpdate = true;
-    if (g2.attributes.uv) g2.attributes.uv.needsUpdate = true;
-    /* 每段 2 个三角形（v0,v0+1,v0+2 / v0+2,v0+1,v0+3）；DoubleSide 下绕序无所谓 */
-    if (_fogEdgeIdxCap < segs) {
-      var capSeg = Math.max(1024, segs * 2);
-      var idx = new Uint32Array(capSeg * 12);
-      for (var t = 0; t < capSeg; t++) {
-        /* v157.82c：每段 6 顶点 → 4 个三角形（两列，各 2 个）
-           顶点序：0=A+s 1=A中 2=A−s 3=B+s 4=B中 5=B−s */
-        var v0 = t * 6, o6 = t * 12;
-        idx[o6] = v0;     idx[o6 + 1] = v0 + 1; idx[o6 + 2] = v0 + 3;
-        idx[o6 + 3] = v0 + 1; idx[o6 + 4] = v0 + 4; idx[o6 + 5] = v0 + 3;
-        idx[o6 + 6] = v0 + 1; idx[o6 + 7] = v0 + 2; idx[o6 + 8] = v0 + 4;
-        idx[o6 + 9] = v0 + 2; idx[o6 + 10] = v0 + 5; idx[o6 + 11] = v0 + 4;
-      }
-      g2.setIndex(new THREE.BufferAttribute(idx, 1));
-      _fogEdgeIdxCap = capSeg;
-    }
-    g2.setDrawRange(0, segs * 12);
-    if (g2.index) { g2.index.needsUpdate = true; g2.index.count = segs * 12; }
-    _fogEdgeMesh.visible = segs > 0;
-  }
-  /* 只读探针：给实机取证 / 自检读「边界线到底有没有段、有没有画出来」 */
-  M._fogEdgeProbe = function () {
-    return {
-      segs: _fogEdgeSegs,
-      used: _fogEdgeSegs * 12,         /* v157.82c：索引数（6 顶点 4 三角形） */
-      visible: !!(_fogEdgeMesh && _fogEdgeMesh.visible),
-      drawCount: _fogEdgeMesh ? _fogEdgeMesh.geometry.drawRange.count : -1,
-      cap: _fogEdgeBuf ? _fogEdgeBuf.length : -1,
-      /* 与 M._globe / M._sky / M._lineColAttr 同一惯例：把内部对象交出去，
-         取证脚本靠它做「开/关像素差分」这类必须双态对比的验证。 */
-      mesh: _fogEdgeMesh,
-      /* v157.82：取证要看「有没有参与遮挡」—— 上一版就是这里给的 false 导致穿透 */
-      depthTest: !!(_fogEdgeMesh && _fogEdgeMesh.material && _fogEdgeMesh.material.depthTest),
-      hasMap: !!(_fogEdgeMesh && _fogEdgeMesh.material && _fogEdgeMesh.material.map)
-    };
-  };
+  /* ⛔ v157.86（老板「去除现有边界高亮机制」）
+     ------------------------------------------------------------
+     这里原有整套「视野边界柔光带」：
+       `_fogEdgeMesh/_fogEdgeBuf/_fogEdgeSegs/_fogEdgeUv` 缓冲、
+       `_fogEdgeGradTex()` 横截面渐变纹理、`buildFogBoundary()` 6 顶点宽带构建、
+       `M._fogEdgeProbe()` 取证出口。
+     整条删除。视野标识改为 `paintGlobeExplore()`（已探明区域顶点色提亮），
+     不再有任何"画在球面上的额外几何"。
+     ⚠️ `ensureEdgeOther()` **保留** —— `paintLineFog()`（地块线框色，已探明冷蓝/
+        未探明隐形）仍在用它，那是线框层的标识，与本条边界带不是一回事。
+     ============================================================ */
 
   function buildFog() {
     var F = GAME.fog;
@@ -4252,7 +4062,10 @@
        ⚠️ 线框本身受 TILE_LINES=false（v157.56「线条太杂」）隐藏，
           所以「视野范围」真正可见的标识是下面这条**独立的边界线**。 */
     paintLineFog();
-    buildFogBoundary();
+    /* v157.86（老板「已探索区域亮度升高。去除现有边界高亮机制」）：
+       这里原来调 `buildFogBoundary()`（三角带边界）。边界整条退役，
+       视野标识改为**顶点色提亮**：已探明 ×1.10，未探明原色。 */
+    paintGlobeExplore();
   }
 
   /* ============================================================
@@ -4294,6 +4107,67 @@
     M._edgeOther = out; M._edgeOtherFor = M._lineColAttr;
     return out;
   }
+
+  /* ============================================================
+   * v157.86（老板「已探索区域亮度升高。去除现有边界高亮机制」）
+   * ------------------------------------------------------------
+   * 视野标识从「画一条边界带」换成「已探索区域整体提亮」。
+   *
+   * 口径：
+   *   · 已探明格（`GAME.fog.get(ci) > 0`）→ 顶点色 × `M.EXPLORE_LIT`（默认 1.10）
+   *   · 未探明格 → **原色一寸不改**
+   * 为什么是"提亮已探索"而不是"压暗未探索"：v157.76 老板否过一次整体压暗
+   *   （画面发灰、地形色全被吃掉）；提亮方向相反 —— 地形色仍是地形色，
+   *   只是「你认识的世界」亮一成，边界由明暗差自然读出来，不需要任何几何。
+   *
+   * 两个必须做对的细节：
+   *   ① **从原始色乘回来**（`M._globeColBase`），不是就地累乘 —— 否则每推进一次
+   *      迷雾就再亮 10%，走两步整颗球就白了；
+   *   ② **顶点级软插值**（c0/c1/权重 t，由 `_cellColorSoft` 顺手写出）——
+   *      直接按"最近格"二值提亮会得到一圈六边形硬边，
+   *      那等于把删掉的边界线换成一条更丑的锯齿。
+   *
+   * 性能：顶点→格 的映射在建球时就算好了（`M._globeVtxCell`），
+   *   这里每次只做 O(n) 查表 + 三次乘法（n ≈ 9.98 万，实测 ~8ms）。
+   * ============================================================ */
+  /* 已探索提亮 / 未探索微压 —— 只提亮 10% 在实机近景里几乎看不出来
+     （截图对比：整屏亮度差 < 3%，人眼读不出"我探索过这里"）。
+     所以给一个**相对**口径：已探索 ×1.15、未探索 ×0.90 → 交界处 1.28 倍差，
+     一眼能看出"哪片是我认识的"。两个数都可调（1/1 = 关掉）。 */
+  M.EXPLORE_LIT = 1.15;                 /* 已探索区域亮度系数 */
+  M.EXPLORE_DIM = 0.90;                 /* 未探索区域亮度系数（1 = 不压暗） */
+  function paintGlobeExplore() {
+    var F = GAME.fog, g = M._globe, base = M._globeColBase, vx = M._globeVtxCell;
+    if (!F || !g || !base || !vx) return 0;
+    var geo = g.geometry;
+    var attr = geo && geo.attributes && geo.attributes.color;
+    if (!attr || !attr.array) return 0;
+    var arr = attr.array;
+    var n = Math.min(attr.count, base.length / 3, vx.ci0.length);
+    var LIT = (M.EXPLORE_LIT > 0 ? M.EXPLORE_LIT : 1);
+    var DIM = (M.EXPLORE_DIM > 0 ? M.EXPLORE_DIM : 1);
+    var lit = 0;
+    for (var i = 0; i < n; i++) {
+      var c0 = vx.ci0[i], c1 = vx.ci1[i], t = vx.t[i] || 0;
+      var k0 = (c0 >= 0 && F.get(c0) > 0) ? LIT : DIM;
+      var k1 = (c1 >= 0 && F.get(c1) > 0) ? LIT : DIM;
+      if (k0 > 1) lit++;
+      var k = k0 + (k1 - k0) * t;
+      var i3 = i * 3;
+      if (k === 1) {
+        arr[i3] = base[i3]; arr[i3 + 1] = base[i3 + 1]; arr[i3 + 2] = base[i3 + 2];
+      } else {
+        arr[i3] = Math.min(1, base[i3] * k);
+        arr[i3 + 1] = Math.min(1, base[i3 + 1] * k);
+        arr[i3 + 2] = Math.min(1, base[i3 + 2] * k);
+      }
+    }
+    attr.needsUpdate = true;
+    M._globeExploreLit = lit;          /* 探针/断言：被提亮的顶点数 */
+    M._globeExploreN = n;
+    return lit;
+  }
+  M._paintGlobeExplore = paintGlobeExplore;
 
   /* 线框按探明度上色（与雾面同一把尺子：fog.get） */
   function paintLineFog() {
@@ -4398,8 +4272,9 @@
     M._edgeOther = other;
     M._edgeOtherFor = M._lineColAttr;
     paintLineFog();
-    /* 几何刚建好，fog 版本可能没再变过 —— 这里补一次，免得首次进场没有边界线 */
-    try { buildFogBoundary(); } catch (eFB) { }
+    /* ⛔ v157.86：这里原有「几何建好后补建边界线」—— 边界已退役。
+       改为补一次**已探索提亮**（首次进场时 fog 版本可能还没变过）。 */
+    try { paintGlobeExplore(); } catch (ePG) { }
   }
   M.paintRegionEdges = paintRegionEdges;
   /* ============================================================
@@ -39658,7 +39533,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.85';
+  GAME.VERSION = 'v157.86';
   function boot() {
     fitAppSize();
     try {

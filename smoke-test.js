@@ -47072,24 +47072,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bfB = mSrc.indexOf('  /* 线框按探明度上色', bfA);
     var bf = (bfA >= 0 && bfB > bfA) ? mSrc.slice(bfA, bfB) : '';
 
-    check('§586j 源码面①：buildFog 只重算线框色（视野内零额外渲染 · v157.76 起零调色）',
+    /* ⚠️ 规则变更（v157.86 老板「已探索区域亮度升高。去除现有边界高亮机制」）：
+       v157.76 时 buildFog **只**调 paintLineFog（顶点色不参与迷雾）；
+       本版重新启用顶点色 —— 但方向相反：不是把未探明压暗，而是把**已探明提亮**。
+       判据因此从「必须只调线框」改为「线框 + 已探索提亮两处，且仍不许建几何层」。 */
+    check('§586j 源码面①：buildFog 只重算「线框色 + 已探索提亮」（视野内零额外渲染）',
       bf.length > 60
-      /* ⚠️ 规则变更（v157.76 老板「只做标识性调整，不要影响原来的渲染颜色」）：
-         旧规则要求 buildFog 同时调 paintGlobeFog + paintLineFog（两处重算）；
-         新规则要求**只**调 paintLineFog —— 顶点色压暗整条退役。
-         判据从「必须调用」翻转为「必须不调用」，不是放宽：仍要求至少一处重算。 */
-      && /paintLineFog\(\);/.test(bf) && !/paintGlobeFog/.test(bf)
+      && /paintLineFog\(\);/.test(bf) && /paintGlobeExplore\(\);/.test(bf)
+      && !/paintGlobeFog/.test(bf)
       && !/makeMesh\(/.test(bf) && !/scene\.add\(/.test(bf)
       && !/AdditiveBlending/.test(bf) && !/M\._cloudMats/.test(bf)
       && !/_fogLit\s*=/.test(mSrc) && !/function makeMesh\(/.test(mSrc)
       && !/function cloudMat\(/.test(mSrc));
 
-    check('§586j 源码面②：globe 顶点色零压暗（地形色即原色）+ 线框统一冷蓝',
-      /* ⚠️ 规则变更：旧规则 = 顶点色两态 1 / 0.34；新规则 = 顶点色一律原色，
-         迷雾只染线框。用「定义/赋值形态」判残留（墓碑注释会带名字，不能用 indexOf）。 */
+    /* ⚠️ 规则变更（v157.86）：
+       旧规则（v157.76）= 顶点色一律原色、迷雾只染线框 → 判据要求 `_globeColBase` **不存在**；
+       新规则 = 已探明提亮必须**从原色乘回来**（否则每推进一次迷雾就再亮 10%），
+       所以 `_globeColBase` 从"禁止"变成"必须有"。判据翻转，不是放宽。 */
+    check('§586j 源码面②：地形色以原色为基座（_globeColBase 在岗）+ 线框统一冷蓝',
       !/function paintGlobeFog\s*\(/.test(mSrc)
       && !/M\.paintGlobeFog\s*=/.test(mSrc)
-      && !/M\._globeColBase\s*=/.test(mSrc)
+      && /M\._globeColBase = new Float32Array\(col\);/.test(mSrc)
       && !/kCur/.test(mSrc)
       && !/vv === 1 \? 0\.78/.test(mSrc) && !/v2 === 1 \? 0\.78/.test(mSrc)
       && /else \{ r = 0\.56; g = 0\.70; b = 0\.84; \}/.test(mSrc)
@@ -47129,38 +47132,67 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         } catch (e) { dbg586j.s = 'EXC ' + (e && e.message); return false; }
       })(), dbg586j.s);
 
-    check('§586j 标识面：边界 = 6 顶点柔光带 · 参与遮挡(depthTest) · 横向渐变，只碰颜色不碰地形',
-      /* 为什么还是三角带而不是线：WebGL 的 linewidth 普遍被忽略（永远 1px）。
-         v157.82 起每段 **6 顶点 / 4 三角形**（3 个横向位置 × 2 端），
-         这样横截面才能贴「两侧透明 → 中线微亮」的渐变；
-         退化回 4 顶点就贴不了渐变，又会变回"一根白线"（老板说的突兀）。 */
-      /function buildFogBoundary\s*\(/.test(mSrc)
-      && /_fogEdgeGradTex/.test(mSrc)                    /* 横向渐变纹理在岗 */
-      && /geo\.setAttribute\('uv', new THREE\.BufferAttribute\(_fogEdgeUv, 2\)\)/.test(mSrc)
-      && /var needFloats = segs \* 6 \* 3;/.test(mSrc)   /* 6 顶点/段 */
-      && /g2\.setDrawRange\(0, segs \* 12\);/.test(mSrc) /* 4 三角形/段 */
-      && /_fogEdgeUv\[u\+\+\] = 0\.5;/.test(mSrc)        /* 中线顶点（渐变靠它） */
-      && /var HW = 4\.5;/.test(mSrc)                     /* 总宽 9 ≈ 3/4 格 */
-      && /var LIFT = 0\.12;/.test(mSrc)
-      /* ⛔ **反向守卫（本次核心）**：depthTest 必须为 true。
-         关掉它 = 边界无视前后遮挡、球背面的边画到正面 = 老板说的「球体有点透明」。
-         恢复「永远可见」不许再走这条路 —— 用 polygonOffset 压 z-fighting。 */
-      && /depthTest: true/.test(mSrc)
-      && !/depthTest: false[\s\S]{0,80}polygonOffset/.test(mSrc)
-      && /polygonOffset: true, polygonOffsetFactor: -4/.test(mSrc)
-      /* 抬升必须继续是"几乎贴地"的量级：抬高就是 v157.79 那个浮起的壳 */
-      && !/var LIFT = (?:[1-9]|\d\d)/.test(mSrc)
-      && /side: THREE\.DoubleSide/.test(mSrc)
-      && /_fogEdgeMesh\.visible = segs > 0;/.test(mSrc)
-      /* 地表模式必须退场（站在地上时它是"地图语言"，同 v157 城色块/插旗的理由） */
-      && /_fogEdgeMesh\.visible = !M\._surf && _fogEdgeSegs > 0;/.test(mSrc)
-      /* 必须真的挂在 buildFog 上，否则迷雾推进时边界不更新 */
-      && /buildFogBoundary\(\);/.test(bf)
-      /* 只读探针在岗（实机取证靠它读"有没有段 / 参不参与遮挡"） */
-      && /M\._fogEdgeProbe = function/.test(mSrc)
-      && /depthTest: !!\(_fogEdgeMesh && _fogEdgeMesh\.material/.test(mSrc)
-      && /_edgeOther && M\._edgeOtherFor === M\._lineColAttr/.test(mSrc),
-      '6 顶点/4 三角形 · HW 4.5 · depthTest=true · 渐变贴图 · 地表退场 · 挂在 buildFog 上');
+    /* ============================================================
+     * ⛔ v157.86 规则变更：**边界高亮机制整条退役**，视野标识改为「已探明提亮」。
+     * 旧判据锁的是"6 顶点柔光带 / depthTest / HW 4.5 / LIFT 0.12 / uv 渐变"，
+     * 现在全部反过来：这些名字**不许再出现为可执行代码**（墓碑注释不算）。
+     * 新机制的正向守卫见 §586u。
+     * ============================================================ */
+    check('§586j 标识面：边界带已整条退役（无 buildFogBoundary / 无 _fogEdge* 可执行代码）',
+      !/function buildFogBoundary\s*\(/.test(mSrc)
+      && !/function _fogEdgeGradTex\s*\(/.test(mSrc)
+      && !/var _fogEdgeMesh\s*=/.test(mSrc)
+      && !/M\._fogEdgeProbe\s*=/.test(mSrc)
+      && !/buildFogBoundary\(\);/.test(mSrc)
+      && !/geo\.setAttribute\('uv', new THREE\.BufferAttribute\(_fogEdgeUv, 2\)\)/.test(mSrc),
+      '边界带零残留（只留墓碑注释）');
+
+    /* ============================================================
+     * §586u（v157.86 · 老板「已探索区域亮度升高。去除现有边界高亮机制」）
+     * ------------------------------------------------------------
+     * 新口径：视野标识 = **顶点色亮度差**，不再有任何"画在球面上的几何"。
+     *   · 已探明格 → 原色 × EXPLORE_LIT（1.15）
+     *   · 未探明格 → 原色 × EXPLORE_DIM（0.90）  ← 相对差 1.28 倍，一眼可辨
+     * 三层守卫：
+     *   ① 结构面：`paintGlobeExplore` + 顶点→格映射 + buildGlobe 末尾补画
+     *      （⚠️ 本轮真坑：buildGlobe 会用原色重建 color 属性，fog 版本没变时不再 paint，
+     *        提亮被静默抹掉 —— 探针把 LIT 压到 0.05 画面都不变黑才抓到）
+     *   ② 数值面：真算系数关系 —— 比值 = LIT/DIM；且**幂等**（重复重绘不变亮）
+     *   ③ 反向证据：不许回到"就地累乘"（`arr[i*3] *= k`），必须从 base 乘回
+     * ============================================================ */
+    check('§586u 结构面：paintGlobeExplore 在岗（顶点→格映射 + 原色基座 + 建球后补画）',
+      /function paintGlobeExplore\s*\(/.test(mSrc)
+      && /M\._globeVtxCell = \{ ci0: _vx0, ci1: _vx1, t: _vxt \};/.test(mSrc)
+      && /M\._globeColBase = new Float32Array\(col\);/.test(mSrc)
+      && /try \{ paintGlobeExplore\(\); \} catch \(ePG0\) \{ \}/.test(mSrc)
+      && /M\.EXPLORE_LIT = 1\.15;/.test(mSrc)
+      && /M\.EXPLORE_DIM = 0\.90;/.test(mSrc),
+      '映射/基座/补画/系数在岗');
+
+    check('§586u 数值面：已探明×1.15 · 未探明×0.90 → 相对 1.278；重复重绘幂等',
+      (function () {
+        var LIT = 1.15, DIM = 0.90;
+        var base = 0.40;
+        function pass(v, k, from) { return Math.min(1, from * k); }
+        /* 未探明 → 已探明：一次提亮 */
+        var unk = pass(0, DIM, base), lit = pass(0, LIT, base);
+        var ratio = lit / unk;
+        /* 幂等：从 base 再算 3 次，结果必须一致（不是就地累乘） */
+        var a = pass(0, LIT, base), b = pass(0, LIT, base), c = pass(0, LIT, base);
+        /* 就地累乘会怎样：base×1.15×1.15×1.15 —— 必须与之明显不同 */
+        var wrong = base * LIT * LIT * LIT;
+        var ok = Math.abs(ratio - LIT / DIM) < 1e-9
+          && a === b && b === c && Math.abs(a - wrong) > 0.05;
+        check('§586u 数值面：LIT/DIM=' + ratio.toFixed(3) + ' · 幂等 ' + (a === b && b === c)
+          + ' · 与累乘差 ' + Math.abs(a - wrong).toFixed(3), ok, '');
+        return ok;
+      })(), '系数关系真算');
+
+    check('§586u 反向证据：提亮必须从 base 乘回（不许就地累乘）',
+      /arr\[i3\] = Math\.min\(1, base\[i3\] \* k\);/.test(mSrc)
+      && !/arr\[i3\] \*=/.test(mSrc)
+      && !/arr\[i3 \+ 1\] \*=/.test(mSrc),
+      'base 乘回在岗 · 就地累乘 0 处');
 
     check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');
@@ -48420,17 +48452,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       '真调同源 ' + sameN + '/7 · 哨兵 #123456 跟随=' + followsM
         + (mismatch.length ? ' · 不一致 ' + mismatch.join(',') : ''));
 
-    check('§586m 保留面：迷雾不再参与地形色（v157.76 压暗退役，防复活）',
-      /* ⚠️ 规则变更：旧规则锁「0.34 两态未被借机改动」；新规则锁「压暗不许复活」。
-         仍用「定义/赋值形态」判（墓碑注释会带名字）。同时保住线框两态与
-         「贴地加亮层未复活」，防止为省事把整段视野标识一起删光。 */
+    /* ⚠️ 规则变更（v157.86 老板「已探索区域亮度升高」）：
+       旧规则（v157.76）锁「顶点色零压暗」—— 迷雾不进地形色；
+       新规则锁**方向**：迷雾可以进地形色，但只走 `paintGlobeExplore`
+       的「已探明提亮 / 未探明微压」这一条，且必须从 `_globeColBase` 乘回。
+       继续禁止的：旧的 `paintGlobeFog` 两态压暗（0.34）、`kCur` 三档、
+       以及贴地加亮层（v157.68 的碎斑来源）。 */
+    check('§586m 保留面：迷雾只走「已探索提亮」一条口径（旧压暗与加亮层不许复活）',
       !/function paintGlobeFog\s*\(/.test(mSrcM)
       && !/kCur/.test(mSrcM)
-      && !/M\._globeColBase\s*=/.test(mSrcM)
+      && /function paintGlobeExplore\s*\(/.test(mSrcM)
+      && /M\._globeColBase = new Float32Array\(col\);/.test(mSrcM)
       && /else \{ r = 0\.56; g = 0\.70; b = 0\.84; \}/.test(mSrcM)
       && !/_fogLit\s*=/.test(mSrcM)
       && !/_fogLit1\s*=/.test(mSrcM),
-      '零压暗 · 线框仍两态 · 贴地加亮层未复活');
+      '提亮口径唯一 · 线框仍两态 · 贴地加亮层未复活');
   })();
 
   /* ============================================================
