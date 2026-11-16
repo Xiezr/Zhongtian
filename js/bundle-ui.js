@@ -355,13 +355,32 @@
       out.icon = '🌫';
       out.title = '未探明';
       out.lv = null;
-      out.facts.push('这一带还没有记载');
-      out.tasks.push('派一队过去（点它 = 派队），抵达后周围显现');
+      /* ============================================================
+       * v157.77（老板：「依旧还有很多色块……没有声明这个是什么东西」）
+       * ------------------------------------------------------------
+       * 未探明格上有两种长相：干净的一片空白，和**一层暖褐色**
+       * （v92.6 半信息痕迹：迷雾边缘按概率泛色，表示"那边有东西"）。
+       * 以前两者都只说"这一带还没有记载"，于是褐色块变成"没人解释的色块"。
+       * 这里把颜色含义说清楚，但**仍然不透露是什么** —— 守住 v92.6 的口径：
+       * 「知道有东西、不知是什么」是设计，不是缺陷。
+       * ============================================================ */
+      var _tkH = null;
+      try { _tkH = (GAME.map3d && GAME.map3d._tintKind) ? GAME.map3d._tintKind[ci] : null; } catch (e5) { _tkH = null; }
+      if (_tkH === 'trace') {
+        out.facts.push('地面泛着暖褐色：这一带似乎有动静（不知是什么）');
+        out.tasks.push('派一队过去探明 —— 抵达后才知道是什么');
+      } else {
+        out.facts.push('这一带还没有记载');
+        out.tasks.push('派一队过去（点它 = 派队），抵达后周围显现');
+      }
       return out;
     }
+    /* v157.77：补上 `lord` —— 地图上亮黄那格是「君主所在」，
+       以前这里没有分支，它会一路掉到"野地（未占）"，等于君主脚下说不出是什么。 */
     out.facts.push(kind === 'own' ? '己方城市'
       : kind === 'npc' ? '名城'
-        : kind === 'adm' ? '行政城' : null);
+        : kind === 'adm' ? '行政城'
+          : kind === 'lord' ? '君主所在（你的主力在此）' : null);
     out.facts = out.facts.filter(Boolean);
     var ownCity = GAME.map && GAME.map.ownCityAt ? GAME.map.ownCityAt(ci) : null;
     var npc = GAME.map && GAME.map.npcAt ? GAME.map.npcAt(ci) : null;
@@ -402,6 +421,32 @@
         }
       }
     }
+    /* ============================================================
+     * v157.77：色块说明兜底
+     * ------------------------------------------------------------
+     * 整格涂色有 6 类来源（痕迹 / 营地 / 村社 / 遗迹 / 我方占领 / 阵亡纪念）。
+     * 上面各分支已经覆盖了绝大多数情况，但**任何一格只要上了色，就应当说得出它是什么** ——
+     * 玩家不该对着色块猜。这里按"来源表"补一行，并用 indexOf 去重，
+     * 避免与上面已经写明的"营地 / 村社 / 遗迹"重复。
+     * ============================================================ */
+    var _tkK = null;
+    try { _tkK = (GAME.map3d && GAME.map3d._tintKind) ? GAME.map3d._tintKind[ci] : null; } catch (e6) { _tkK = null; }
+    var TK_DESC = {
+      trace: '迷雾边缘的动静痕迹',
+      camp: '幸存者营地',
+      village: '村社',
+      ruin: '旧世界遗迹',
+      own: '我方占领',
+      memorial: '阵亡纪念地'
+    };
+    if (_tkK && TK_DESC[_tkK]) {
+      var _hit = out.facts.join('').indexOf(TK_DESC[_tkK]) >= 0
+        || (_tkK === 'own' && out.facts.join('').indexOf('前哨') >= 0)
+        || (_tkK === 'camp' && out.facts.join('').indexOf('营地') >= 0)
+        || (_tkK === 'village' && out.facts.join('').indexOf('村社') >= 0)
+        || (_tkK === 'ruin' && out.facts.join('').indexOf('遗迹') >= 0);
+      if (!_hit) out.facts.push('地面标记：' + TK_DESC[_tkK]);
+    }
     return out;
   }
   /* 那一格**原来的**面板分派（v156.15 从 pickAt 里原样抽出）。
@@ -415,6 +460,20 @@
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
     var reg = M.regionAt ? M.regionAt(ci) : null;
     var ref = M.cellRef && M.cellRef[ci];
+    /* ============================================================
+     * v157.77（老板：「要么悬停显示，要么点击显示」）
+     * ------------------------------------------------------------
+     * 未探明 + 有动静痕迹的格子，点击后给一句说明再照常开面板：
+     * 不改变任何流程（该派队还是派队），只回答"这块褐色是什么"。
+     * 仍然不说"是什么"——v92.6 的半信息口径。
+     * ============================================================ */
+    try {
+      var _hidC = !!(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0);
+      var _tkC = (M._tintKind) ? M._tintKind[ci] : null;
+      if (_hidC && _tkC === 'trace' && ui.toast) {
+        ui.toast('这一带似乎有动静（未探明）—— 派一队过去才知道是什么');
+      }
+    } catch (e7) { /* 提示失败不挡面板 */ }
     if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
     else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
@@ -5337,6 +5396,12 @@
     var grp = new THREE.Group();
     /* v156：所有"地标类"标记改成整格涂色（见 buildCellTint 的注释） */
     var _tint = {};
+    /* v157.77（老板：「依旧还有很多色块……没有声明这个是什么东西」）：
+       `_tint` 只存颜色，**没存"为什么上色"** —— 于是悬停简报只能说"未探明"，
+       玩家对着一片褐色/金色/青色块无从判断。这里同一处写入时顺手记下来源，
+       悬停与面板都读它（同源，不会出现"颜色和说明不一致"）。
+       取值：trace（迷雾边缘的动静痕迹）/ camp / village / ruin / own / memorial */
+    var _tk = {}, _tkOwn = {};
     /* v157s（老板：「被占领地块，全地块用一个特征色显示，加上小旗子」）——
        旗子**只画了一个 sprite**，地上什么都没有。于是：
          · 玩家看到的"占领"只有一面小旗，点击容错极小；
@@ -5348,7 +5413,7 @@
       if (v.length !== 6) return [200, 200, 200];
       return [parseInt(v.substr(0, 2), 16), parseInt(v.substr(2, 2), 16), parseInt(v.substr(4, 2), 16)];
     }
-    function place(ref, colorHex) {
+    function place(ref, colorHex, kindW) {
       /* v91.25（球系）：**以 ci 直接落格**（旧法 dirOfCell(x,y) 经 (x,y)→经纬→最近格 往返，
          会落到邻格 → 棋子错位）。缺 ci 的旧档才回退坐标往返。 */
       var ci = (ref && ref.ci != null && ref.ci >= 0) ? ref.ci : ((ref && ref.x != null && ref.y != null) ? nearestCell(dirOfCell(ref.x, ref.y)) : -1);
@@ -5375,6 +5440,7 @@
       grp.add(spr);
       /* 整格涂色：跟旗子同一个色，一眼看出"这块地是我的" */
       _tintOwn[ci] = _hex2rgb(colorHex);
+      _tkOwn[ci] = kindW || 'own';   /* v157.77：连来源一起记，悬停才能说清是什么 */
     }
     var fo = sl.forts || {};
     /* 己方据点 = **蓝**（原来是琥珀金 #ffcf4d，与"营地·待交涉"的 [255,200,87] 几乎同色，
@@ -5390,7 +5456,7 @@
         var cell0 = _tileCells[ci];
         if (!cell0 || !cell0.pos) return;
         if (GAME.fog && GAME.fog.get(ci) === 0) return;   /* 未探明的地方不显示（否则等于免费探图）*/
-        place({ ci: ci }, '#9c3b34');
+        place({ ci: ci }, '#9c3b34', 'memorial');
       });
     }
     /* v156：整格涂色层在**本函数末尾**构建（营地/村社/遗迹都在后面才写入 _tint） */
@@ -5423,7 +5489,7 @@
         _hx ^= _hx >>> 13; _hx = (_hx * 1274126177) >>> 0; _hx ^= _hx >>> 16;
         if ((_hx >>> 0) / 4294967296 >= _tc) continue;
         /* v156：不再悬空小球 → 这块地**整格**泛一点暖色（"那边有动静"）。 */
-        _tint[_ti] = [150, 112, 70];
+        _tint[_ti] = [150, 112, 70]; _tk[_ti] = 'trace';
       }
     }
     /* v92.4：已发现的幸存者营地 —— 金珠（待交涉）/ 绿珠（已招募）/ 暗红珠（已洗劫）。
@@ -5436,7 +5502,7 @@
         if (!cell0 || !cell0.pos) return;
         if (GAME.fog && GAME.fog.get(ci) <= 0) return;
         var col = rec && rec.mode === 'recruit' ? [123, 216, 143] : (rec && rec.mode === 'raid' ? [156, 59, 52] : [255, 200, 87]);
-        _tint[ci] = col;
+        _tint[ci] = col; _tk[ci] = 'camp';
       });
     }
     /* v93.2：**村社** —— 废土上还有别人在活。
@@ -5454,6 +5520,7 @@
         var _vr = GAME.village.peek(_vci);
         _tint[_vci] = (_vr && _vr.dead) ? [74, 74, 74]
           : ((_vr && _vr.guardAt > 0) ? [155, 227, 106] : [217, 201, 138]);
+        _tk[_vci] = 'village';
       }
     }
     /* v92.7：已发现的旧世界遗迹 —— 青珠（待翻）/ 暗青（已翻） */
@@ -5464,12 +5531,13 @@
         var cell0 = _tileCells[ci];
         if (!cell0 || !cell0.pos) return;
         if (GAME.fog && GAME.fog.get(ci) <= 0) return;
-        _tint[ci] = (rec && rec.side) ? [58, 92, 88] : [110, 199, 192];
+        _tint[ci] = (rec && rec.side) ? [58, 92, 88] : [110, 199, 192]; _tk[ci] = 'ruin';
       });
     }
     /* v157s：占领类涂色**最后写入** —— 同一格既是营地又是我的前哨时，以"已占领"为准。 */
     var _ownN = 0;
-    for (var _ok in _tintOwn) { _tint[_ok] = _tintOwn[_ok]; _ownN++; }
+    for (var _ok in _tintOwn) { _tint[_ok] = _tintOwn[_ok]; _tk[_ok] = _tkOwn[_ok] || 'own'; _ownN++; }
+    M._tintKind = _tk;   /* v157.77：色块来源表（悬停 / 面板共用，与涂色同源） */
     M._flagOwnCount = _ownN;
     /* v156：整格涂色层放在**末尾**（上面的营地/村社/遗迹才写入 _tint） */
     M._flags = grp; scene.add(grp);
@@ -39834,7 +39902,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.76';
+  GAME.VERSION = 'v157.77';
   function boot() {
     fitAppSize();
     try {
