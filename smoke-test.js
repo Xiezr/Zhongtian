@@ -49434,6 +49434,128 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       'panStepOf + 半径归位在岗');
   })();
 
+  /* ============================================================
+   * §586s（v157.83 · 老板「球体不是跟着鼠标走，而是乱滚」）
+   * ------------------------------------------------------------
+   * 规则变更：轨道相机姿态从「最短弧 setFromUnitVectors」改为 **turntable**：
+   *     R = Ry(yaw) · Rx(−pitch) · Rz(roll) ｜ roll = _camRollOf(pitch)
+   * 这是 OrbitControls / 所有成熟轨道相机的同构写法。
+   *
+   * 根因（纯数学实测 `.workbuddy/tmp/cam_roll_probe.js`，不依赖渲染）：
+   *   最短弧只钉住「+Z → dir」这一条，up 是副产物 —— 绕水平轴转 θ 时
+   *   up 被同一轴带着转 θ，于是 **画面 roll = 俯角**：
+   *     pitch 24° → roll 10.3° ｜ 52° → 23.1° ｜ 80° → 39.2° ｜ 越极点单帧跳 89°
+   *   拖动时俯角一直在变 → 倾斜一直跟着变 → 玩家看到的就是「球自己在乱滚」。
+   *   另外 dir≈−Z 时最短弧退化，400 帧里 30 帧视线偏出球心（位置对、朝向错）。
+   *
+   * 五层守卫：
+   *   ① 结构面：姿态唯一出口 = setFromEuler(Euler(−pitch, yaw, roll, 'YXZ'))
+   *   ② 反向证据：相机姿态链上不许再出现 setFromUnitVectors(… (0,0,1) …)
+   *   ③ 数值面：真调 _camRollOf —— 常规区间恒 0、跨极点逐度连续（< 6°/帧）
+   *   ④ 行为面：真算矩阵 —— R·(0,0,1) 必须等于球坐标 dir；|pitch|≤75° 时零 roll
+   *   ⑤ 自转面：_spinTick 必须走 yaw 累加（旧写法 quat 转了 yaw 没转，
+   *      玩家一拖动 quat 置空重建就跳回自转前 —— 实测跳十几度）
+   * ============================================================ */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
+
+    check('§586s 结构面：姿态 = Ry(yaw)·Rx(−pitch)·Rz(roll)（turntable），单一出口在 placeCamera',
+      /camO\.quat = new THREE\.Quaternion\(\)\.setFromEuler\(\s*\n\s*new THREE\.Euler\(-_pitch, _yaw, _camRollOf\(_pitch\), 'YXZ'\)\)/.test(mp)
+      && /function _camRollOf\(pitch\) \{/.test(mp)
+      && /M\._camRollOf = _camRollOf;/.test(mp),
+      'setFromEuler + _camRollOf 在岗');
+
+    /* 反向守卫：按**代码形态**判，注释里出现 `quat = setFromUnitVectors((0,0,1), dir)`
+       是墓碑说明，不构成复活（不带 `new THREE.Vector3`）。 */
+    check('§586s 反向证据：相机姿态链上不再用最短弧（setFromUnitVectors(…(0,0,1)…) 计数 0）',
+      (mp.match(/setFromUnitVectors\(\s*\n?\s*new THREE\.Vector3\(0, 0, 1\),/g) || []).length === 0,
+      '最短弧构造 = ' + (mp.match(/setFromUnitVectors\(\s*\n?\s*new THREE\.Vector3\(0, 0, 1\),/g) || []).length + ' 处（应 0）');
+
+    /* 数值面：从源码抽 _camRollOf 真执行（防"注释对了实现错了"） */
+    check('§586s 数值面：常规视角 roll 恒 0；跨极点连续过渡（逐 0.29° 步长 < 6°）',
+      (function () {
+        var m = mp.match(/function _camRollOf\(pitch\) \{([\s\S]*?)\n  \}/);
+        if (!m) return false;
+        var fn;
+        try { fn = new Function('pitch', m[1]); } catch (e) { return false; }
+        var dbg = { at0: fn(0), at24: fn(0.42), at57: fn(1.0), at74: fn(1.295) };
+        var zeroOk = [dbg.at0, dbg.at24, dbg.at57, dbg.at74].every(function (x) { return Math.abs(x) < 1e-12; });
+        /* 0 → 4π 扫一遍（连过 4 个极点），看单步变化 */
+        var prev = fn(0), worst = 0, steps = 0, maxAbs = 0;
+        for (var p2 = 0.005; p2 <= 4 * Math.PI; p2 += 0.005) {
+          var r2 = fn(p2);
+          var d2 = Math.abs(r2 - prev);
+          if (d2 > worst) worst = d2;
+          if (Math.abs(r2) > maxAbs) maxAbs = Math.abs(r2);
+          prev = r2; steps++;
+        }
+        var worstDeg = worst * 180 / Math.PI;
+        var ok = zeroOk && worstDeg < 6 && steps > 2500 && maxAbs > 3;
+        check('§586s 数值面：常规恒 0=' + zeroOk + ' · 单步最大 ' + worstDeg.toFixed(2)
+          + '° · 覆盖 |roll| 上限 ' + (maxAbs / Math.PI).toFixed(2) + 'π · ' + steps + ' 步', ok, '');
+        return ok;
+      })(), '_camRollOf 真调');
+
+    /* 行为面：真算 turntable 矩阵 —— 位置方向与球坐标一致、常规区间 up 零 roll */
+    check('§586s 行为面：R·(0,0,1) ≡ 球坐标 dir（≤1e-9）；|pitch|≤75° 时画面 roll ≡ 0°',
+      (function () {
+        function mm(a, b) {
+          var o = new Array(9);
+          for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++)
+            o[i*3+j] = a[i*3]*b[j] + a[i*3+1]*b[3+j] + a[i*3+2]*b[6+j];
+          return o;
+        }
+        function app(m, v) { return [m[0]*v[0]+m[1]*v[1]+m[2]*v[2], m[3]*v[0]+m[4]*v[1]+m[5]*v[2], m[6]*v[0]+m[7]*v[1]+m[8]*v[2]]; }
+        var mf = mp.match(/function _camRollOf\(pitch\) \{([\s\S]*?)\n  \}/);
+        if (!mf) return false;
+        var rollFn;
+        try { rollFn = new Function('pitch', mf[1]); } catch (e) { return false; }
+        var worstPos = 0, worstRoll = 0;
+        [0, 0.42, 0.8, 1.0, 1.3, -0.6, -1.2].forEach(function (p3) {
+          var y3 = 0.8, rl = rollFn(p3);
+          var cp = Math.cos(-p3), sp = Math.sin(-p3), cy = Math.cos(y3), sy = Math.sin(y3);
+          var rx = [1,0,0, 0,cp,-sp, 0,sp,cp];
+          var ry = [cy,0,sy, 0,1,0, -sy,0,cy];
+          var cr = Math.cos(rl), sr = Math.sin(rl);
+          var rz = [cr,-sr,0, sr,cr,0, 0,0,1];
+          var R = mm(mm(ry, rx), rz);
+          var dir = app(R, [0, 0, 1]);
+          var want = [Math.cos(p3)*Math.sin(y3), Math.sin(p3), Math.cos(p3)*Math.cos(y3)];
+          var e = Math.max(Math.abs(dir[0]-want[0]), Math.abs(dir[1]-want[1]), Math.abs(dir[2]-want[2]));
+          if (e > worstPos) worstPos = e;
+          /* up 与「世界 Y 在 ⟂视线平面上的投影」夹角 = 画面 roll */
+          var f = [-dir[0], -dir[1], -dir[2]];
+          var up = app(R, [0, 1, 0]);
+          var dy = f[1];
+          var ref = [ -f[0]*dy, 1 - f[1]*dy, -f[2]*dy ];
+          var rl2 = Math.hypot(ref[0], ref[1], ref[2]) || 1;
+          ref = [ref[0]/rl2, ref[1]/rl2, ref[2]/rl2];
+          var dp = Math.max(-1, Math.min(1, up[0]*ref[0]+up[1]*ref[1]+up[2]*ref[2]));
+          var ang = Math.acos(dp) * 180 / Math.PI;
+          if (Math.abs(p3) <= 75*Math.PI/180 && ang > worstRoll) worstRoll = ang;
+        });
+        var ok = worstPos < 1e-9 && worstRoll < 1e-6;
+        check('§586s 行为面：位置误差 ' + worstPos.toExponential(2)
+          + ' · 常规区间 roll 最大 ' + worstRoll.toFixed(6) + '°', ok, '');
+        return ok;
+      })(), '矩阵真算 7 组');
+
+    /* 自转面：旧写法 premultiply 只改 quat 不同步 yaw → 一拖动就跳回自转前角度。
+       新口径：yaw 累加（数学上 premultiply(Ry(θ)) ≡ yaw += θ），quat 置空重建。 */
+    check('§586s 自转面：_spinTick 走 yaw 累加 + quat 置空（不许只转 quat 不同步 yaw）',
+      /camO\.yaw \+= _spinAng;/.test(mp)
+      && /camO\.quat = null; camO\._euler = null;      \/\* 交给 placeCamera 按新 yaw 重建 \*\//.test(mp)
+      && !/camO\.quat = \(camO\.quat \|\| new THREE\.Quaternion\(\)\)\.premultiply/.test(mp),
+      'yaw 累加在岗 · premultiply 旧写法 0 处');
+
+    /* 默认静止：老板 v157.34「位置与朝向都只由玩家改」—— 自转默认开会自己漂。
+       按钮仍在（setSpin），一键可开。 */
+    check('§586s 默认面：自转默认关（spinOn=false），按钮 setSpin 保留',
+      /M\.spinOn = false;/.test(mp) && /M\.setSpin = function \(on\) \{/.test(mp),
+      'spinOn=false + setSpin 在岗');
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));

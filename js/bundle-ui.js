@@ -1122,11 +1122,15 @@
   /* ============================================================
    * v157e：**自转开关**（老板：「出一个按钮"自转"，点击开启或关闭自转」）
    * ------------------------------------------------------------
-   * 默认开：星球缓慢自转是这个场景的基础观感，不该默认静止。
+   * ⛔ v157.83 改默认（老板「球体不是跟着鼠标走，而是乱滚」的体感来源之一）：
+   *   原来默认开，60 秒一圈 —— 玩家没点任何按钮，球就一直在慢慢漂；
+   *   他刚看了一会儿再拖鼠标，第一帧还要"对上"自转后的角度。
+   *   这与老板 v157.34 立的口径直接冲突：「位置与朝向都只由玩家改」。
+   *   现在**默认静止**，想看自转点一下「🌏 自转」（按钮仍在，一键恢复）。
    * 关掉就是真的不动 —— 不再有"静止 10 秒它自己又转起来"那种猜不透的行为。
    * 地表模式下**永远不转**（见 _spinTick）：人站在地上，星球转 = 画面转。
    * ============================================================ */
-  M.spinOn = true;
+  M.spinOn = false;
   M.setSpin = function (on) {
     M.spinOn = !!on;
     M._lastAct = 0;                    /* 立刻生效，不等 1.5 秒的"操作让路"冷却 */
@@ -6037,6 +6041,44 @@
     var t = Math.max(0, Math.min(1, (x - a) / Math.max(1e-6, b - a)));
     return t * t * (3 - 2 * t);
   }
+  /* ============================================================
+   * v157.83（老板「球体不是跟着鼠标走，而是乱滚」）
+   * ------------------------------------------------------------
+   * 病根：轨道姿态原来用
+   *     quat = setFromUnitVectors((0,0,1), dir)
+   * —— 那是「把 +Z 转到 dir 的**最短弧**」。它只钉住一个轴，up 是副产物：
+   * 绕水平轴转 θ 的同时，相机 up 被同一轴带着转了 θ，于是**画面 roll = 俯角**。
+   * 纯数学实测（`.workbuddy/tmp/cam_roll_probe.js`，不依赖渲染）：
+   *     pitch 24° → roll 10.3° ｜ 52° → 23.1° ｜ 80° → 39.2° ｜ 越过极点单帧跳 89°
+   * 拖动时俯角一直在变 → 倾斜角一直跟着变 → 玩家看到的就是「球自己在乱滚」，
+   * 而不是「我拨到哪它跟到哪」。且最短弧在 dir≈−Z 时退化，400 帧里有 30 帧
+   * 视线偏出球心（位置对、朝向错）。
+   *
+   * 正解：**turntable（三脚架）姿态** —— 与 OrbitControls 及所有成熟轨道相机同构：
+   *     R = Ry(yaw) · Rx(−pitch) · Rz(roll)
+   *   ① 前两项把 +Z 精确转到 dir（视线正对球心），up 由 Ry 保持竖直
+   *      → |pitch| < 90° 时 roll ≡ 0：地平线水平，拖动方向 = 内容移动方向；
+   *   ② 第三项绕**局部视线轴**滚，不改变 dir（相机位置一点不动）。
+   *
+   * roll 为什么不能恒为 0：沿经线滚过极点（老板 v157.80 要的「无死角」），
+   * 球面上的「上方」必然翻转 180° —— 拓扑事实，躲不掉。两种处理：
+   *   · 突变（越极点那帧翻半圈）→ 实测单帧 180°，比现状更丑；
+   *   · **分摊**（本版）：pitch 每跨一个极点（90°+180°·n），roll 在 ±14.4° 的
+   *     拖动带里用 smoothstep 平滑转 180°，画面像"球从眼前滚过去"，符合物理；
+   *     常规拖动（|pitch| < 75°）roll 恒 0，完全跟手。
+   * ============================================================ */
+  function _camRollOf(pitch) {
+    var W = 0.08;                       /* 过渡半宽，单位 π（≈14.4°） */
+    var f = pitch / Math.PI;
+    var n = Math.floor(f);
+    var frac = f - n;                   /* [0,1) */
+    if (frac <= 0.5 - W) return n * Math.PI;
+    if (frac >= 0.5 + W) return (n + 1) * Math.PI;
+    var t = (frac - (0.5 - W)) / (2 * W);
+    t = t * t * (3 - 2 * t);            /* smoothstep：两端斜率为 0，无拐点 */
+    return (n + t) * Math.PI;
+  }
+  M._camRollOf = _camRollOf;            /* 暴露给探针/断言核对（纯函数，无副作用） */
   /* 交班衰减窗口：62 米（AGL_SURF+HYST）满值 → 95 米归零。 */
   /* ⛔ v157.74 退役：`_handoffMul(rAlt)` 曾是「按离地高度把视线融合回看球心」的权重
      （62m = 1 → 95m = 0）。它让**滚轮一动画面就自己转**，与老板
@@ -6096,9 +6138,12 @@
     var _dirty = (!camO.quat || !camO._euler ||
       Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
     if (_dirty) {
-      var _cy = Math.cos(_pitch), _sy = Math.sin(_pitch);
-      var _dv = new THREE.Vector3(_cy * Math.sin(_yaw), _sy, _cy * Math.cos(_yaw)).normalize();
-      camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dv);
+      /* v157.83：turntable 姿态（Ry·Rx·Rz），**不再用 setFromUnitVectors**。
+         理由见 `_camRollOf` 上方注释 —— 最短弧会把俯角转成画面 roll。
+         Euler 'YXZ' = Ry(y)·Rx(x)·Rz(z)，与推导逐项对应。
+         dir 由本四元数反算（下一行 applyQuaternion），位置/朝向永远同源。 */
+      camO.quat = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(-_pitch, _yaw, _camRollOf(_pitch), 'YXZ'));
       camO._euler = [_yaw, _pitch];
     }
     var _dirV = new THREE.Vector3(0, 0, 1).applyQuaternion(camO.quat).normalize();
@@ -6927,19 +6972,22 @@
       /* ============================================================
        * v156.63（老板「统一旋转绕地心线，达成地心线不动，球体环绕地心线」）
        * ------------------------------------------------------------
-       * ⛔ 旧写法 `camO.yaw += ...` 在 arcball 版本下是错的：
-       *   yaw 一变就触发 placeCamera 的脏检测 → 用 setFromUnitVectors 重建 quat，
-       *   而"最小旋转"会**丢掉用户转出来的 roll** → 自转一启动，倾斜的球就突然回正。
+       * 语义不变：绕**世界 Y 轴（地心线）**公转，轴线在屏幕上的位置不动。
        *
-       * 正解：**直接绕世界 Y 轴（地心线）旋转 quat**：
-       *   · 世界 Y = 地心线 → 轴线在世界里不动（屏幕上也不动）；
-       *   · quat.premultiply 是公转，roll 保持不变，球保持用户摆出的姿态；
-       *   · 视觉上就是"球体环绕地心线自转"，与"相机公转"完全等价，且不动任何世界坐标。
+       * ⛔ v157.83 改实现（老板「球体不跟着鼠标走，而是乱滚」的第二个真因）：
+       *   旧写法 `camO.quat.premultiply(Ry)` 只改了 quat，**不同步 yaw**，
+       *   然后 `camO._euler = [camO.yaw, camO.pitch]` 假装它干净 —— 于是
+       *   quat 已转了 N 度、yaw 还停在旧值。玩家一拖动 → `camO.quat = null`
+       *   → placeCamera 按旧 yaw 重建 → **画面瞬间跳回自转前**，之后接着自转。
+       *   自转默认开启（`M.spinOn = true`），1.5 秒无操作就转 —— 每个玩家都会撞上。
+       *
+       * 现在姿态只有**一个真值来源** = yaw/pitch（roll 由 pitch 派生，见 `_camRollOf`）。
+       * 数学上 premultiply(Ry(θ)) ≡ yaw += θ（R = Ry(y)·Rx(−p)·Rz(r)），
+       * 所以直接累加 yaw 与旧写法逐位等价，但不会再丢角度。
        * ============================================================ */
       var _spinAng = (2 * Math.PI / _spin) * (_dt / 1000);
-      var _qs = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), _spinAng);
-      camO.quat = (camO.quat || new THREE.Quaternion()).premultiply(_qs).normalize();
-      camO._euler = [camO.yaw, camO.pitch];   /* 同步，防止脏检测把它判成"外部改了欧拉角" */
+      camO.yaw += _spinAng;
+      camO.quat = null; camO._euler = null;      /* 交给 placeCamera 按新 yaw 重建 */
       wonderStep();                                          /* v91.30：奇观轨行 + 出场/离场动画 */
       if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }
@@ -7371,11 +7419,14 @@
               _np54.multiplyScalar(_B54.dist / _nl54);  /* 半径归一：camO.dist 保持原值 */
               var _u54 = 1 / _B54.dist;
               camO.dir = [_np54.x * _u54, _np54.y * _u54, _np54.z * _u54];
-              camO.quat = new THREE.Quaternion().setFromUnitVectors(
-                new THREE.Vector3(0, 0, 1), new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]));
+              /* v157.83：这里原来用 setFromUnitVectors 顺手建 quat —— 与 placeCamera
+                 的 turntable 构造是两套姿态口径（roll 不同）。地表模式虽然由
+                 `cam.up + lookAt` 覆盖朝向，但一旦退回轨道就会带着这条"最短弧"
+                 姿态（roll 随纬度）。现在统一成：**姿态只由 placeCamera 重建**。 */
+              camO.quat = null;
               camO.yaw = Math.atan2(camO.dir[0], camO.dir[2]);
               camO.pitch = Math.asin(Math.max(-1, Math.min(1, camO.dir[1])));
-              camO._euler = [camO.yaw, camO.pitch];
+              camO._euler = null;              /* 置空 → 下帧必重建，与 dir 同一来源 */
               /* 落定过渡曾在无人操作时改俯角 —— 用户一旦平移就接管镜头 */
               M._surfHold = true;
               touch(); redraw();
@@ -40039,7 +40090,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.82';
+  GAME.VERSION = 'v157.83';
   function boot() {
     fitAppSize();
     try {
