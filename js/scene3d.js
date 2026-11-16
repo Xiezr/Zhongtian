@@ -2501,8 +2501,6 @@
     renderHud();
     lastT = performance.now();
     if (!rafId) rafId = requestAnimationFrame(step);
-    var ph = document.getElementById('prologue-screen');
-    if (ph) ph.style.display = 'none';
     return { name: B.name || bid, bid: bid, lvl: lvl };
   }
   S._buildPreviewScene = buildPreviewScene;   /* 排障/探针：直接看它建得出来建不出来 */
@@ -3116,8 +3114,6 @@
       renderHud();
       lastT = performance.now();
       if (!rafId) rafId = requestAnimationFrame(step);
-      var ph0 = document.getElementById('prologue-screen');
-      if (ph0) ph0.style.display = 'none';
       return { ok: true, scene: 'city', name: '我的城（3D）' };
     }
     /* v147：**建造预览**不是一张静态场景，而是照着候选建筑现搭一格 + 当前城做参照 */
@@ -3142,11 +3138,7 @@
     renderHud();
     lastT = performance.now();
     if (!rafId) rafId = requestAnimationFrame(step);
-    /* 让 HUD 层知道现在在场景里（前传 HUD 要暂时让位） */
-    if (G.prologue && G.prologue.on && G.prologue.on()) {
-      var ph = document.getElementById('prologue-screen');
-      if (ph) ph.style.display = 'none';
-    }
+    /* ⛔ v157.85：前传 HUD（#prologue-screen）的让位逻辑已删 —— 前传退役。 */
     return { ok: true, scene: sceneId, name: cfg.name };
   };
 
@@ -3192,8 +3184,7 @@
     /* v143.2：行人随 propRoot 清（数组同步空，_cityNpcs() 归零） */
     cityNpcs = [];
     npcMatSkin = null; npcMatTint = null; npcMatPants = null;
-    var ph = document.getElementById('prologue-screen');
-    if (ph) ph.style.display = '';
+    /* ⛔ v157.85：恢复前传 HUD 的显示已删（前传退役）。 */
     if (G.refreshAll) { try { G.refreshAll(); } catch (e) {} }
     /* v143：回地块界面（带 ci 重开那一格的面板）—— 失败不挡关门，场景必须能退 */
     if (exitTo === 'land' && exitCi != null && G.ui && G.ui.openLandModalCi) {
@@ -3243,17 +3234,12 @@
 
   S.play = function (actId, ci, opts) {
     opts = opts || {};
-    /* v143（正式阶段也走场景）：宿主分序章/正式两路。
-       序章：结算走 G.prologue.act（不锁日、双倍率）—— 老路不动；
-       正式：结算走 GAME.jianghuDo（日锁/将选/账目全在那儿）—— 也不新写一份。
-       默认按 prologue.on() 推断；调用方（ui.doJianghu）显式传 host:'live'。 */
-    var live = opts.host === 'live'
-      || (opts.host == null && !(G.prologue && G.prologue.on && G.prologue.on()));
+    /* ⛔ v157.85：前传整段退役 → 场景只有一个宿主 = **正式阶段**（`live` 恒真）。
+       原来这里按 `prologue.on()` 分两路，还从 `prologue.cellTypeOf` 取地形；
+       现在地形统一取逻辑球面字段（与 `jianghuActsAt` 同源）。 */
+    var live = true;
     var terrain = null;
-    if (G.prologue && G.prologue.cellTypeOf && ci != null) terrain = G.prologue.cellTypeOf(ci);
-    /* 正式阶段没有 prologue.cellTypeOf —— 回退到逻辑球面的地形字段
-       （jianghuActsAt 判「有没有荒野事」用的就是它，同源不会打架）。 */
-    if (terrain == null && ci != null && G.sphere && G.sphere.cells && G.sphere.cells[ci]) {
+    if (ci != null && G.sphere && G.sphere.cells && G.sphere.cells[ci]) {
       terrain = G.sphere.cells[ci].type;
     }
     /* 进场景的门槛与按钮一致：这一格今天能做这件事，才让进 */
@@ -3342,24 +3328,15 @@
         showResult(nd, _set.res, 'tao');
         return _set.res;
       }
-      var _foe = G.prologue.duelFoe(_ci, nd.speciesId);
-      var _r2 = G.prologue.duelBegin(_ci, _foe);
-      if (!_r2.ok) {
-        showResult(nd, { ok: false, msg: _r2.msg }, 'duel');
-        return _r2;
-      }
-      nd.done = true;
-      if (nd.ring) nd.ring.visible = false;
-      dimProp(o);
-      if (G.ui && G.ui.openDuelPanel) G.ui.openDuelPanel();
-      spawnDuelFoe(nd);                   /* 斗将视觉：玩家身前立一个敌人 */
-      return _r2;
+      /* ⛔ v157.85：`G.prologue.duelFoe/duelBegin` 分支已删（前传的君主斗将）。
+         正式阶段的遭遇在上面的 `ctx.live` 分支走 `jianghuDo(…,'tao')`。 */
+      return { ok: false, msg: '这里现在打不了' };
     }
     if (nd.done) return { ok: false, msg: '这里已经收拾过了' };
     var actId = nd.act || (ctx && ctx.actId) || 'cai';
     var ci = (ctx && ctx.ci != null) ? ctx.ci : null;
     var res = null;
-    if (ctx && ctx.live) {
+    {
       /* v143：正式宿主 —— 结算走 GAME.jianghuDo（地块按钮那一个出口）。
          失败（日锁/精力体力不够）不标 done：那不是"收拾过了"，是"今天没干成"，
          节点得留着，明天还能来。成功才落 done + 记退出落点（回地块界面）。 */
@@ -3377,10 +3354,6 @@
         bad: r0.bad
       } : { ok: false, msg: '没有结果' };
       if (res.ok) ctx.exitTo = 'land';   /* 结算成功 → 退出时回地块界面（ux：看完结果回主线） */
-    } else {
-      try {
-        res = G.prologue && G.prologue.act ? G.prologue.act(ci, actId) : null;
-      } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
     }
     nd.done = true;
     playerActing = true;                   /* 采集/垂钓：蹲下动作，走动即取消 */
@@ -3484,7 +3457,10 @@
     return h >>> 0;
   }
   function encounterFor(cfg, ci) {
-    if (!(G.prologue && G.prologue.on && G.prologue.on())) return null;   /* 只有前传君主一个人在外面走 */
+    /* ⛔ v157.85：前传退役 —— 原先「只有前传君主一个人在外面走才有随机遭遇」，
+       现在没有前传，这条随机遭遇随之取消（正式阶段的红圈遭遇走 jianghuDo 那条账）。 */
+    return null;
+    // eslint-disable-next-line no-unreachable
     var LIST = (D && D.DUEL_FOES) || [];
     if (!LIST.length) return null;
     var h = hashStr(cfg.id + '|' + (ci | 0) + '|' + sceneDay());

@@ -35,14 +35,10 @@ import './ui.js';
   /* --------- 城内（36格：政务厅占右侧4格 + 32格可建；围墙环绕不占格） --------- */
   ui.cityHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
-    /* ============================================================
-     * v131（老板：「应当根治」）：前传 = 君主个人冒险 → **开局真的没有城**。
-     * 这里必须兜住：`renderView` 每秒都会调到本函数，
-     * 旧代码第 2 行就 `c.col` —— 无城时整页抛异常、刷新链整条断掉
-     * （实测：`Cannot read properties of null (reading 'col')`）。
-     * 无城时给一页"营地"：只说你现在站在哪、周围是什么、往哪走。
-     * ============================================================ */
-    if (!c) return ui.campHTML();
+    /* ⛔ v157.85：前传退役 → 不存在"开局没有城"。这里只留一句兜底文案，
+       防止异常档（城数据损坏）把每秒刷新链炸断（旧写法第 2 行就 `c.col`）。 */
+    if (!c) return '<div class="ui-page"><div class="gold-heading">还没有城</div>'
+      + '<div class="ui-sub">当前存档没有可用城市 —— 请回到主菜单重新开局。</div></div>';
     var COLS = c.col || 6, ROWS = c.row || 6;
     ui.fitBoard(COLS, ROWS);              /* v27：按窗口算格子边长 */
     var M = ui.isoMetrics(COLS, ROWS);
@@ -125,16 +121,7 @@ import './ui.js';
    * `ui.viewBoxSize` 在 jsdom 下拿不到布局（clientWidth 恒 0），
    * 于是回落到基准值 —— 测试因此仍然是确定性的。
    * ------------------------------------------------------------ */
-  /* ============================================================
-   * v131：**营地视图**（前传 · 没有城时的"我的地盘"页）
-   * ------------------------------------------------------------
-   * 前传是君主个人冒险，开局没有城 —— 但 `renderView` 每秒都会调 `cityHTML`，
-   * 那里第 2 行就 `c.col`，无城直接把刷新链炸断。
-   * 所以这一页的职责有两件：
-   *   ① 兜住"无城"这个状态（不抛异常）；
-   *   ② 说清**玩家此刻在哪、周围是什么、往哪走** —— 这就是个人冒险的地图页。
-   * 只说事实，不写"你要重建文明"之类（沿用 prologue.js 的调性）。
-   * ============================================================ */
+  /* ⛔ v157.85：「营地视图」（v131 前传 · 没有城时的地盘页）随前传整段退役删除。 */
   /* ============================================================
    * v132：**点名斗将**（老板「就是大地图加地块探索加斗将等」）
    * ------------------------------------------------------------
@@ -156,223 +143,12 @@ import './ui.js';
    * ⚠️ 一分一合都不在这里算：血量与伤害全由 `GAME.duel.play` 从头复算
    *   （见 js/duel.js —— 三条口径与数值表都在那里），面板只负责画。
    * ============================================================ */
-  ui.openDuelPanel = function () {
-    var P = GAME.prologue || {};
-    var d = P.duelOf ? P.duelOf() : null;
-    if (!d) { ui.toast('没有正在进行的斗将'); return; }
-    /* v151：两种模式共用同一张竞技场 —— `mode:'act'` 是"打这一格的事"（回合制），
-       胜负回灌 `P.resolve`；其余仍是"点名斗将"（P.duelStep）。 */
-    var isAct = d.mode === 'act';
-    var DUA = (GAME.DATA && GAME.DATA.DUEL_ARENA) || {};
-    var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
-    var MV = DU.moves || {}, ORDER = DU.moveOrder || Object.keys(MV);
-    var lord = P.lord ? P.lord() : null;
-    var f = d.foe || {};
-    /* 复算（不存血量）：血条永远是"这一串招式"的确定结果 —— 与 duelStep 同源。
-       对手走 `P.duelFoeFull`（开局快照），杜绝"判定一个对手、画面另一个"。 */
-    var foe = P.duelFoeFull ? P.duelFoeFull(d) : null;
-    var r = (GAME.duel && GAME.duel.play && lord && foe)
-      ? GAME.duel.play(lord, foe, d.moves || [], d.seed) : null;
-    if (!r) { ui.toast('斗将状态读不出来'); return; }
-    var last = r.rounds.length ? r.rounds[r.rounds.length - 1] : null;
-    var mvShow = function (m) {
-      var x = MV[m] || {};
-      var mu = (x.mul == null ? 1 : x.mul), tk = (x.taken == null ? 1 : x.taken);
-      return (x.name || m) + ' ×' + mu.toFixed(2) + '/×' + tk.toFixed(2);
-    };
+  /* ⛔ v157.85：`ui.openDuelPanel`（前传「点名斗将」的竞技场面板）整函数删除 ——
+     它读的是 `GAME.prologue.duelOf()`，前传退役后没有数据源。
+     ⚠️ 3D 斗将舞台 `duel3d` 本身保留：它是"表现层"，后续做正式斗将时还要用。 */
 
-    /* ============================================================
-     * v156.20（老板「目前还是偏文字游戏了，把文字场景化，3D 对战」）
-     * ------------------------------------------------------------
-     * 原来这一块是「两张画像 + 中间 VS」——本质还是一张文字卡。
-     * 现在：**3D 舞台占主体**（两个角色真的站上去打），
-     *   名字/血条/攻防压成半透明的 HUD 贴在舞台两侧上方 ——
-     *   画在 3D 里必糊，且读数读不出来，所以数值仍走 DOM。
-     * 舞台本体由 `GAME.duel3d`（js/duel3d.js）驱动；它**只读**本函数算出的结果，
-     * 不另算一份胜负（判定唯一出口仍是 GAME.duel.play）。
-     * ============================================================ */
-    var hud = function (side, g, icon, name, lv, tag, hp, max, atk, def, dmg, crit) {
-      var pct = Math.max(0, Math.min(100, Math.round(hp / Math.max(1, max) * 100)));
-      var col = pct > 60 ? 'var(--green-ok)' : (pct > 30 ? 'var(--gold-light)' : 'var(--red-light)');
-      return '<div class="duel-hud ' + side + '">'
-        + (dmg ? '<div class="duel-dmg' + (crit ? ' crit' : '') + '">-' + dmg + (crit ? ' 暴击' : '') + '</div>' : '')
-        + '<div class="duel-hud-name">' + U.escape(name)
-        + '<span class="duel-hud-sub">Lv' + lv + (tag ? ' · ' + U.escape(tag) : '') + '</span></div>'
-        + '<div class="duel-hp"><i style="width:' + pct + '%;background:' + col + ';"></i></div>'
-        + '<div class="duel-hud-num">' + hp + ' / ' + max
-        + '　<span class="duel-hud-sub">攻 ' + atk + ' 防 ' + def + '</span></div>'
-        + '</div>';
-    };
-    var fly = !!last && !r.over;
-    var arena = '<div class="duel-stage">'
-      + '<div class="duel-stage3d" id="duel-stage3d"></div>'
-      + hud('me', lord, '', (lord && lord.name) || '君主', (lord && lord.level) | 0, '我',
-        r.hpA, r.maxA, r.atkA, r.defA, fly ? last.dmgToA : 0, !!(last && last.res === 'b'))
-      + hud('foe', foe, (f.icon || (foe && foe.species && foe.species.icon) || '👤'),
-        f.name || '对手', f.level | 0, f.tag || '',
-        r.hpB, r.maxB, r.atkB, r.defB, fly ? last.dmgToB : 0, !!(last && last.res === 'a'))
-      + '<div class="duel-stage-vs">VS</div>'
-      + '</div>';
-
-    /* ---- 对手路数读不读得出来（心理战那一半仍保留） ---- */
-    var tendTxt = '', readable = false, bestK = null;
-    try {
-      if (GAME.battle && GAME.battle.duelTendency) {
-        var w = GAME.battle.duelTendency({ yw: f.yw, zm: f.zm, tong: f.tong });
-        var keys = Object.keys(w);
-        var sortv = keys.map(function (k) { return w[k]; }).sort(function (a, b) { return b - a; });
-        bestK = keys[0];
-        keys.forEach(function (k) { if (w[k] > w[bestK]) bestK = k; });
-        var ratio = sortv[1] > 0 ? (sortv[0] / sortv[1]) : 9;
-        readable = ratio >= 1.15;
-        if (readable) {
-          var why = bestK === 'stab' ? '手上有劲' : bestK === 'guard' ? '守得稳'
-            : bestK === 'feint' ? '心思多' : '脾气慢';
-          tendTxt = '看它架势：偏' + ((MV[bestK] || {}).name || bestK) + '（' + why + '）';
-        } else {
-          tendTxt = '看它架势：四平八稳 —— 读不出偏哪一手，只能临场赌';
-        }
-      }
-    } catch (e) {}
-
-    /* ---- 交手记录：只留最近 3 合 ---- */
-    var hist = '';
-    r.rounds.slice(-3).forEach(function (rr, k) {
-      var idx = Math.max(1, r.rounds.length - Math.min(3, r.rounds.length) + k + 1);
-      var cl = rr.res === 'a' ? 'var(--green-ok)' : (rr.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
-      hist += '<div style="font-size:var(--fs-cap);padding:1px 0;color:' + cl + ';">'
-        + '第' + idx + '合　我' + U.escape(rr.aName) + ' ⚔ ' + U.escape(rr.bName)
-        + '　我掉 <b>' + rr.dmgToA + '</b> · 他掉 <b>' + rr.dmgToB + '</b></div>';
-    });
-
-    var body = '';
-    if (!r.over) {
-      body = arena
-        + '<div class="ui-sub" style="margin-top:7px;text-align:center;">'
-        + '第 <b>' + (r.rounds.length + 1) + '</b> 合　每合双方各出手 <b>1</b> 次'
-        + '（打满 ' + (r.maxRounds || 12) + ' 合 · 血见底即分胜负）</div>'
-        + '<div class="ui-sub" style="margin-top:2px;text-align:center;opacity:.75;">'
-        + '血 = 体力（我的 ' + r.maxA + ' · 他的 ' + r.maxB + '）　伤害 = 攻防对冲 × 招式倍率</div>'
-        + (tendTxt ? '<div style="margin-top:4px;text-align:center;font-size:var(--fs-cap);'
-            + 'color:' + (readable ? 'var(--green-ok)' : 'var(--gold-light)') + ';">' + U.escape(tendTxt) + '</div>' : '')
-        + (f.desc ? '<div class="ui-sub" style="margin-top:3px;text-align:center;opacity:.75;font-size:var(--fs-cap);">'
-            + U.escape(f.desc) + '</div>' : '')
-        + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px;">'
-        + ORDER.map(function (id) {
-            var m = MV[id] || {};
-            var hot = bestK && m.beats === bestK ? ' outline:1px solid var(--gold-light);' : '';
-            return '<button class="btn gold" data-action="' + (isAct ? 'prologue-fight-hit' : 'prologue-duel-hit') + '" data-mv="' + id + '"'
-              + ' style="min-width:96px;' + hot + '"'
-              + ' title="' + U.escape(m.note || '') + '">' + U.escape(mvShow(id)) + '</button>';
-          }).join('')
-        + '</div>'
-        /* v151：打这一格的事可以"先撤"（账不结、费用不退）—— 打不动就走，不是死局 */
-        + (isAct ? '<div style="margin-top:8px;text-align:center;">'
-            + '<button class="btn" data-action="prologue-fight-flee" data-ci="' + (d.ci | 0) + '">先撤（这一趟白跑）</button></div>' : '')
-        + '<div class="ui-sub" style="margin-top:7px;text-align:center;opacity:.7;font-size:var(--fs-cap);">'
-        + '出手× / 挨打×　·　突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
-    } else {
-      /* ---- 结算卡（老板：「最终胜利有一个弹窗显示，并提示经验和物资收获」） ---- */
-      /* ============================================================
-       * v152（实测踩到）：**大字与账本两套口径** ——
-       *   斗将 5 合是我输了（防御方先倒下），可账本按 force:'lose' 判成"这趟失败"，
-       *   面板却还按斗将的 winner 写大字「胜」。玩家看到"胜"，拿到的却是输的奖励。
-       * 口径：**大字只认账本**（`d.actRes.bad`）—— 回合只是过程，结果只有一份。
-       * ============================================================ */
-      var act0p = d.actRes || null;
-      var win = act0p ? !act0p.bad : (r.winner === 'atk');
-      var lose = act0p ? !!act0p.bad : (r.winner === 'def');
-      var big = win ? '胜' : (lose ? '负' : (d.winner === 'flee' ? '撤' : '平'));
-      var bigCol = win ? '#ffd166' : (lose ? '#d9534f' : '#9a9284');
-      var d0 = d || {};
-      /* v151：mode:'act' 的账是 `P.resolve` 结的（d.actRes / d.gain / d.txt） */
-      var act0 = d0.actRes || null;
-      var gain0 = (d0.gain != null) ? (d0.gain | 0) : (d0.gain | 0);
-      var loot = (d0.loot || []).map(function (it) {
-        return '<span style="display:inline-block;padding:2px 8px;border:1px solid var(--wood-light);'
-          + 'border-radius:4px;margin:0 4px;">' + U.escape(it.name) + ' ×' + it.n + '</span>';
-      }).join('');
-      body = arena
-        + '<div style="text-align:center;margin-top:10px;">'
-        /* ⚠️ 结算大字不能写裸 px（smoke 的"零裸字号"会照出来）——走令牌 + transform 放大。 */
-        + '<div style="font-size:var(--fs-h1);font-weight:800;color:' + bigCol
-        + ';line-height:var(--lh-1);transform:scale(1.6);margin:4px 0 8px;">' + big + '</div>'
-        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d0.txt || (act0 && act0.msg) || '') + '</div>'
-        + '<div class="ui-sub" style="margin-top:2px;">共 ' + r.rounds.length + ' 合 · 占先 '
-        + (r.wa | 0) + ' : ' + (r.wb | 0) + '</div></div>'
-        + '<div style="margin-top:9px;padding:9px 11px;border:1px solid var(--wood-light);'
-        + 'border-radius:7px;background:rgba(var(--sh-rgb),.3);">'
-        + '<div style="font-size:var(--fs-cap);">经验　<b style="color:var(--gold-light);">+'
-        + gain0 + '</b></div>'
-        + (loot ? '<div style="font-size:var(--fs-cap);margin-top:4px;">物资　' + loot + '</div>'
-          : (win ? '' : '<div class="ui-sub" style="margin-top:4px;">这一战没捞到东西</div>'))
-        + '</div>'
-        + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
-        + '<div style="margin-top:11px;text-align:center;">'
-        + '<button class="btn" data-action="prologue-duel-close">' + (isAct ? '收手 · 回地图' : '收手') + '</button></div>';
-    }
-
-    var _titleWin = (d && d.actRes) ? !d.actRes.bad : (r.winner === 'atk');
-    var _titleLose = (d && d.actRes) ? !!d.actRes.bad : (r.winner === 'def');
-    var title = r.over
-      ? '⚔ 斗将 · ' + (_titleWin ? '拿下' : _titleLose ? '败退' : '平手')
-      : '⚔ 斗将 · ' + U.escape(f.name || '对手');
-    ui.openModal('<div class="gold-heading">' + title + '</div>' + body, { size: 'auto' });
-    /* v156.20：3D 舞台挂载（幂等 —— 每合重绘都会再进来一次，场景只建一次）。
-       `mount` 只做表现，不参与判定；WebGL 不可用时它返回 false，面板照旧能用。 */
-    try {
-      if (GAME.duel3d && GAME.duel3d.mount) {
-        GAME.duel3d.mount({
-          holderId: 'duel-stage3d',
-          roundNo: r.rounds.length,
-          over: r.over,
-          winner: r.winner,
-          dmgToA: last ? last.dmgToA : 0,
-          dmgToB: last ? last.dmgToB : 0
-        });
-      }
-    } catch (e) { }
-  };
-
-
-  ui.campHTML = function () {
-    var s = GAME.state || {};
-    var P = GAME.prologue || {};
-    var pos = (s.prologue && s.prologue.pos) | 0;
-    var sp = GAME.sphereOf ? GAME.sphereOf() : GAME.sphere;
-    var cell = (sp && sp.cellOf) ? sp.cellOf(pos) : null;
-    var T = ((GAME.DATA || {}).TERRAIN || {})[cell && cell.type] || { name: '荒野', icon: '·' };
-    var lord = P.lord ? P.lord() : null;
-    var lv = lord ? (lord.level | 0) : 1;
-    var need = P.needLv ? P.needLv() : 20;
-    var en = (lord && GAME.energyNowOf) ? Math.round(GAME.energyNowOf(lord)) : 0;
-    var enMax = (lord && GAME.energyMaxOf) ? Math.round(GAME.energyMaxOf(lord)) : 100;
-    var nb = P.neighbors ? P.neighbors() : [];
-    var coord = (sp && sp.dirOf) ? (sp.dirOf(pos) || '') : '';
-    var rows = nb.map(function (n) {
-      var tn = ((GAME.DATA || {}).TERRAIN || {})[n.type] || { name: '荒野', icon: '·' };
-      var marks = (n.acts || []).map(function (a) { return a.name || a.id || ''; }).filter(Boolean);
-      return '<button class="btn" data-action="prologue-move" data-ci="' + n.ci + '" '
-        + 'style="display:flex;justify-content:space-between;align-items:center;width:100%;'
-        + 'margin-bottom:6px;text-align:left;">'
-        + '<span>' + (n.dir ? '<b style="opacity:.7;">' + U.escape(n.dir) + '</b>　' : '')
-        + (tn.icon || '·') + ' ' + U.escape(tn.name || '荒野') + '</span>'
-        + '<span style="opacity:.7;font-size:var(--fs-cap);">'
-        + (marks.length ? U.escape(marks.slice(0, 2).join(' · ')) : '走过去看看')
-        + '</span></button>';
-    }).join('');
-    return '<div class="ui-page" style="max-width:620px;margin:0 auto;padding:10px 4px;">'
-      + '<div class="gold-heading">🏕 营地</div>'
-      + '<div class="ui-sub" style="margin:6px 0 2px;">你们 ' + U.numText(s.prologue && s.prologue.res ? (s.prologue.res.pop || 0) : 0, 0)
-      + ' 个人，还没有城。此刻站在「' + U.escape(T.name || '荒野') + '」' + (coord ? '　' + U.escape(coord) : '') + '。</div>'
-      + '<div class="ui-sub" style="margin-bottom:12px;">君主 Lv<b style="color:var(--gold-light);">' + lv + '</b> / '
-      + need + '　⚡ 精力 ' + en + ' / ' + enMax + '</div>'
-      + (rows || '<div class="ui-sub">四周一片死寂，走不动了。</div>')
-      + '<div class="ui-sub" style="margin-top:12px;opacity:.75;">点一格就往前走一步（耗 1 精力）。'
-      + '走到 Lv' + need + ' 就能在这里立城。</div>'
-      + '</div>';
-  };
+  /* ⛔ v157.85：`ui.campHTML`（前传「营地」页：没有城时兜住 renderView 并给荒野行动列表）
+     整函数删除。前传退役后 `renderView` 一定有城可渲染。 */
 
   ui.DESIGN = { w: 1180, h: 820 };
   ui.SIDE_W = 283;          /* v43：CSS 侧栏宽度已固定为 283px（原为 clamp(272px,24vw,320px) 浮动值），

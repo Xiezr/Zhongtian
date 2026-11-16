@@ -1455,7 +1455,7 @@ import './ui.js';
        只留天数 / 等级 / 三个动作。立城后 P.on() 变 false，这里自动撤掉。
        放在**所有刷新路径的汇合点**（renderView）而不是 setView：
        ctx.refresh 走的是 GAME.refreshView → renderView，漏了它打完一场界面就不更新。 */
-    if (GAME.prologue && GAME.prologue.syncScreen) GAME.prologue.syncScreen();
+    /* ⛔ v157.85：前传 HUD 的 syncScreen 已删（前传退役）。 */
     /* v150（P0-1）：顶栏按阶段软隐藏（幂等、不删节点）——
        放在同一个汇合点：任何刷新路径都会经过这里。 */
     ui.syncPhase();

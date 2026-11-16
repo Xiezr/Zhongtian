@@ -1176,11 +1176,7 @@ import './ui.js';
       canvas.addEventListener('click', function (e) {
         var r = GAME.map.pick(canvas, e.clientX, e.clientY);
         if (!r) return;
-        if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
-          var mr = GAME.prologue.mapClick(r.ci);
-          if (mr && mr.msg && !mr.here && !mr.arrived) ui.toast(mr.msg);
-          return;
-        }
+        /* ⛔ v157.85：前传「点击 = 君主走路」分支已删（前传退役）。 */
         /* ============================================================
          * v156.39：**2D 兜底路径的点击要开面板**。
          * ------------------------------------------------------------

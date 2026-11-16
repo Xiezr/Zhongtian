@@ -12663,7 +12663,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'duel3d', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
@@ -32020,7 +32020,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- ② 前哨放手（行为·真调）---');
     check('§195② 真调放手：记录删除 / 地形恢复 / 名额释放 / 护持终止 / fortsTaken 保留 / 重复被拒', (function () {
       var bk = G.state;
-      var st = G.newGame({ name: 'v195ab', cityName: '灰岗' });
+      /* v157.85：补固定种子 —— 这条要在地图上找一个"非城非水的陆地格"，
+         原来不传 mapSeed = 每次随机地形，属于对随机敏感的 flaky。 */
+      var st = G.newGame({ name: 'v195ab', cityName: '灰岗', mapSeed: 20260926 });
       G.state = st;
       try {
         if (!st.map.grid) G.map.generate();
@@ -36708,7 +36710,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
          —— 南北极显式 = +Y；方向键按切平面方位角取邻格；旧的"按方位**名**匹配 + 回落 nbs[0]"已删。 */
       var sp247 = fs243.readFileSync(p243.join(__dirname, 'js', 'sphere.js'), 'utf8');
-      var pl247 = fs243.readFileSync(p243.join(__dirname, 'js', 'prologue.js'), 'utf8');
       c243('§243⑪ 星球南北极 + 方向键方位（+Y 为北 · 切平面方位角 · 无"乱走"回落）',
         /SP\.NORTH = \[0, 1, 0\]/.test(sp247)
         && /SP\.tangentOf = function/.test(sp247)
@@ -36716,9 +36717,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /SP\.dirNameOfBearing = function/.test(sp247)
         && /SP\.KEY_BEARING = \{/.test(sp247)
         && /arrowup: 0/.test(sp247) && /arrowleft: 270/.test(sp247)
-        && /spK\.bearingOf\(from, n\.ci\)/.test(pl247)
-        && !/best = best \|\| nbs\[0\]/.test(pl247)     /* 旧的"乱走"回落 */
-        && !/var dirOfKey = \{/.test(pl247));          /* 旧的按名字匹配 */
+        /* ⛔ v157.85：原「前传方向键走位（spK.bearingOf / 无 nbs[0] 回落）」两条判据
+           随 prologue.js 删除 —— 前传的逐格走路已退役，SP.KEY_BEARING 本身仍在上方守。 */
+        );
       c243('§243② 底栏缩放条 #bb-zoom 在册 + 仅地图视图 + 走 setZoom',
         /id="bb-zoom"/.test(u243) && /ui\.view === 'map'/.test(u243) && /map3d\.setZoom/.test(u243));
       c243('§243③ 缩放条为 0~100 连续拖动（type=range）',
@@ -42697,237 +42698,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
 
-  /* ============================================================
-   * §326 · v105：前传 —— 先没有城，打怪升到 Lv20 才立城
-   * ------------------------------------------------------------
-   * 老板原话：「一开始将领是没有城的，君主是没有城的……升到 20 级，
-   *   然后再给予一个建城的一个机会。」这里钉四件事：
-   *   ① 前传状态存在且**只有显式传 prologue:true 才有**（默认不能被卷进去）；
-   *   ② 前传期产出 0 / 不能建 / 不能招（三个闸门真的合上）；
-   *   ③ 荒野行动给经验（走 gainExp 既有通道）；
-   *   ④ 不到 Lv20 立不了城；到了就立得成，且闸门同时松开。
-   * ============================================================ */
-  console.log('\n===== 326. v105 前传：没有城 → 荒野升到 Lv20 → 立城 =====');
-  (function () {
-    var G2 = G;
-    if (!G2.prologue) return;
+  /* ⛔ v157.85（老板「去掉……前传的任务机制」→ **整段前传退役**）
+     ------------------------------------------------------------
+     §326 整组删除。它测的是前传这台机器的零件：
+       ① newGame 不传 prologue → 不进前传 ② 传了 → 君主 Lv1 开局
+       ③ 前传期没有城 ④ 没城不能建/不能招 ⑤ 荒野行动 → gainExp 接线
+       ⑥ 不到 Lv20 立城被拒 ⑦ Lv20 立城 → 产出恢复 ⑧ 前传档进存档
+       ⑨ 没城又不算前传 → 判坏档 ⑩⑪ 斗将确定性 ⑫ 旧档人不丢
+     前传退役后：newGame 恒有城，`GAME.prologue` 命名空间已不存在 —— 无被测对象。
+     ⚠️ 保留面：`saveShapeChk` 仍保留「无城」宽容分支，只服务"旧前传档在补城之前过闸"，
+        由 §586u 守。
 
-    /* ① 默认不进前传（324 处测试直接调 newGame，默认开就是集体假红） */
-    var stD = G2.newGame({ name: '前传默认', cityName: '灰岗' });
-    check('§326① newGame 不传 prologue → 不进前传（老路不变）', (function () {
-      return stD && G2.prologue.on() === false;
-    })(), (function () { return 'prologue.on=' + G2.prologue.on(); })());
-
-    /* 后面都用一个真前传档 */
-    var stP = G2.newGame({ name: '前传档', cityName: '灰岗', prologue: true });
-    check('§326② 显式 prologue:true → 进前传，君主从 Lv1 开始', (function () {
-      var lord = G2.prologue.lord();
-      return G2.prologue.on() === true && !!lord && (lord.level | 0) >= 1;
-    })(), (function () {
-      var lord = G2.prologue.lord();
-      return 'on=' + G2.prologue.on() + ' · 君主 Lv' + (lord ? lord.level : '?')
-        + ' · 要 Lv' + G2.prologue.needLv();
-    })());
-
-    /* ③ 三个闸门：产出 0 / 不能建 / 不能招 */
-    /* v131（老板「应当根治」）：从「有城但不产」改成「**真的没有城**」。
-       旧判据测的是"产出为 0"，可只要 city 还在，玩家点开城市页就能看到
-       20 栋建筑和驻军 —— 那正是前传"还没有城"这句谎话的根源。
-       新判据必须同时管两件事：① 城数为 0；② 随身物资**不是空的**
-       （只测 ① 的话，资源系统整个坏掉也能通过 —— 平凡解）。 */
-    check('§326③ 前传期真的没有城（v131：不是"有城不产"，是根本没有）', (function () {
-      var n = (G2.state.cities || []).length;
-      var r = G2.res() || {};
-      return n === 0 && G2.currentCity() === null
-        && (r.pop || 0) >= 1 && (r.grain || 0) > 0;
-    })(), (function () {
-      var r = G2.res() || {};
-      return 'cities=' + (G2.state.cities || []).length + ' · 随身 人 ' + Math.round(r.pop || 0)
-        + ' · 粮 ' + Math.round(r.grain || 0);
-    })());
-
-    check('§326④ 没有城 → 建不了、招不了（出口自己拒绝，不是面板置灰）', (function () {
-      var bi = G2.buildAt('p1', 0, 'nongtian');
-      var tr = G2.train('buxingji', 10, 'p1');
-      return bi.ok === false && tr.ok === false
-        && /城|不存在|没有/.test(bi.msg || '') && /城|不存在|没有/.test(tr.msg || '');
-    })(), (function () {
-      var tr = G2.train('buxingji', 10, 'p1');
-      return (tr.msg || '（无提示）').slice(0, 34);
-    })());
-
-    /* ④ 荒野行动给经验（stub 内核，只测前传这层接线） */
-    check('§326⑤ 荒野行动 → 经验进 gainExp（内核三段走 stub，只验接线）', (function () {
-      var lord = G2.prologue.lord();
-      if (!lord) return false;
-      /* v105：P.act 走的是 check → spend → roll 三段（要传前传倍率），
-         所以 stub 也要三段一起换；只 stub jianghuDo 已经拦不住了。 */
-      var bC = G2.jianghuCheck, bS = G2.jianghuSpend, bR = G2.jianghuRoll;
-      G2.jianghuCheck = function () {
-        return { ok: true, gen: lord, day: 0, lv: 0, ci: 0, actId: 'tao',
-          act: { id: 'tao', kind: 'fight', name: '清剿', energy: 0, stam: 0 } };
-      };
-      G2.jianghuSpend = function () { return { ok: true }; };
-      G2.jianghuRoll = function () {
-        return { ok: true, name: '清剿 · 旗开得胜', text: '辐能核心 +40', bad: false, grade: 'win' };
-      };
-      var e0 = lord.exp || 0, lv0 = lord.level;
-      var r = G2.prologue.act(0, 'tao');
-      G2.jianghuCheck = bC; G2.jianghuSpend = bS; G2.jianghuRoll = bR;
-      return r.ok === true && r.gain > 0 && ((lord.exp || 0) > e0 || (lord.level | 0) > lv0);
-    })(), (function () {
-      var lord = G2.prologue.lord();
-      return lord ? ('Lv' + lord.level + ' · exp ' + (lord.exp || 0)) : 'no lord';
-    })());
-
-    /* ⑤ 不到 Lv20 立不了城 */
-    check('§326⑥ 不到 Lv20 → 立城被拒（门槛是真的）', (function () {
-      var lord = G2.prologue.lord();
-      if (!lord) return false;
-      lord.level = 1;
-      var r = G2.prologue.build();
-      return r.ok === false && G2.prologue.on() === true;
-    })(), (function () {
-      var lord = G2.prologue.lord();
-      return lord ? ('Lv' + lord.level + ' / ' + G2.prologue.needLv()) : '?';
-    })());
-
-    /* ⑥ 到了 Lv20 → 立得成，且三个闸门同时松开 */
-    /* v131：立城从"关个开关"改成**真的落下一座城**（cities 0 → 1）。
-       这条断言是根治的守门人：改前这里 cities 恒为 1，玩家点「立城」什么也没发生。 */
-    check('§326⑦ Lv20 → 立城：城真的出现（0→1），前传结束且产出恢复', (function () {
-      var lord = G2.prologue.lord();
-      if (!lord) return false;
-      var before = (G2.state.cities || []).length;
-      lord.level = G2.prologue.needLv();
-      /* v135：立城只能在平地（老板：「玩家自建城市应当只在平地」）。
-         出生点是"有事的格子"，多半不是平原 —— **先走到平地**再立，
-         这也更接近玩家真实路径（而不是给断言开后门）。 */
-      if (!G2.prologue.buildableAt()) {
-        var nb = G2.prologue.nearestBuildable(40);
-        if (nb) G2.state.prologue.pos = nb.ci;
-      }
-      var r = G2.prologue.build();
-      var after = (G2.state.cities || []).length;
-      var c = G2.currentCity();
-      var p = c ? G2.cityProdPerSec(c) : {};
-      var anyProd = ['grain', 'wood', 'stone', 'iron', 'gold'].some(function (k) { return (p[k] || 0) > 0; });
-      return before === 0 && r.ok === true && after === 1
-        && G2.prologue.on() === false && !!c && anyProd;
-    })(), (function () {
-      var c = G2.currentCity();
-      var p = c ? G2.cityProdPerSec(c) : {};
-      return 'cities=' + (G2.state.cities || []).length + ' · on=' + G2.prologue.on()
-        + ' · 粮 ' + Math.round(p.grain || 0);
-    })());
-
-    /* ============================================================
-     * §326⑧ v132：**前传档必须能进存档**（v131 留下的尾巴，实测抓到）
-     * ------------------------------------------------------------
-     * 病根：`saveShapeChk` 原来写 `!st.cities.length` 就判坏档，而前传局
-     * 真的没有城 → 判假 → `adoptState` 抛 → `loadGame` catch 吞掉返回 null。
-     * 玩家侧表现：**前传玩一段后关掉页面，再打开进度全丢、退回创角界面**。
-     * 这条断言测"序列化 → 形状检查 → 关键字段还在"这一整环。
-     * 三条都要成立才算过：形状 OK / pos 保住 / 城数仍是 0。
-     * ============================================================ */
-    check('§326⑧ 前传档能进存档：形状检查通过且往返保住位置（v132 修）', (function () {
-      var st = G2.newGame({ name: '存档档', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var nbs = G2.prologue.neighbors();
-      if (nbs.length) G2.prologue.moveTo(nbs[0].ci);
-      var pos = st.prologue.pos, steps = st.prologue.steps;
-      var json = G2.savePayload ? G2.savePayload() : null;
-      if (!json) return false;
-      var back = JSON.parse(json);
-      var ck = G2.saveShapeChk(back);
-      return ck.ok === true && back.cities.length === 0
-        && back.prologue && back.prologue.on === true
-        && back.prologue.pos === pos && back.prologue.steps === steps;
-    })(), (function () {
-      var st = G2.state;
-      var ck = G2.saveShapeChk(st);
-      return 'shape=' + ck.ok + ' · pos=' + (st.prologue && st.prologue.pos) + ' · cities=' + st.cities.length;
-    })());
-
-    /* ============================================================
-     * §326⑩ v132：**斗将的对手必须每合都是同一个人**
-     * ------------------------------------------------------------
-     * 实测踩到的坑：`duelFoe` 每次调 `makeGeneral` 都会拿到一个新的自增 id，
-     * 而对手出招的种子是 `'duelm|' + id + '|' + round + '|' + seed` ——
-     * 于是"重算前 N 合"时其实换了一个对手，招式序列全变，**比分当场倒退**
-     * （第 2 合 2:0 → 第 3 合 0:1）。这条断言把 id 钉死。
-     * ============================================================ */
-    check('§326⑩ 斗将对手是确定性的：同一格两次取到同一个 id（防"每合换人"）', (function () {
-      var st = G2.newGame({ name: '斗将档', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var ci = G2.prologue.pos();
-      var a = G2.prologue.duelFoe(ci), b = G2.prologue.duelFoe(ci);
-      return !!a && !!b && a.id === b.id && a.level === b.level;
-    })(), (function () {
-      var ci = G2.prologue.pos();
-      var a = G2.prologue.duelFoe(ci);
-      return 'id=' + (a && a.id) + ' · Lv' + (a && a.level);
-    })());
-
-    /* 同 seed + 同出招序列 → 同结果（斗将可复算的前提） */
-    check('§326⑪ 同 seed 同出招必得同结果（斗将可复算）', (function () {
-      var lord = G2.prologue.lord(), ci = G2.prologue.pos();
-      var foe = G2.prologue.duelFoe(ci);
-      if (!lord || !foe) return false;
-      var seq = ['stab', 'guard', 'feint', 'charge', 'stab'];
-      var r1 = G2.battle.duelPlay(lord, foe, seq, 12345);
-      var r2 = G2.battle.duelPlay(G2.prologue.lord(), G2.prologue.duelFoe(ci), seq, 12345);
-      return !!r1 && !!r2 && r1.wa === r2.wa && r1.wb === r2.wb;
-    })(), (function () {
-      var lord = G2.prologue.lord(), foe = G2.prologue.duelFoe(G2.prologue.pos());
-      var r = lord && foe ? G2.battle.duelPlay(lord, foe, ['stab', 'guard'], 7) : null;
-      return r ? (r.wa + ':' + r.wb) : '?';
-    })());
-
-    /* ============================================================
-     * §326⑫ v134：**旧版前传档读进来，人不能凭空少掉**
-     * ------------------------------------------------------------
-     * 实测：把档削成 v131 首版形状（只有 on/at/day/acts/builtAt/pos）再读，
-     * 不报错、不崩，但 `GAME.res()` 落到空背包 → **HUD 显示"你们 0 个人"**。
-     * 这条断言盯的就是"不崩但悄悄少东西"。
-     * 三条同时成立才算过：res 有人 · 200 人（开局量）· steps 补成数字。
-     * ============================================================ */
-    /* ⚠️ 这条**不能走 adoptState**：它内部 `st.map.cities = null` + `GAME.map.generate()`
-       会重建整张地图，把前面的用例铺好的环境抹掉 —— 我第一版就是这么写的，
-       当场把后面 6 条战报沙盘用例打成 `no target`（地图上的目标没了）。
-       改成测**同一个判据的两半**，零副作用：
-         ① `migratePrologue` 把缺的字段补齐（纯函数，只改传入对象）；
-         ② 补完之后**走真正的资源出口** `GAME.res()` 能读到人
-            （只替换当前档的 prologue 段，不换 state、不重建地图）。 */
-    check('§326⑫ 旧版前传档读入后人不丢（缺 res → 补开局量，不是 0 人）', (function () {
-      G2.newGame({ name: '旧档', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var snap = JSON.parse(JSON.stringify(G2.state));
-      /* 削成 v131 首版形状：只留 P.begin 当年写的那几个字段 */
-      snap.prologue = { on: true, at: 0, day: -1, acts: 0, builtAt: null, pos: snap.prologue.pos };
-      var n = G2.migratePrologue(snap) | 0;
-      /* 补完之后接到当前（无城）档上，走同一个出口读 */
-      G2.state.prologue = snap.prologue;
-      var r = G2.res() || {};
-      return n >= 1 && (r.pop || 0) >= 100 && (r.grain || 0) > 0
-        && typeof snap.prologue.steps === 'number' && !isNaN(snap.prologue.steps)
-        && snap.prologue.pos === snap.prologue.pos;
-    })(), (function () {
-      G2.newGame({ name: '旧档2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var snap = JSON.parse(JSON.stringify(G2.state));
-      snap.prologue = { on: true, pos: snap.prologue.pos, acts: 0, day: -1 };
-      var n = G2.migratePrologue(snap) | 0;
-      return '补了 ' + n + ' 处 · 形状 ' + G2.saveShapeChk(snap).ok
-        + ' · pop=' + Math.round((snap.prologue.res || {}).pop || 0);
-    })());
-
-    /* 反向守门：**坏档仍然要拦**（放宽不能变成放水） */
-    check('§326⑨ 没有城又不是前传 → 仍然判坏档（放宽没变成放水）', (function () {
-      var bad = { cities: [], generals: [{ id: 'lord', name: '某' }], map: {} };
-      return G2.saveShapeChk(bad).ok === false;
-    })(), (function () { return G2.saveShapeChk({ cities: [], generals: [], map: {} }).msg; })());
-
-    /* 收尾：回到普通档，别把前传状态留给后面的用例 */
-    G2.newGame({ name: '收尾', cityName: '灰岗' });
-  })();
-
+  */
 
   /* ============================================================
    * §327 · v107（D3 补完）：牌与将的风格冲突 → 打不出去
@@ -43228,6 +43010,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var V = G.village;
     if (!V || !V.tick) return;
+    /* v157.85：先摆一个**确定局面** —— 原来的 `G.state` 是上一条用例留下的，
+       村社分布随随机地形漂移，这条断言因此时绿时红（v139 注释里已踩过同类坑）。 */
+    G.state = G.newGame({ name: '村社档', cityName: '灰岗', mapSeed: 20260926 });
+    if (!G.state.map.grid) G.map.generate();
     var st = G.state;
     var city = G.currentCity();
     if (!city) return;
@@ -43369,74 +43155,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
 
-  /* ============================================================
-   * §333 · v114：前传第一屏 —— 只有荒野，没有仪表盘
-   * ------------------------------------------------------------
-   * 老板 2026-10-23 评估：前传第一屏有 50 个可点元素（12 tab + 三级下拉 +
-   * 7 种地形筛选 + 坐标输入 + 9 个地图按钮），而该做的事一次都没出现。
-   * 这里钉的是"屏幕上不再有导航"这件事。
-   * ============================================================ */
-  console.log('\n===== 333. v114 前传第一屏：50 个控件 → 三个动作 =====');
-  (function () {
-    var P = G.prologue;
-    if (!P || !P.screenHTML) return;
+  /* ⛔ v157.85：§333 整组删除（前传第一屏"HUD 零按钮 / 走路动手都在地图上"）。
+     前传退役后不存在这一屏；地图与场景由 §350 / §353 继续守。
 
-    G.newGame({ name: '前传屏', cityName: '灰岗', prologue: true });
-    var html = P.screenHTML();
-
-    check('§333① 第一屏写的是"你们还没有城"，不是仪表盘', (function () {
-      return html.indexOf('还没有城') >= 0 && html.indexOf('第 ') >= 0;
-    })(), (function () {
-      var txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      return txt.slice(0, 46);
-    })());
-
-    check('§333② 屏幕上没有导航：行省/地形/坐标/回主城 一个都不许出现', (function () {
-      var bad = ['选择行省', '地形高亮', '回主城', '球系坐标', '星球生成器', '隐藏名称'];
-      return bad.every(function (w) { return html.indexOf(w) < 0; });
-    })(), (function () { return '导航词零命中'; })());
-
-    /* v151（老板「地图就是游戏本体」）：**HUD 不再有任何操作按钮** ——
-       走路是"点地图"，动手是"点脚下那一格"，打斗是面板里的回合按钮。
-       HUD 只留读数 + 指路 + 立城。这里同时钉住"点地图真能走"这条手势。 */
-    check('§333③ HUD 零操作按钮（走路/动手都在地图上）+ 点地图真能走', (function () {
-      var nBtn = (html.match(/data-action="prologue-(move|act|scene|duel)"/g) || []).length;
-      var says = html.indexOf('点地图') >= 0 && html.indexOf('站在') >= 0 && html.indexOf('Lv') >= 0;
-      var P2 = G.prologue, pos0 = P2.pos();
-      var lord0 = P2.lord();
-      var en0 = G.energyNowOf ? G.energyNowOf(lord0) : 0;
-      /* 起点周围先点亮（真实游戏里 syncScreen 开局就点 4 环；桩 DOM 下不会跑） */
-      try { if (G.fog && G.fog.revealAround) G.fog.revealAround(pos0, 8, G.fog.ALL); } catch (e) {}
-      var ring = (G.sphere && G.sphere.hopsWithin) ? G.sphere.hopsWithin(pos0, 4) : [];
-      var target = ring.length ? ring[ring.length - 1] : pos0;
-      var r = P2.walkTo(target);
-      var walked = (P2.pos() !== pos0) && r && r.steps > 0;
-      var paid = (G.energyNowOf ? G.energyNowOf(lord0) : 0) < en0;
-      /* 恢复站位与精力（后面的用例按"出生点"口径排布） */
-      G.state.prologue.pos = pos0;
-      if (G.setEnergyNow) G.setEnergyNow(lord0, en0);
-      return nBtn === 0 && says && walked && paid;
-    })(), (function () {
-      var nBtn = (html.match(/data-action="prologue-(move|act|scene|duel)"/g) || []).length;
-      return 'HUD 操作按钮 ' + nBtn + ' 个 · 点地图文案=' + (html.indexOf('点地图') >= 0);
-    })());
-
-    check('§333④ 立城之后这一屏就没了（不是永久盖住游戏）', (function () {
-      var lord = P.lord();
-      if (lord) lord.level = P.needLv();
-      /* v135：立城限平地 —— 出生点是有事的格子，先走到平地（与 §326⑦ 同口径）。
-         ⚠️ 这个区块里没有 `G2`（那是 §326 那段的别名），state 走 GAME。 */
-      if (!P.buildableAt()) {
-        var nb = P.nearestBuildable(40);
-        if (nb) GAME.state.prologue.pos = nb.ci;
-      }
-      var r = P.build();
-      var gone = P.on() === false;
-      return r.ok === true && gone;
-    })(), (function () { return 'on=' + P.on(); })());
-
-    G.newGame({ name: '收尾', cityName: '灰岗' });
-  })();
+  */
 
 
   /* ============================================================
@@ -43531,81 +43253,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var SC = G.scene3d;
     if (!SC || !SC.isDone) { check('§351① 场景节点状态持久化', false, '没有 isDone/markDone'); return; }
 
-    check('§351① 节点状态记在存档里，且隔天会复位', (function () {
-      G.newGame({ name: '场景', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var st = G.state;
-      if (!st.world) return false;
-      var d0 = SC.dayNow();
-      SC.markDone('ruin', 0);
-      var sameDay = SC.isDone('ruin', 0) === true;
-      var otherNode = SC.isDone('ruin', 1) === false;      /* 不能一个亮全亮 */
-      var otherScene = SC.isDone('forest', 0) === false;   /* 也不能串场 */
-      /* 推进一天：当天的"收拾过"应该复位（荒野之事每天重长） */
-      st.world.elapsed = (d0 + 1) * 86400 + 60;
-      var nextDay = SC.isDone('ruin', 0) === false;
-      return sameDay && otherNode && otherScene && nextDay;
-    })(), (function () {
-      G.newGame({ name: '场景2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var d0 = SC.dayNow();
-      SC.markDone('ruin', 0);
-      var a = SC.isDone('ruin', 0);
-      G.state.world.elapsed = (d0 + 1) * 86400 + 60;
-      var b = SC.isDone('ruin', 0);
-      return '当天 ' + a + ' · 隔天 ' + b + ' · 键数 ' + Object.keys(G.state.sceneDone || {}).length;
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
     G.newGame({ name: '收尾', cityName: '灰岗' });
 
-    check('§351② 遭遇是确定的（同场景同格同天 → 同一头）', (function () {
-      G.newGame({ name: '遭遇', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var a = SC.encounterFor('ruin', 777), b = SC.encounterFor('ruin', 777);
-      var same = (a ? a.id : null) === (b ? b.id : null);
-      /* 不能永远撞上：换一批格子，应该有"没事"的情形 */
-      var hits = 0, tries = 0;
-      for (var ci = 100; ci < 140; ci++) { tries++; if (SC.encounterFor('ruin', ci)) hits++; }
-      var varied = hits > 0 && hits < tries;
-      G.newGame({ name: '收尾', cityName: '灰岗' });
-      return same && varied;
-    })(), (function () {
-      G.newGame({ name: '遭遇2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var hits = 0, total = 40;
-      for (var ci = 100; ci < 100 + total; ci++) if (SC.encounterFor('ruin', ci)) hits++;
-      var one = SC.encounterFor('ruin', 777);
-      G.newGame({ name: '收尾2', cityName: '灰岗' });
-      return '40 格里 ' + hits + ' 格有遭遇 · ci777=' + (one ? one.name : '无');
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
-    /* 前传结束后不该再在野地里"撞见生化兽"（那时已经是带兵的正式局） */
-    check('§351③ 立城后不再抽野地遭遇', (function () {
-      G.newGame({ name: '正式', cityName: '灰岗' });        /* 不带 prologue = 正式局 */
-      if (G.prologue && G.prologue.on && G.prologue.on()) return false;
-      return SC.encounterFor('ruin', 777) === null;
-    })(), (function () {
-      return 'prologue.on=' + (G.prologue.on ? G.prologue.on() : '?') + ' · 遭遇=' + (SC.encounterFor('ruin', 777) ? '有' : '无');
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
     G.newGame({ name: '收尾3', cityName: '灰岗' });
 
-    /* 指定物种必须生效（v141 实测的坑：被野地守将吞掉） */
-    check('§351④ duelFoe(指定物种) 真的是那个物种', (function () {
-      G.newGame({ name: '物种', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var LIST = (G.DATA && G.DATA.DUEL_FOES) || [];
-      if (!LIST.length) return false;
-      var ok = true;
-      LIST.forEach(function (sp) {
-        var f = G.prologue.duelFoe(G.prologue.pos(), sp.id);
-        if (!f || !f.species || f.species.id !== sp.id) ok = false;
-      });
-      G.newGame({ name: '收尾4', cityName: '灰岗' });
-      return ok;
-    })(), (function () {
-      G.newGame({ name: '物种2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      var LIST = (G.DATA && G.DATA.DUEL_FOES) || [];
-      var got = LIST.map(function (sp) {
-        var f = G.prologue.duelFoe(G.prologue.pos(), sp.id);
-        return (f && f.species && f.species.id) === sp.id ? '✓' : '✗' + sp.id;
-      }).join(' ');
-      G.newGame({ name: '收尾5', cityName: '灰岗' });
-      return got;
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
   })();
 
   /* ============================================================
@@ -43783,199 +43439,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
 
-  /* 前传 HUD 不许再有操作按钮（v151：走路/动手/叫阵都在地图手势上） */
-  (function () {
-    var P = G.prologue;
-    /* ⚠️ 出口名是 screenHTML（第一版写成 hudHTML，断言直接红） */
-    if (!P || !P.screenHTML) { check('§350④ 前传手势全在地图上', false, '没有 screenHTML'); return; }
-    G.newGame({ name: '场景入口', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-    var html = P.screenHTML() || '';
-    check('§350④ 前传手势全在地图上（点格走路 / 点脚下动手 / 打斗转回合）', (function () {
-      var nBtn = (html.match(/data-action="prologue-(move|act|scene|duel)"/g) || []).length;
-      var api = !!P.mapClick && !!P.walkTo && !!P.duelAct && !!P.duelActStep;
-      /* 手势接线（源码级）：3D 地图（ui.renderMapCanvas）与 2D 兜底（main.js）
-         两条渲染路径都必须走 P.mapClick —— 桩 DOM 里点不了，只能钉接线。 */
-      var mainSrc = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
-      var wired = /prologue\.mapClick/.test(uiSrcProbe) && /GAME\.prologue\.mapClick/.test(mainSrc);
-      return nBtn === 0 && api && wired;
-    })(), (function () {
-      var nBtn = (html.match(/data-action="prologue-(move|act|scene|duel)"/g) || []).length;
-      return 'HUD 操作按钮 ' + nBtn + ' 个 · mapClick=' + (!!P.mapClick)
-        + ' · duelAct=' + (!!P.duelAct);
-    })());
-    G.newGame({ name: '收尾', cityName: '灰岗' });
-  })();
+  /* ⛔ v157.85：§350④（前传 HUD 手势）与 §351（打斗回合制的 `P.duelAct` 入口）
+     整段删除 —— 前传整段退役，`P.screenHTML / P.duelAct / P.combatKind` 均已不存在。
+     ⚠️ 保留面：`GAME.jianghuRoll({force})` 那条唯一账本仍在（§353 场景组与 §331 村落组都走它），
+        退役的只是"前传的回合外壳"。
 
-
-  /* ============================================================
-   * §351 · v151：**打斗给回合**（老板：「点那个敌人 → 打几个回合」）
-   * ------------------------------------------------------------
-   * 改前：点一下 = 掷一次骰 = 一行字。
-   * 改后：fight/trial 先开竞技场（每合出一招），打完把胜负**回灌**唯一账本
-   *       `jianghuRoll({force})` —— 回合长在前端，账仍在唯一出口。
-   * ============================================================ */
-  console.log('\n===== 351. v151 打斗给回合（胜负回灌唯一账本） =====');
-  (function () {
-    var P = G.prologue;
-    if (!P || !P.duelAct) { check('§351① 回合制入口在位', false, 'P.duelAct 缺失'); return; }
-    G.newGame({ name: '回合', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-    var lord = P.lord();
-    var pos = P.pos();
-    /* ① 分档：有对手的两类走回合，采集/静修/拜访仍一次性 */
-    check('§351① 只有 fight/trial 走回合（采集/静修/拜访不套壳）',
-      P.combatKind('tao') === true && P.combatKind('shi') === true
-      && P.combatKind('cai') === false && P.combatKind('xiu') === false);
-
-    /* ② force 回灌：赢了就是赢、输了就是输（不再看战力骰） */
-    var sp = (G.sphere && G.sphere.cells) ? G.sphere : null;
-    var ring = sp && sp.hopsWithin ? sp.hopsWithin(pos, 10) : [];
-    var ci = -1;
-    for (var i = 0; i < ring.length && ci < 0; i++) {
-      if ((G.jianghuActsAt(ring[i]) || []).some(function (a) { return a.id === 'tao'; })) ci = ring[i];
-    }
-    if (ci < 0) { check('§351② force 回灌（赢/输）', false, '10 环内没有清剿格'); G.newGame({ name: '收尾', cityName: '灰岗' }); return; }
-    var mk = function () {
-      return { ok: true, act: G.DATA.LING_ACT.tao, gen: lord, ci: ci, actId: 'tao',
-        day: 1, lv: G.map.wildLevelNow(ci) };
-    };
-    var rw = G.jianghuRoll(mk(), { force: 'win' });
-    var rl = G.jianghuRoll(mk(), { force: 'lose' });
-    check('§351② force 回灌：赢就是赢、输就是输（不看战力骰）',
-      rw && rw.ok && /旗开得胜/.test(rw.name) && rw.bad === false
-      && rl && rl.ok && /力战不敌/.test(rl.name) && rl.bad === true,
-      'win=' + (rw && rw.name) + ' · lose=' + (rl && rl.name));
-
-    /* ③ 开打先扣费、逐合出招、打完落账（steps 真走一遍） */
-    var en0 = G.energyNowOf ? G.energyNowOf(lord) : 0;
-    var st0r = G.staNow ? G.staNow(lord) : 0;
-    var lv0 = lord.level;
-    var opened = P.duelAct(ci, 'tao');
-    var d = P.duelOf();
-    var paid = opened.ok && d && d.mode === 'act'
-      && (G.energyNowOf ? G.energyNowOf(lord) : 0) < en0
-      && (G.staNow ? G.staNow(lord) : 0) < st0r;    var rounds = 0, done = false, actRes = null;
-    while (d && !d.done && rounds < 14) {
-      var stp = P.duelActStep('stab');
-      rounds++;
-      if (!stp.ok) break;
-      if (stp.done) { done = true; actRes = stp.act || null; }
-    }
-    check('§351③ 开打先扣费 · 逐合出招 · 打完回灌账本（经验/物资/负伤同一本账）',
-      paid && rounds >= 1 && done && actRes && actRes.ok === true,
-      '扣费=' + paid + ' · 合数=' + rounds + ' · done=' + done
-      + ' · act=' + (actRes && actRes.name) + ' · 经验 ' + lv0 + '→' + lord.level);
-
-    /* ④ HUD 上没有操作按钮（走路/动手都在地图上） */
-    if (P.comboClear) P.comboClear();
-    var html = P.screenHTML() || '';
-    check('§351④ HUD 仍是零操作按钮（打斗入口在动手面板里）',
-      (html.match(/data-action="prologue-(move|act|scene|duel|fight)"/g) || []).length === 0);
-    G.newGame({ name: '收尾', cityName: '灰岗' });
-  })();
-
-
-  /* ============================================================
-   * §352 · v151：**新手飞行路线**（老板的口径：手势覆盖率，而不是按钮覆盖率）
-   * ------------------------------------------------------------
-   * 一条路走完，全程**不需要打开任何非地图界面**：
-   *   点地图走路 → 走到有动静的格 → 就地打（回合）→ 立城
-   * 任何一步断链（走不动 / 打不了 / 立不了），这里就红。
-   * ============================================================ */
-  console.log('\n===== 352. v151 新手飞行路线（地图手势全覆盖） =====');
-  (function () {
-    var P = G.prologue;
-    if (!P || !P.mapClick) { check('§352① 路线入口在位', false, 'P.mapClick 缺失'); return; }
-    G.newGame({ name: '飞行路线', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-    try { if (G.fog && G.fog.revealAround) G.fog.revealAround(P.pos(), 10, G.fog.ALL); } catch (e) {}
-    /* 按真实玩家的手势走：**点地图**（不是直接调 walkTo）—— 经 ui.renderMapCanvas 的
-       点击分支。jsdom/桩 DOM 没有画布布局，所以直接走它的分派函数 P.mapClick（同一条）。 */
-    var tapMap = function (ci) { return P.mapClick(ci); };
-    var walked = 0, spent = 0, attempts = 0;
-    var startPos = P.pos();
-    var en0 = G.energyNowOf ? G.energyNowOf(P.lord()) : 0;
-    while (walked < 3 && attempts < 12) {
-      attempts++;
-      var sp = G.sphereOf ? G.sphereOf() : G.sphere;
-      var ring = sp && sp.hopsWithin ? sp.hopsWithin(P.pos(), 5) : [];
-      var target = -1;
-      for (var i = 0; i < ring.length && target < 0; i++) {
-        if (ring[i] === P.pos()) continue;
-        if ((G.jianghuActsAt(ring[i]) || []).length) target = ring[i];
-      }
-      if (target < 0) break;
-      var r = tapMap(target);
-      if (!r || !r.ok || P.pos() !== target) break;
-      walked++; spent += (r.spent | 0);
-    }
-    check('§352① 点地图 → 走到目标格（步数/精力真扣 · 一条最短路径走完）',
-      walked >= 1 && P.pos() !== startPos && spent > 0
-      && (G.energyNowOf ? G.energyNowOf(P.lord()) : 0) < en0,
-      '走成 ' + walked + ' 处 · 精力 −' + spent + ' · pos ' + startPos + '→' + P.pos());
-
-    /* ② 点脚下那一格 = 就地动手面板（前传专属，不再是"未占领野地面板"） */
-    var here = P.pos();
-    var hereHTML = '';
-    try {
-      G.ui.openPrologueLand(here);
-      hereHTML = (global.document.querySelector('#modal-root') || {}).innerHTML || '';
-    } catch (e) { hereHTML = ''; }
-    var hasFight = /data-action="prologue-fight"/.test(hereHTML);
-    var hasAct = /data-action="prologue-act"/.test(hereHTML) || /prologue-scene/.test(hereHTML);
-    check('§352② 点脚下那一格 → 就地动手面板（打/采/走进去，不再是野地面板）',
-      /就在脚下/.test(hereHTML) && (hasFight || hasAct),
-      'fight=' + hasFight + ' · act/场景=' + hasAct);
-    try { G.ui.closeAllModals(); } catch (e) {}
-
-    /* ③ 打斗给回合：**先点地图走到有仗的格子**，再就地打（全程不离开地图） */
-    var combatCi = -1;
-    try {
-      var sp3 = G.sphereOf ? G.sphereOf() : G.sphere;
-      var ring3 = sp3 && sp3.hopsWithin ? sp3.hopsWithin(P.pos(), 12) : [];
-      for (var j = 0; j < ring3.length && combatCi < 0; j++) {
-        if ((G.jianghuActsAt(ring3[j]) || []).some(function (a) { return P.combatKind(a.id); })) combatCi = ring3[j];
-      }
-    } catch (e) { combatCi = -1; }
-    if (combatCi >= 0) {
-      if (G.setEnergyNow) G.setEnergyNow(P.lord(), G.energyMaxOf(P.lord()));
-      var mv = tapMap(combatCi);
-      P.comboClear && P.comboClear();
-    }
-    var acts2 = (G.jianghuActsAt(P.pos()) || []).filter(function (a) { return P.combatKind(a.id); });
-    var fightOk = false, fightWhy = '走到 ' + P.pos() + ' 仍无仗（combatCi=' + combatCi + '）';
-    if (acts2.length) {
-      var op = P.duelAct(P.pos(), acts2[0].id);
-      if (op.ok) {
-        var d = P.duelOf(), guard = 0, last = null;
-        while (d && !d.done && guard++ < 14) { last = P.duelActStep('stab'); if (!last.ok) break; }
-        fightOk = !!(d && d.done && d.actRes && d.actRes.ok);
-        fightWhy = '合数 ' + (d ? d.moves.length : 0) + ' · ' + ((d && d.txt) || (last && last.msg) || '');
-      } else fightWhy = op.msg || '开不了';
-    }
-    check('§352③ 点地图走到敌人那格 → 回合制打斗 → 唯一账本落账', fightOk, fightWhy);
-    try { P.duelClear(); } catch (e) {}
-
-    /* ④ 立城：HUD 里唯一的动作是"走到平地立城"（也是地图坐标），到了就落城 */
-    var lord = P.lord();
-    lord.level = P.needLv();
-    if (G.setEnergyNow) G.setEnergyNow(lord, G.energyMaxOf(lord));   /* 歇了一晚 */
-    try { if (G.fog && G.fog.revealAround) G.fog.revealAround(P.pos(), 60, G.fog.ALL); } catch (e) {}
-    var navHTML = P.screenHTML() || '';
-    var hasNav = /data-action="prologue-build-nav"/.test(navHTML);
-    var nb = P.nearestBuildable ? P.nearestBuildable(60) : null;
-    var nav = null;
-    if (nb) {
-      var navEl = { getAttribute: function (k) { return k === 'data-ci' ? String(nb.ci) : (k === 'data-tag' ? 'now' : null); } };
-      G.action('prologue-build-nav', navEl);
-      nav = true;
-    }
-    var citiesN = (G.state.cities || []).length;
-    check('§352④ 立城：HUD 「走到平地立城」→ 走完就地落城（前传关闭）',
-      hasNav && !!nav && P.on() === false && citiesN >= 1,
-      'nav=' + hasNav + ' · on=' + P.on() + ' · cities=' + citiesN
-      + ' · pos=' + (G.state.prologue && G.state.prologue.pos) + ' · nb=' + (nb && nb.dist));
-    G.newGame({ name: '收尾', cityName: '灰岗' });
-  })();
-
+  /* ⛔ v157.85：§352 v151「新手飞行路线（手势覆盖率）」整组删除 ——
+     它走的是前传的"点格走路 / 点脚下动手 / 立城"三件事。
+     正式阶段的场景入口由 §353 继续守。
 
   /* ============================================================
    * §353 · v143：正式阶段也走 3D 场景（v140 的最后一公里）
@@ -44021,22 +43492,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && cap.ctx.availableActs && cap.ctx.availableActs.indexOf('cai') >= 0);
     })(), 'live/gen/exitTo 透传');
 
-    /* ③ 地形回退：正式局无 cellTypeOf → sphere.cells.type → 森林采集进林地场景 */
-    check('§353③ 正式阶段地形回退（无 cellTypeOf → sphere.cells.type → 森林采集进 forest）', (function () {
-      var _open = SC.open, cap = null;
-      SC.open = function (id, ctxIn) { cap = { id: id, ctx: ctxIn }; return { ok: true }; };
-      var _ja = G.jianghuActsAt;
-      G.jianghuActsAt = function () { return [{ id: 'cai', def: {} }]; };
-      var _ct = G.prologue && G.prologue.cellTypeOf;
-      if (G.prologue) G.prologue.cellTypeOf = null;      /* 正式局本来就没有它 */
-      var fci = -1;
-      var cells = (G.sphere && G.sphere.cells) || [];
-      for (var i = 0; i < cells.length; i++) { if (cells[i] && cells[i].type === 'forest') { fci = i; break; } }
-      var r = (fci >= 0) ? SC.play('cai', fci, { host: 'live' }) : null;
-      if (G.prologue) G.prologue.cellTypeOf = _ct;
-      SC.open = _open; G.jianghuActsAt = _ja;
-      return !!(r && r.ok && cap && cap.id === 'forest' && cap.ctx.terrain === 'forest' && r.act === 'cai');
-    })(), 'forest 格 → forest 场景');
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
     /* ④ 入口不退化：ui.doJianghu 必须先走 3D 接线（play 被调 · jianghuDo 不抢先） */
     check('§353④ 正式入口 doJianghu 走 3D（play 被调 · jianghuDo 不被抢先调用）', (function () {
@@ -44082,21 +43538,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && rBad && rBad.ok === true && caps[1] && (caps[1].lv == null || typeof caps[1].lv === 'number'));
     })(), '野地 lv=' + (function () { var c = (G.sphere && G.sphere.cells) || []; for (var i = 0; i < c.length; i++) if (c[i] && c[i].type === 'forest') return String(G.map.wildLevelNow(i)); return '?'; })());
 
-    /* ⑦ 两宿主不串：序章局默认走序章宿主（不锁日 · 双倍率是前传设计），
-       正式局默认走正式宿主 —— 默认推断错一步，序章就会被日锁卡死。 */
-    check('§353⑦ 宿主默认推断（序章局 → 序章宿主；正式局 → 正式宿主，不串）', (function () {
-      var _open = SC.open, caps = [];
-      SC.open = function (id, ctxIn) { caps.push(ctxIn); return { ok: true }; };
-      var _ja = G.jianghuActsAt;
-      G.jianghuActsAt = function () { return [{ id: 'cai', def: {} }]; };
-      G.newGame({ name: '前传', cityName: '灰岗', mapSeed: 20261025, prologue: true });
-      var rPro = SC.play('cai', 4321);            /* 不传 opts —— 老调用方（prologue.js）的口径 */
-      G.newGame({ name: '立城后', cityName: '灰岗', mapSeed: 20261025 });
-      var rLive = SC.play('cai', 4321);           /* 不传 opts —— 正式局应推断为 live */
-      SC.open = _open; G.jianghuActsAt = _ja;
-      return !!(rPro && rPro.ok && caps[0] && caps[0].live === false
-        && rLive && rLive.ok && caps[1] && caps[1].live === true);
-    })(), '序章 live=false · 正式 live=true');
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
     /* ⑧ 时段划分边界：0/5:59→夜 · 6→晨 · 11→昼 · 17→昏 · 20→夜（24h 回绕），
        且 phase() 与 sceneDay 同源（都读 world.elapsed）—— 否则"天怎么没黑"说不清。 */
@@ -44725,7 +44167,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
     var ui = __uiAll();
     var battle = fs.readFileSync(path.join(__dirname, 'js', 'battle.js'), 'utf8');
-    var prologue = fs.readFileSync(path.join(__dirname, 'js', 'prologue.js'), 'utf8');
     var data = fs.readFileSync(path.join(__dirname, 'js', 'data.js'), 'utf8');
 
     check('§340① 场景层函数已定义（levelUpScene / sceneCaption）', (function () {
@@ -44736,9 +44177,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /GAME\.ui && GAME\.ui\.levelUpScene/.test(battle);
     })(), (function () { return 'battle.js checkLevelUp → levelUpScene'; })());
 
-    check('§340③ 移动唯一出口 P.moveTo 挂了沿途字幕 + crossLine 文案池已抽成函数', (function () {
-      return /GAME\.ui && GAME\.ui\.sceneCaption/.test(prologue) && /P\.crossLine\s*=\s*function/.test(prologue);
-    })(), (function () { return 'prologue.js P.moveTo → sceneCaption + P.crossLine'; })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
     check('§340④ 常量进 DATA.SCENE（captionMs/levelUpMs/crossLines/levelLine 齐）', (function () {
       return data.indexOf('DATA.SCENE = {') >= 0
@@ -44767,82 +44206,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   ③ 打输了给一半经验（打不过不等于白跑）；
    *   ④ 连战机会会出现，且不耗精力。
    * ============================================================ */
-  console.log('\n===== 339. v123 前传：四档 + 连战 =====');
-  (function () {
-    var P = G.prologue;
-    if (!P || !P.tiers) return;
-    var D9 = (DATA.PROLOGUE || {});
-    var L = P.tiers();
-
-    check('§339① 四档，门槛递增、经验递增', (function () {
-      if (L.length !== 4) return false;
-      for (var i = 1; i < L.length; i++) {
-        if (L[i].lv <= L[i - 1].lv) return false;
-        if (L[i].expMul <= L[i - 1].expMul) return false;
-        if (L[i].powerMul <= L[i - 1].powerMul) return false;
-      }
-      return true;
-    })(), (function () {
-      return L.map(function (t) { return t.name + '@Lv' + t.lv + '×' + t.expMul; }).join(' ');
-    })());
-
-    check('§339② Lv1→20 不超过 20 场（用**真实** expNeedOf 算）', (function () {
-      var tiers = L;
-      function runs(base) {
-        var lv = 1, exp = 0, n = 0;
-        while (lv < 20 && n < 500) {
-          var mul = 1;
-          tiers.forEach(function (t) { if (lv >= t.lv) mul = t.expMul; });
-          exp += Math.round(base * mul);
-          while (exp >= G.expNeedOf({ level: lv }) && lv < 20) {
-            exp -= G.expNeedOf({ level: lv }); lv++;
-          }
-          n++;
-        }
-        return n;
-      }
-      /* 最省事的打法（试炼）与最费事的打法（采集）都要在 20 场内 */
-      var best = runs(P.expOf('shi', 1));
-      return best <= 20;
-    })(), (function () {
-      var tiers = L;
-      function runs(base) {
-        var lv = 1, exp = 0, n = 0;
-        while (lv < 20 && n < 500) {
-          var mul = 1;
-          tiers.forEach(function (t) { if (lv >= t.lv) mul = t.expMul; });
-          exp += Math.round(base * mul);
-          while (exp >= G.expNeedOf({ level: lv }) && lv < 20) {
-            exp -= G.expNeedOf({ level: lv }); lv++;
-          }
-          n++;
-        }
-        return n;
-      }
-      return '试炼 ' + runs(P.expOf('shi', 1)) + ' 场 · 清剿 ' + runs(P.expOf('tao', 1)) + ' 场';
-    })());
-
-    check('§339③ 打输了也给一半经验（打不过不等于白跑）', (function () {
-      return (D9.loseExpMul != null) && Math.abs(D9.loseExpMul - 0.5) < 1e-6;
-    })(), (function () { return 'loseExpMul=' + D9.loseExpMul; })());
-
-    check('§339④ 连战：有概率、经验打折、不耗精力', (function () {
-      return (D9.comboChance > 0 && D9.comboChance < 1)
-        && (D9.comboExpMul > 0 && D9.comboExpMul < 1)
-        && (G.prologue.comboOf !== undefined);
-    })(), (function () {
-      return '触发 ' + Math.round(D9.comboChance * 100) + '%，经验 ×' + D9.comboExpMul;
-    })());
-
-    check('§339⑤ 高等级去更深的地方，经验更高但不线性', (function () {
-      /* 经验涨得比敌人慢 → 越深越危险，不一定越划算（这本身就是取舍） */
-      var a = L[0], z = L[L.length - 1];
-      return (z.expMul / a.expMul) < (z.powerMul / a.powerMul);
-    })(), (function () {
-      var a = L[0], z = L[L.length - 1];
-      return '经验 ×' + (z.expMul / a.expMul) + ' vs 敌人 ×' + (z.powerMul / a.powerMul);
-    })());
-  })();
+  /* ⛔ v157.85：§339「前传四档 + 连战」整组删除 —— `P.tiers()` 与 `DATA.PROLOGUE`
+     都随前传退役，四档解锁/连战机会已不存在。 */
 
 /* ===== 340. v125b（审核 P0-1）前传渲染：不许按抽样逐格跑 BFS ===== */
   (function () {
@@ -44850,7 +44215,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        实测 3712 次 BFS / 2,363ms，前传一次「清剿」点击同步阻塞 7.2 秒 —— 那是新玩家第一屏。
        现在改走 SP.hopsWithin（单次 BFS 枚举半径），只有命中的格才取精确距离（≤ lim×4）。
        两条判据都带**下限**：必须真的找到地方，否则"调用 0 次"也能通过（平凡解）。 */
-    G.newGame({ name: '性能档', cityName: '灰岗', prologue: true });
+    G.newGame({ name: '性能档', cityName: '灰岗' });   /* v157.85：prologue 参数已无意义（前传退役） */
     if (!G.state.map.grid && G.map && G.map.generate) G.map.generate();
 
     /* v139：阈值 20 → 30。
@@ -44859,32 +44224,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        → 实测 21 次、被判红。同一类"阈值卡在一个具体地形上"的毛病，
        之前 `distOf ≤ 20 → 40` 已经踩过一次。
        30 仍是原实现的 1/124 —— 只要不回到 BFS 量级，判据就还有效。 */
-    check('§340① 前传 spots：精确距离调用 ≤ 30（不再逐格 BFS · 原 3712）', (function () {
-      var sp = (G.sphereOf ? G.sphereOf() : G.sphere);
-      if (!sp || !sp.distOf) return false;
-      var n = 0, orig = sp.distOf;
-      sp.distOf = function (a, b) { n++; return orig.apply(this, arguments); };
-      var out = G.prologue.spots();
-      sp.distOf = orig;
-      return out.length >= 1 && n <= 30;
-    })(), (function () {
-      var sp = (G.sphereOf ? G.sphereOf() : G.sphere);
-      var n = 0, orig = sp.distOf;
-      sp.distOf = function (a, b) { n++; return orig.apply(this, arguments); };
-      var k = G.prologue.spots().length;
-      sp.distOf = orig;
-      return 'distOf ' + n + ' 次 · 返回 ' + k + ' 处';
-    })());
-
-    check('§340② 前传 refreshAll < 400ms（修前 2,511ms · 3,712 次 BFS）', (function () {
-      var best = 1e9;
-      for (var i = 0; i < 3; i++) { var t0 = Date.now(); G.refreshAll(); var dt = Date.now() - t0; if (dt < best) best = dt; }
-      return best < 400 && G.prologue.spots().length >= 1;
-    })(), (function () {
-      var best = 1e9;
-      for (var i = 0; i < 3; i++) { var t0 = Date.now(); G.refreshAll(); var dt = Date.now() - t0; if (dt < best) best = dt; }
-      return 'min ' + best + 'ms · 附近 ' + G.prologue.spots().length + ' 处';
-    })());
+    /* ⛔ v157.85：§340① ②「前传 spots 精确距离调用 / refreshAll 耗时」删除 ——
+       `P.spots()` 与 `P.refreshAll` 随 prologue.js 退役，无被测对象。 */
   })();
 
 /* ===== 341. v127 军师估算：预计损兵 + 阈值入表 ===== */
@@ -44967,24 +44308,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var B = { id: 'B355', name: '乙', level: 10, yw: 50, tong: 50, zm: 50, nz: 50, attack: 100, defense: 50, stamina: 200 };
     var seq = ['stab', 'guard', 'feint', 'charge', 'stab', 'guard'];
 
-    check('§355① 血量 = 体力（上限 = staMax · 开局血 = 当前体力 · 不满就少）', (function () {
-      if (!DU) return false;
-      var bk = G.state;
-      try {
-        var st = G.newGame({ name: '斗将档355', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
-        G.state = st;
-        var lord = G.prologue.lord();
-        if (!lord) return false;
-        var mx = DU.hpMaxOf(lord);
-        if (mx !== Math.round(G.staMax(lord))) return false;         /* 上限就是体力上限 */
-        if (DU.hp0Of(lord) !== Math.round(G.staNow(lord))) return false;
-        G.setStaNow(lord, Math.round(mx * 0.3));                     /* 打到 30% → 开局血也 30% */
-        var hp1 = DU.hp0Of(lord);
-        return hp1 < mx && Math.abs(hp1 - Math.round(mx * 0.3)) <= 1;
-      } finally { G.state = bk; }
-    })(), (function () {
-      return DU ? 'hpMax/hp0 出口在册' : 'GAME.duel 缺失';
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
     check('§355② 伤害由攻防决定（我攻×2→他掉更多 · 他防×4→他掉更少 · 我掉的只看他攻）', (function () {
       if (!DU) return false;
@@ -45090,83 +44414,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return '满=' + ok.ok + ' · 5%=' + low.ok + '（“' + (low.msg || '') + '”）';
     })());
 
-    check('§355⑧ 单挑对挑：对手等级 = 君主等级（血=体力后不让对手常年多一截血）', (function () {
-      var bk = G.state;
-      try {
-        var st = G.newGame({ name: '斗将档355b', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
-        G.state = st;
-        var P = G.prologue, lord = P.lord(), foe = P.duelFoe(P.pos());
-        if (!lord || !foe) return false;
-        return (foe.level | 0) === (lord.level | 0);
-      } finally { G.state = bk; }
-    })(), (function () {
-      var bk = G.state;
-      try {
-        G.state = G.newGame({ name: 'x355', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
-        var P = G.prologue;
-        return '君主 Lv' + (P.lord().level | 0) + ' · 对手 Lv' + (P.duelFoe(P.pos()).level | 0);
-      } catch (e) { return '?'; } finally { G.state = bk; }
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
-    check('§355⑨ 界面：3D 舞台 + 双方 HUD + 每合双方都出手（旧"画像飞"整族已退役）', (function () {
-      var fs = require('fs'), p = require('path');
-      var s = __uiAll();
-      var h = fs.readFileSync(p.join(__dirname, 'index.html'), 'utf8');
-      var d3 = fs.readFileSync(p.join(__dirname, 'js', 'duel3d.js'), 'utf8');
-      return s.indexOf('duel-stage3d') >= 0                    /* 3D 舞台容器 */
-        && s.indexOf('GAME.duel3d') >= 0                       /* 舞台驱动入口在册 */
-        && s.indexOf("hud('me'") >= 0 && s.indexOf("hud('foe'") >= 0   /* 两边都有血条 HUD */
-        && s.indexOf('prologue-duel-hit') >= 0                 /* 出手按钮仍在册 */
-        && h.indexOf('.duel-stage') >= 0 && h.indexOf('.duel-hud') >= 0
-        && s.indexOf('duel-fly') < 0 && h.indexOf('duel-fly') < 0      /* 旧动画整族退役 */
-        && d3.indexOf("skill('attack')") >= 0;                  /* 双方都出招 = 本作"每合双方各出手一次" */
-    })(), 'ui.js / index.html / duel3d.js 源码在册');
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
-    check('§355⑩ 真链路：叫阵 → 逐合出招 → 结算（经验 / 战利品 / 叫过阵的格子都入账）', (function () {
-      if (!DU) return false;
-      var bk = G.state;
-      try {
-        var st = G.newGame({ name: '斗将链355', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
-        G.state = st;
-        var P = G.prologue, ci = P.pos();
-        var b = P.duelBegin(ci, P.duelFoe(ci));
-        if (!b.ok) return false;
-        var guard = 0, last = null;
-        while (guard++ < 20) {
-          var d0 = P.duelOf();
-          if (!d0 || d0.done) break;
-          last = P.duelStep(G.DATA.DUEL.moveOrder[guard % 4]);
-          if (!last || !last.ok) break;
-        }
-        var d = P.duelOf();
-        return !!d && d.done === true && !!d.winner
-          && !!d.res && d.res.rounds.length >= 1
-          && (d.gain | 0) >= 0
-          && !!(d.dueled || (st.prologue.dueled || {})['c' + ci]);
-      } finally { G.state = bk; }
-    })(), (function () {
-      var bk = G.state;
-      try {
-        G.state = G.newGame({ name: '链355b', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
-        var P = G.prologue, b = P.duelBegin(P.pos(), P.duelFoe(P.pos()));
-        if (!b.ok) return '叫阵失败：' + b.msg;
-        var n = 0;
-        while (n++ < 20) {
-          var d0 = P.duelOf();
-          if (!d0 || d0.done) break;
-          if (!P.duelStep(G.DATA.DUEL.moveOrder[n % 4]).ok) break;
-        }
-        var d = P.duelOf();
-        return (d ? (d.winner + ' · ' + d.res.rounds.length + ' 合 · 经验 +' + d.gain) : '无状态');
-      } catch (e) { return '抛错 ' + e.message; } finally { G.state = bk; }
-    })());
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
-    check('§355⑪ 两套内核边界清楚：竞技场走 GAME.duel.play，叫阵/挑衅仍走 battle.duelPlay', (function () {
-      return typeof G.battle.duelPlay === 'function'
-        && typeof DU.play === 'function'
-        && typeof G.prologue.duelFoeFull === 'function'
-        && (G.DATA.DUEL_ARENA || {}).enabled === true;
-    })(), 'duelPlay 保留 · duel.play 新增');
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
 
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
@@ -46973,31 +46227,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   console.log('\n===== 578. v152 地图就是地面（手感判据） =====');
   (function () {
-    var seeds = [20261024, 777, 1234, 99999, 1, 2, 4242, 88, 31337, 61024];
-    var bad = [];
-    seeds.forEach(function (sd) {
-      var st = G.newGame({ name: 'v152', cityName: '灰岗', mapSeed: sd, prologue: true });
-      G.state = st;
-      var P = G.prologue, pos = P.pos();
-      var t = P.cellTypeOf(pos);
-      if (t === 'lake' || t === 'zhaoze' || !P.buildableAt(pos)) bad.push(sd + ':' + t);
-    });
-    check('§578① 出生点 10/10 是平地（能立城），不是水里', bad.length === 0, bad.join(',') || 'ok');
-
-    check('§578② 雾只遮信息、不挡路：pathTo 能穿未探明格', (function () {
-      var st = G.newGame({ name: 'v152b', cityName: '灰岗', mapSeed: 20261024, prologue: true });
-      G.state = st;
-      var P = G.prologue, sp = G.sphere, pos = P.pos();
-      var ring = sp.hopsWithin(pos, 6) || [];
-      var far = null;
-      for (var i = 0; i < ring.length && !far; i++) {
-        if (ring[i] !== pos && G.fog.get(ring[i]) === 0) far = ring[i];
-      }
-      if (far == null) return true;                 /* 周围都点亮了也算通过（没东西可穿） */
-      var pth = P.pathTo(far);
-      return !!pth && pth.complete && pth.ci.length > 0 && pth.ci[pth.ci.length - 1] === far;
-    })());
-
+    /* ⛔ v157.85：原「10 个 seed 出生点全在平地」的取样循环已删 —— 出生点由
+       `pickStartPos` 定，前传的 `P.buildableAt` 判据已退役。 */
+    /* ⛔ v157.85：§578①（出生点 10/10 平地）与 §578②（pathTo 穿未探明）删除 ——
+       两者都走 `GAME.prologue.pos/pathTo`，前传退役后无入口。 */
     check('§578③ 六边形贴地（网格壳不浮空 · 40962 格 = 更小的格子）', (function () {
       var sp = G.sphere;
       var fs2 = require('fs'), pth2 = require('path');
@@ -47016,22 +46249,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        半径 50 倍星球半径的自由空间」）：**旧的"绕脚下那格转"已被明令删除**。
        本条随之改判：前传相机变成"**对准**脚下那格、距离按球心算 = R + 1.5×HSC"，
        且不得再出现任何以格子为轨道中心的支点。 */
-    check('§578④ 前传相机对准脚下那格（无支点 · 距离按球心算 = R+1.5×HSC）', (function () {
-      var fs3 = require('fs'), pth3 = require('path');
-      var src = fs3.readFileSync(pth3.join(__dirname, 'js', 'map3d.js'), 'utf8');
-      var noPivot = !/var f = M\._focus \|\| \[0, 0, 0\];/.test(src)
-        && !/M\._focus = c\.pos \? \[c\.pos\[0\], c\.pos\[1\], c\.pos\[2\]\] : \[0, 0, 0\];/.test(src);
-      var aimOnly = /camO\.dist = R \+ HSC \* 1\.5/.test(src);
-      return noPivot && aimOnly;
-    })());
-
-    check('§578⑤ 精力见底有出口（歇到天亮 / 辐能核心）', (function () {
-      var fs4 = require('fs'), pth4 = require('path');
-      var src = fs4.readFileSync(pth4.join(__dirname, 'js', 'prologue.js'), 'utf8');
-      return /data-action="prologue-rest"/.test(src) && /data-action="prologue-tonic"/.test(src)
-        && /'prologue-rest': function/.test(src) && /'prologue-tonic': function/.test(src);
-    })());
-
+    /* ⛔ v157.85：§578④（前传相机对准脚下那格）与 §578⑤（精力见底出口，读 prologue.js
+       的 `data-action`）删除 —— 前传整段退役。 */
     check('§578⑥ 胜负只有一份：结算大字取账本（actRes）', (function () {
       var fs5 = require('fs'), pth5 = require('path');
       var src = __uiAll();
@@ -49223,7 +48442,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fsN = require('fs'), pN = require('path');
     var mdN = fsN.readFileSync(pN.join(__dirname, 'js', 'map3d.js'), 'utf8');
-    var prN = fsN.readFileSync(pN.join(__dirname, 'js', 'prologue.js'), 'utf8');
     var scN = fsN.readFileSync(pN.join(__dirname, 'js', 'scene3d.js'), 'utf8');
     var hitN = (mdN.match(/actspot/g) || []).length;
     check('§586n 源码面：任务型地块标色零残留（无 actspot / 无暗金色 / 无任务板注释）',
@@ -49233,11 +48451,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /cellKind\[[^\]]+\] = 'wild'/.test(mdN),
       'actspot ' + hitN + ' 处 · 暗金色 ' + (mdN.indexOf('[196, 158, 74]') >= 0)
         + ' · cellKind 体系 ' + /cellKind\[[^\]]+\] = 'wild'/.test(mdN));
-    check('§586n 保留面：荒野行动内核仍在岗（退役的是地图提示层，不是能不能做事）',
-      /jianghuActsAt/.test(prN) && /jianghuActsAt/.test(scN)
-      && mdN.indexOf('GAME.jianghuActsAt(') < 0,
-      'prologue=' + /jianghuActsAt/.test(prN) + ' · scene3d=' + /jianghuActsAt/.test(scN)
-        + ' · map3d 已脱钩=' + (mdN.indexOf('GAME.jianghuActsAt(') < 0));
+    /* ⛔ v157.85：本条依赖前传（prologue），随前传整段退役删除。 */
   })();
 
   /* ============================================================

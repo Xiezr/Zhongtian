@@ -1058,16 +1058,8 @@ import './ui.js';
     }
     ui._expOwn = !!(target && target.kind === 'owncity');
     var s = GAME.state, c = (ui._expFrom && GAME.cityById(ui._expFrom)) || GAME.currentCity();
-    /* v131：前传 = 君主个人冒险，**没有城就出不了征**（没有兵、没有出发地）。
-       旧代码在这里直接往下面走，随后 `filter` 里用 `c.id` 抛
-       `Cannot read properties of null (reading 'id')` —— 面板整个打不开。
-       这里给一句人话，比抛异常好：告诉玩家现在该干什么。 */
-    if (!c) {
-      ui.toast(GAME.prologue && GAME.prologue.on && GAME.prologue.on()
-        ? '还没有城 —— 先在野外把君主练到 Lv' + ((GAME.prologue.needLv && GAME.prologue.needLv()) || 20) + '，再立城'
-        : '还没有可用的城');
-      return;
-    }
+    /* ⛔ v157.85：前传「没有城」的专属文案已删（前传退役），只留通用兜底。 */
+    if (!c) { ui.toast('还没有可用的城'); return; }
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;

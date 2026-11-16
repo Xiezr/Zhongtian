@@ -136,7 +136,7 @@ import './ui.js';
   ui._tutIdx = 0;
   ui.tutorialSteps = function () {
     var c = GAME.currentCity();
-    var pro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
+    /* ⛔ v157.85：`pro`（是否前传）随前传退役删除；后续按 `pro` 分支的地方改走正式口径。 */
     var steps = [
       {
         t: '这颗星球，归你了',
@@ -153,14 +153,9 @@ import './ui.js';
         n: '继续'
       }
     ];
-    if (pro) {
-      steps.push({
-        t: '先活着',
-        b: '你现在<b>还没有城</b>，只有一队人。<br><br>'
-          + '在地图上走到附近的营地和遗迹，打几场、升到 <b>Lv20</b>，就能<b>立城</b>。',
-        n: '开始'
-      });
-    } else {
+    /* ⛔ v157.85：原来这里按 `pro` 分两套引导（前传 = "先活着，升到 Lv20 立城"）。
+       前传退役 → 只剩正式阶段这一套。 */
+    {
       var h = c ? ui.nextHintOf(c) : null;
       steps.push({
         t: '接下来的第一步',

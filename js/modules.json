@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "805a2e36f8afb306",
+ "sourceHash": "bd99103861f3c3a9",
  "layout": {
   "order": [
    "core",
@@ -53,7 +53,6 @@
    "ending",
    "muster",
    "founding",
-   "prologue",
    "duel",
    "duel3d",
    "market",
@@ -178,7 +177,6 @@
   "ending",
   "muster",
   "founding",
-  "prologue",
   "duel",
   "duel3d",
   "market",
@@ -270,7 +268,6 @@
    "ending",
    "muster",
    "founding",
-   "prologue",
    "duel",
    "market",
    "events",
@@ -512,7 +509,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7443,
+   "lines": 7361,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -559,7 +556,7 @@
   {
    "name": "domain",
    "file": "js/domain.js",
-   "lines": 9723,
+   "lines": 9717,
    "bundle": "core",
    "duty": "domain.js  核心业务逻辑（真实数值版）",
    "deps": [
@@ -582,7 +579,6 @@
     "story",
     "ui-city",
     "ui-fx",
-    "prologue",
     "portraits",
     "colony",
     "wonderwar",
@@ -639,7 +635,6 @@
     "cities",
     "state",
     "renown",
-    "prologue",
     "items",
     "registry"
    ]
@@ -830,7 +825,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4262,
+   "lines": 4255,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -864,7 +859,6 @@
     "colony",
     "placement",
     "agenda",
-    "prologue",
     "delve",
     "ui-core",
     "tower",
@@ -907,7 +901,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 8737,
+   "lines": 8569,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -915,14 +909,13 @@
     "map",
     "ui",
     "domain",
-    "prologue",
-    "ui-space",
     "gltf",
+    "ui-space",
     "fog",
     "state",
     "data",
-    "ui-fx",
     "placement",
+    "ui-fx",
     "village",
     "camp",
     "ruin",
@@ -1036,33 +1029,6 @@
    "deps": []
   },
   {
-   "name": "prologue",
-   "file": "js/prologue.js",
-   "lines": 1821,
-   "bundle": "core",
-   "duty": "prologue.js — 前传：先没有城（v105 · 老板 2026-10-23）",
-   "deps": [
-    "duel",
-    "domain",
-    "data",
-    "state",
-    "ui",
-    "fog",
-    "ui-mapui",
-    "ui-build",
-    "ui-fx",
-    "battle",
-    "map",
-    "items",
-    "ui-modal",
-    "sphere",
-    "ui-view",
-    "map3d",
-    "registry",
-    "ui-city"
-   ]
-  },
-  {
    "name": "registry",
    "file": "js/registry.js",
    "lines": 134,
@@ -1150,18 +1116,18 @@
   {
    "name": "scene3d",
    "file": "js/scene3d.js",
-   "lines": 3592,
+   "lines": 3568,
    "bundle": "ui",
    "duty": "scene3d.js — 2.5D 场景运行时（v140 · 老板 2026-10-24）",
    "deps": [
     "state",
     "gltf",
     "ui-fx",
-    "ui-build",
     "data",
     "ui-view",
-    "ui-craft",
     "ui-mapui",
+    "ui-build",
+    "ui-craft",
     "ui-space"
    ]
   },
@@ -1194,7 +1160,7 @@
   {
    "name": "sphere",
    "file": "js/sphere.js",
-   "lines": 945,
+   "lines": 989,
    "bundle": "core",
    "duty": "sphere.js — **球面世界内核**（纯 JS · 无 THREE · 逻辑与渲染共用 SSOT）",
    "deps": [
@@ -1206,7 +1172,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6401,
+   "lines": 6454,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [
@@ -1230,12 +1196,12 @@
     "taint",
     "climate",
     "ui-fx",
+    "ui-city",
+    "ui",
     "land",
     "ending",
     "ui-modal",
-    "prologue",
     "planetgen",
-    "ui",
     "placement",
     "camp",
     "ruin",
@@ -1247,7 +1213,6 @@
     "convoy",
     "trooplv",
     "ui-view",
-    "ui-city",
     "ui-craft",
     "renown",
     "tactic",
@@ -1403,7 +1368,7 @@
   {
    "name": "ui-bag",
    "file": "js/ui-bag.js",
-   "lines": 853,
+   "lines": 852,
    "bundle": "ui",
    "duty": "ui-bag.js　行囊 · 背包 / 装备 / 分页排序",
    "deps": [
@@ -1418,7 +1383,6 @@
     "ui",
     "cities",
     "icons",
-    "prologue",
     "systems",
     "ui-army",
     "ui-shell",
@@ -1459,24 +1423,22 @@
   {
    "name": "ui-build",
    "file": "js/ui-build.js",
-   "lines": 1821,
+   "lines": 1597,
    "bundle": "ui",
    "duty": "ui-build.js　建造 · 前传君主 / 等距渲染 / 围墙 / 格内建筑 / 政务厅",
    "deps": [
     "domain",
     "data",
-    "state",
-    "prologue",
-    "ui-modal",
     "icons",
+    "ui-modal",
+    "state",
     "ui",
     "ui-view",
-    "duel",
-    "battle",
-    "ui-fx",
     "ui-army",
-    "duel3d",
+    "battle",
     "ui-planet",
+    "ui-fx",
+    "duel",
     "ui-shell",
     "ui-bag",
     "ui-report"
@@ -1485,14 +1447,13 @@
   {
    "name": "ui-city",
    "file": "js/ui-city.js",
-   "lines": 488,
+   "lines": 483,
    "bundle": "ui",
    "duty": "ui-city.js　城市 · 新手引导 / 城市操作栏 / 侧栏驻军与资源",
    "deps": [
     "domain",
     "state",
     "data",
-    "prologue",
     "ui",
     "ui-view",
     "ui-modal",
@@ -1597,7 +1558,7 @@
   {
    "name": "ui-exped",
    "file": "js/ui-exped.js",
-   "lines": 2131,
+   "lines": 2123,
    "bundle": "ui",
    "duty": "ui-exped.js　出征 · 城内布局 / 统一出征面板 / 计略 / 方案 / 辎重 / 战前推演",
    "deps": [
@@ -1610,7 +1571,6 @@
     "ui-fx",
     "ui-modal",
     "agenda",
-    "prologue",
     "rules",
     "sphere",
     "ui",
@@ -1639,7 +1599,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 907,
+   "lines": 840,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1647,7 +1607,6 @@
     "map",
     "state",
     "data",
-    "prologue",
     "ui-modal",
     "sphere",
     "ui-fx",
@@ -1670,7 +1629,7 @@
   {
    "name": "ui-modal",
    "file": "js/ui-modal.js",
-   "lines": 822,
+   "lines": 823,
    "bundle": "ui",
    "duty": "ui-modal.js　弹窗框架 · 格局 / 键盘流 / 实时刷新 / 悬停保护 / 整体缩放",
    "deps": [
@@ -1687,7 +1646,6 @@
     "ui-battle",
     "ui-shell",
     "ui-craft",
-    "prologue",
     "icons",
     "ui-planet",
     "ui-city",
@@ -1768,7 +1726,7 @@
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1351,
+   "lines": 1347,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [
@@ -1783,7 +1741,6 @@
     "domain",
     "ui-planet",
     "fleet",
-    "prologue",
     "placement",
     "belt",
     "ui-modal",
@@ -1841,7 +1798,6 @@
     "tower",
     "village",
     "events",
-    "prologue",
     "ui-core",
     "ui-army",
     "goals",

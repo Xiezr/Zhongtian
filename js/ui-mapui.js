@@ -442,82 +442,15 @@ import './ui.js';
       '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
 
-  /* ============================================================
-   * v151（老板：「地图就是游戏本体」）：**前传里点脚下这一格 = 就地动手**
-   * ------------------------------------------------------------
-   * 改前：点地图（含脚下）→ 弹出一整套"未占领野地面板"（守军/派驻/掠夺/占领），
-   * 而前传没有兵、没有城，那些按钮一个都用不了 —— "点了一块迷雾地，
-   * 弹出一个讲它有什么的面板"。
-   * 改后：前传在脚下一格只给两件事：这格能做什么（⚔ 打 / ⛏ 采）、
-   * 以及"走进去"（2.5D 场景）。正式阶段的门票是兵，前传的门票是体力 ——
-   * 同一格在两种阶段给两种面板，各自只说自己用得上的一句话。
-   * ⚠️ 单独成函数（不塞进 openLandModalCi 体内）：那份 14k 字的地块界面
-   * 由 smoke §v89.136 按源码窗口切片断言，往里插分支会把它挤出窗口。
-   * ============================================================ */
-  ui.openPrologueLand = function (ci) {
-    var Pg = GAME.prologue;
-    if (!Pg || !Pg.pos || ci !== Pg.pos()) {
-      ui.toast('先点地图走过去 —— 站在那一格上才能动手');
-      return;
-    }
-    var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
-    var pacts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
-    var lordP = Pg.lord ? Pg.lord() : null;
-    var hereT = (DATA.TERRAIN || {})[(tile || {}).type] || { name: (tile || {}).type || '荒野' };
-    var actRows = pacts.length ? pacts.map(function (a) {
-      var d = a.def || a;
-      var nm = d.name || a.name || a.id;
-      var kind = d.kind || '';
-      var ktxt = kind === 'fight' ? '⚔' : kind === 'trial' ? '🗿' : kind === 'gather' ? '⛏'
-        : kind === 'cultivate' ? '🧘' : kind === 'visit' ? '🏡' : '·';
-      /* 打斗（fight/trial）→ 回合制：先把这一格的对手摆出来，再逐合出招 */
-      if (Pg.combatKind && Pg.combatKind(a.id)) {
-        var foe = Pg.duelFoe ? Pg.duelFoe(ci) : null;
-        return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px;">'
-          + '<button class="btn gold" data-action="prologue-fight" data-ci="' + ci + '" data-act="' + U.escape(a.id) + '">'
-          + ktxt + ' ' + U.escape(nm) + ' · 跟他打</button>'
-          + '<span class="ui-sub">' + U.escape(foe ? (foe.name + ' Lv' + (foe.level | 0)) : '') +
-          '　·　精力 −' + (d.energy | 0) + ' 体力 −' + (d.stam | 0) + '</span></div>';
-      }
-      return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px;">'
-        + '<button class="btn" data-action="prologue-act" data-ci="' + ci + '" data-act="' + U.escape(a.id) + '">'
-        + ktxt + ' ' + U.escape(nm) + '</button>'
-        + '<span class="ui-sub">精力 −' + (d.energy | 0) + ' 体力 −' + (d.stam | 0) + '</span></div>';
-    }).join('') : '<div class="q-empty" style="margin-top:6px;">这儿没什么可做的 —— 往别处走走。</div>';
-    var walkBtn = pacts.length
-      ? '<div style="margin-top:9px;"><button class="btn" data-action="prologue-scene" data-ci="' + ci
-        + '" data-act="' + U.escape(pacts[0].id) + '">🚶 走进去（自己找地方动手）</button></div>'
-      : '';
-    var duelBtn = (Pg.duelReady && Pg.duelReady(ci))
-      ? '<div style="margin-top:9px;"><button class="btn" data-action="prologue-duel">⚔ 点名斗将</button>'
-        + '<span class="ui-sub" style="margin-left:8px;">不耗兵；赢了他服 3 次（难度 −40%）</span></div>'
-      : '';
-    ui.openModal(
-      '<div class="gold-heading">📍 ' + U.escape(hereT.name || '荒野') + ' · 就在脚下</div>'
-      + '<div class="ui-sub" style="margin-top:3px;">精力 ' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lordP) : 0)
-      + ' / ' + Math.round(GAME.energyMaxOf ? GAME.energyMaxOf(lordP) : 100)
-      + '　体力 ' + Math.round(GAME.staNow ? GAME.staNow(lordP) : 0) + ' / '
-      + Math.round(GAME.staMax ? GAME.staMax(lordP) : 0) + '</div>'
-      + actRows + walkBtn + duelBtn
-      + '<div class="modal-foot"><button class="btn" data-action="close-modal">再看看</button></div>'
-    );
-  };
+  /* ⛔ v157.85：`ui.openPrologueLand`（前传点脚下格 = ⚔打/⛏采/🗿试炼/🏡拜访 的行动列表）
+     整函数删除 —— 这就是老板说的「前传的任务机制」那排按钮。
+     现在 `openLandModalCi` 只有一套面板（正式阶段：守军/侦察/掠夺/占领）。 */
 
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;
     var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
     if (!tile) return;
-    /* ============================================================
-     * v151（老板：「地图就是游戏本体」）：**前传里点脚下这一格 = 就地动手**。
-     * ------------------------------------------------------------
-     * 改前：点地图（含脚下）→ 弹出一整套"未占领野地面板"（守军/派驻/掠夺/占领），
-     * 而前传没有兵、没有城，那些按钮一个都用不了 —— "点了一块迷雾地，
-     * 弹出一个讲它有什么的面板"。
-     * 改后：前传在脚下一格只给两件事：这格能做什么（⚔ 打 / ⛏ 采）、
-     * 以及"走进去"（2.5D 场景）。正式阶段的门票是兵，前传的门票是体力 ——
-     * 同一格在两种阶段给两种面板，各自只说自己用得上的一句话。
-     * ============================================================ */
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) { ui.openPrologueLand(ci); return; }
+    /* ⛔ v157.85：前传的「点脚下格 → 行动列表」分派已删（前传整段退役）。 */
     /* ============================================================
      * v89.193（老板 2）：**我方前哨格专属面板** ——
      * 前哨格（占据后 terrain='city'、map.pick 落 kind='land'）此前掉进下方

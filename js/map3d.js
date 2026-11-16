@@ -2928,7 +2928,7 @@ import './gltf.js';
 
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
-  M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#pl' + ((GAME.prologue && GAME.prologue.on && GAME.prologue.on()) ? (GAME.prologue.pos ? GAME.prologue.pos() : -1) : -1) + '#' + _tileSub; };
+  M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub;   /* v157.85：`#pl<pos>`（前传君主站位）随前传退役删除 */ };
   M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; }
       /* v93.2：村社——活着几处、护着几处、空了几处（任一变化都要重建标记） */
       if (GAME.state && GAME.state.villages) {
@@ -4680,45 +4680,21 @@ import './gltf.js';
      * 口径：标记面上的**非己方**格子，统一按"该格是否已探明"再滤一遍（用 ci 直查）。
      * ============================================================ */
     try {
-      /* v152d: in the prologue the player is a lone wanderer -- faction/admin city
-         paint blobs are noise (they read like render bugs). Keep only: you + places
-         where something is happening. */
-      var _inPro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
+      /* ⛔ v157.85：这里原有 v152d 的「前传里把非己方城市色块删掉」分支 ——
+         前传整段退役后不存在"独行者"阶段，城市/行政区色块按正常规则（探明与否）显示。 */
       Object.keys(mark).forEach(function (k) {
         var _k = +k;
         if (cellKind[_k] === 'own' || cellKind[_k] === 'lord') return;
-        if (_inPro) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; return; }
         var _f = (GAME.fog && GAME.fog.get) ? GAME.fog.get(_k) : 2;
         if (_f === 0) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; }
       });
     } catch (eF152) { /* 过滤失败不挡地图 */ }
-    /* ============================================================
-     * v132：前传里"**我站在这一格**"（平涂部分）。
-     * ------------------------------------------------------------
-     * 前传是君主一个人在大地图上走，之前屏幕上没有任何标记指向自己
-     * （视野区域中心就是自己，但玩家不知道中心在哪）。
-     * 写在 `fogHides` 过滤**之后** —— 脚下必然已探明，放后面省得被雾判掉。
-     * ⚠️ 已核对：`_tileCells = SP.cells`（map3d.js:252/278），
-     * 所以 `mark[ci]` 与消费端 `_tileCells[ci]` 是**同一套索引**。
-     * 悬浮标签另在 floatName 定义之后补（那里 grp/lp 才初始化好）。
-     * ============================================================ */
-    var _lordCi = -1;
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
-      var _ciP = GAME.prologue.pos ? GAME.prologue.pos() : -1;
-      if (_ciP >= 0 && _tileCells[_ciP]) {
-        _lordCi = _ciP;
-        mark[_ciP] = [255, 216, 92];
-        cellKind[_ciP] = 'lord';
-        cellRef[_ciP] = { lord: true };
-      }
-      /* ⛔ v157.72（老板 2026-11-16「去除那些任务型地块标色并退役任务」）：
-         v151「雾里有动静的格子自己发光」整条退役 —— 曾在君主视野 ≤10 环内把
-         「有荒野事、且已探明」的格子涂成暗金色，让地图自己当任务板。
-         老板看过地图后要求去掉这层任务型标色（连同那个专用 cellKind 分支）。
-         ⚠️ 荒野行动内核（`GAME.jianghuActsAt`）**未动**：它仍是前传探索 / 斗将 /
-            场景动手共用的唯一判据口 —— 退役的是「地图上的任务点提示」这一层，
-            不是「这格能不能做事」。 */
-    }
+    /* ⛔ v157.85：v132 的「前传里把君主那一格涂成金色」整段删除（前传退役）。 */
+    /* ⛔ v157.72（老板 2026-11-16「去除那些任务型地块标色并退役任务」）：
+       v151「雾里有动静的格子自己发光」整条退役 —— 曾在君主视野 ≤10 环内把
+       「有荒野事、且已探明」的格子涂成暗金色，让地图自己当任务板。
+       ⚠️ 荒野行动内核（`GAME.jianghuActsAt`）**未动**：它是"这格能不能做事"的唯一判据口，
+          退役的是「地图上的任务点提示」这一层。 */
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
     var pos = [], col = [], idx = [], base = 0;
@@ -4744,14 +4720,7 @@ import './gltf.js';
     var grp = new THREE.Group();
     var lp = [];
     function floatName(dir, text, colHex) {
-      /* v152：前传里只浮脚下那一个名字 —— 远处的城名地名都是没探明就不该知道的信息。 */
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
-        try {
-          var _lp = GAME.prologue.pos ? GAME.prologue.pos() : -1;
-          var _ci2 = dir ? SP.nearestCell(dir) : -1;
-          if (_ci2 !== _lp) return;
-        } catch (ePN) { }
-      }
+      /* ⛔ v157.85：前传「只浮脚下那个名字」的过滤已删 —— 现在一律按迷雾决定是否浮名。 */
       /* v92：未探明格**不浮名**。否则雾里还飘着"灰烬城 / 某某府"，
          等于把整张地图的行省结构白送 —— 迷雾就形同虚设了。
          ⚠️ 必须用 **SP**（= GAME.mapSphere）反查，不能用 GAME.sphere：
@@ -4798,10 +4767,7 @@ import './gltf.js';
       if (!c.water) return;
       floatName(dirOfCell(c.x, c.y), (c.name || '城') + ' · 水上', '#6fd7e8');
     });
-    /* v132 前传：君主头顶一个"▲ 你"（这里 grp/lp 已初始化，才能安全调 floatName） */
-    if (_lordCi >= 0 && _tileCells[_lordCi] && _tileCells[_lordCi].dir) {
-      floatName(_tileCells[_lordCi].dir, '▲ 你', '#ffe28a');
-    }
+    /* ⛔ v157.85：前传的「▲ 你」头顶标签已删（前传退役，不再有"君主人偶"）。 */
     if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x0b0f14, transparent: true, opacity: 0.92, depthWrite: false }))); }
     M._labels = grp; scene.add(grp);
   }
@@ -6265,16 +6231,9 @@ import './gltf.js';
     /* v90.81（老板 4 · L0 自转）：地图页静止 10s 无操作 → 星球按 PLANET.spinSec 自动旋转。
        见下方 insetInterval 驱动器（每 33ms 步进 + 重绘）。 */
     if (M._lastAct == null) M._lastAct = Date.now();
-    /* v152d: prologue camera stays glued to the player's tile (undo centerOn / slider).
-       v92.241b：加了 `!M.camFree` —— 玩家主动拉远过就不再抢镜头，
-       否则"往外滚一格、下一帧又被拽回贴地"，表现就是"相机支点被人物焊死了"。 */
-    /* v92.242：支点已废 —— 这里只剩"前传期别把镜头甩太远"这一条软约束。
-       距离基准统一为从**球心**算：贴地 = R + 1.5×HSC。 */
-    var _inPro241 = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
-    if (_inPro241 && !M.camFree) {
-      var _nearD152 = R + HSC * 1.5;
-      if (camO.dist > _nearD152 * 1.05) { camO.dist = _nearD152; _syncZoom(); }
-    }
+    /* ⛔ v157.85：这里是 v152d/v92.241b「前传期相机贴着君主那一格」的软约束 ——
+       前传退役后**相机距离只由滚轮决定**（与 v157.74「滚轮只管高度」同一口径），
+       整段删除。 */
     M._focus = null;                                      /* 兼容壳：任何残留都清掉 */
     _updateWind();                                        /* v157l：风场时间轴/阵风/风向 */
     placeCamera();
@@ -6654,10 +6613,8 @@ import './gltf.js';
     }
     /* v90.83：**当前星球标识**（左下常驻）—— 换球后一眼可辨"现在是哪颗"（生成/进入星球后即时更新）。
        放左下：右上被地形/行政检索栏占用。 */
-    /* v131：前传不画这条 —— 那时候玩家是**一个人**在野外，不是一颗星球的统治者；
-       「🪐 老家 · 种子 … / 行迹 0.1% · 视野 4 格」摆在那里纯属噪音（截图里最扎眼的一处）。 */
-    var _inPrologue = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
-    if (GAME.state && GAME.state.planets && !_inPrologue) {
+    /* ⛔ v157.85：原来前传期不画这条（"一个人不是统治者"）。前传退役 → 恒画。 */
+    if (GAME.state && GAME.state.planets) {
       var _ap = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
       if (_ap) {
         var _pt = '🪐 ' + _ap.name + ' · 种子 ' + _ap.seed;
@@ -6724,8 +6681,8 @@ import './gltf.js';
          v157e：改由**显式开关** M.spinOn 控制（老板要一个"自转"按钮）。
            原来那套"静止 10 秒自动转"是隐式的：玩家没动它却自己转了，
            想停也停不下来。现在只有开关打开才转，且操作后 1.5 秒内让路（拖动不打架）。 */
-      var _inPro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
-      var ok = M.spinOn && !M._surf && !_inPro
+      /* ⛔ v157.85：`!_inPro`（前传不自转）已删 —— 前传退役，判据只剩"开关 + 非地表 + 在地图页"。 */
+      var ok = M.spinOn && !M._surf
         && GAME.ui && GAME.ui.view === 'map' && GAME.state
         && (Date.now() - (M._lastAct || 0) > 1500);
       if (!ok) {
@@ -6989,7 +6946,7 @@ import './gltf.js';
     var _hovLast = 0, _hovCi = -1;
     canvas.addEventListener('mousemove', function (e) {
       if (!M._collider || drag) return;
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return;
+      /* ⛔ v157.85：前传"不弹悬停卡"的判断已删。 */
       var now = (Date.now ? Date.now() : 0);
       if (now - _hovLast < 90) return;
       _hovLast = now;
@@ -7445,41 +7402,9 @@ import './gltf.js';
          建造模式一旦落在前传期，拿着物品怎么点都放不下去（实测 count 恒 0）。
          建造是"编辑地图"，与"角色移动"本来就是两件事。 */
       if (M.mode === M.MODE_BUILD) { M.pickAt(canvas, e.clientX, e.clientY); return; }
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick && M._collider) {
-        var r0 = canvas.getBoundingClientRect();
-        if (!r0.width) { M.pickAt(canvas, e.clientX, e.clientY); return; }
-        /* 用 window 坐标落点（窗口偏移不再影响）：先换算成画布内坐标 */
-        var inX = Math.max(0, Math.min(canvas.width, e.clientX - window.scrollX - r0.left));
-        var inY = Math.max(0, Math.min(canvas.height, e.clientY - window.scrollY - r0.top));
-        var nx0 = (inX / r0.width) * 2 - 1, ny0 = -(inY / r0.height) * 2 + 1;
-        var rc0 = new THREE.Raycaster();
-        rc0.setFromCamera(new THREE.Vector2(nx0, ny0), cam);
-        var h0 = rc0.intersectObject(M._collider, false);
-        if (!h0.length) return;
-        /* v155h：拾取壳已是低模球 → 用命中点方向反查格 */
-        var _pt0 = h0[0].point;
-        var ci0 = pickCiByRay(rc0, _pt0);
-        if (ci0 < 0) return;
-        var fromCi = GAME.prologue.pos();
-        M._lastClickDebug = { ci0: ci0, fromCi: fromCi, moved: moved, drag: wasDrag };
-        if (ci0 === fromCi) { M.pickAt(canvas, e.clientX, e.clientY); return; }   /* 点脚下：开面板 */
-        var res0 = GAME.prologue.mapClick(ci0);
-        M._lastClickDebug.steps = res0 && res0.steps;
-        M._lastClickDebug.ok = res0 && res0.ok;
-        M._lastClickDebug.msg = res0 && res0.msg;
-        if (res0 && res0.ok && res0.steps > 0) {
-          M.buildLordWalking(fromCi, GAME.prologue.pos());
-          M._lastClickDebug.started = true;
-          /* 走完再刷（避免"人还在这边、地图已经换成那边"） */
-          setTimeout(function () {
-            if (GAME.refreshAll) GAME.refreshAll();
-            if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-          }, 240);
-        } else if (res0 && res0.msg && GAME.ui && GAME.ui.toast) {
-          GAME.ui.toast(res0.msg);
-        }
-        return;
-      }
+      /* ⛔ v157.85：这里原有「前传里点地图 = 君主沿地表走过去」整块（含
+         `buildLordWalking` / `_lastClickDebug` / `prologue.mapClick` 三路调用）——
+         前传整段退役，点击一律走 `M.pickAt()`（选地块）。 */
       M.pickAt(canvas, e.clientX, e.clientY);   /* 没拖动 = 点击 → 选地块 */
     });
     canvas.addEventListener('wheel', function (e) {
@@ -7706,12 +7631,9 @@ import './gltf.js';
     cellW = Math.sqrt(cellW);
     var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
     var who = [];
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos) {
-      who.push({ ci: GAME.prologue.pos(), color: 0xffd166, scale: sc * 1.15, key: 'lord', actor: 'RobotExpressive' });
-    } else {
-      var pc = GAME.currentCity && GAME.currentCity();
-      if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
-    }
+    /* ⛔ v157.85：前传的「金色君主人偶」分支已删 —— 现在一律画当前城市。 */
+    var pc = GAME.currentCity && GAME.currentCity();
+    if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
     var stc = (GAME.state && GAME.state._standCi);
     if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xcfd6df, scale: sc * 0.95, key: 'stand' });
     who.forEach(function (w) {
@@ -7727,31 +7649,9 @@ import './gltf.js';
    * 走的那 0.22 秒里腿在摆；到了再触发一次"落脚"动作（`state._walkTo` 清空）。
    * 地图上其他人（战斗单位）走地表由 `M.surfaceWalk()` 同一套插值处理。
    * ============================================================ */
-  var walkAnim = null;          /* { key, from:{pos,quat}, to:ci, t0, dur } */
-  M.walkDur = 220;              /* v153: 走一格用多少毫秒（玩家可感知的位移时长） */
-  function slerpVec(a, b, t) {
-    var dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    dot = Math.max(-1, Math.min(1, dot));
-    var th = Math.acos(dot) || 1e-6;
-    var s1 = Math.sin((1 - t) * th) / Math.sin(th), s2 = Math.sin(t * th) / Math.sin(th);
-    return [a[0] * s1 + b[0] * s2, a[1] * s1 + b[1] * s2, a[2] * s1 + b[2] * s2];
-  }
-  function startWalk(key, g, ci) {
-    var c = _tileCells && _tileCells[ci];
-    if (!c || !c.dir) return false;
-    /* 终点姿态：按终点格重算一次（照 placeFigure 的算法），只取姿态不落位 */
-    var d = c.dir;
-    var n = new THREE.Vector3(d[0], d[1], d[2]).normalize();
-    var qTo = applyQuad(new THREE.Quaternion(), d, ci % 360);
-    walkAnim = {
-      key: key, g: g, to: ci, t0: Date.now(), dur: (M.walkDur || 220),
-      fromPos: g.position.clone(),
-      toDir: [n.x, n.y, n.z],
-      fromQ: g.quaternion.clone(),
-      toQ: qTo
-    };
-    return true;
-  }
+  /* ⛔ v157.85：`walkAnim` / `M.walkDur` / `slerpVec` / `startWalk` 整条链删除 ——
+     它们只服务「前传君主点地图沿地表走过去」（`M.buildLordWalking`）。
+     前传退役后没有人偶需要逐格插值，城市人偶换格直接重摆（`buildFigures`）。 */
   /* ============================================================
    * v92.240k（老板：「在地图界面的地块上放置物体……形成标准化的物品放置和组件引擎」）
    * ------------------------------------------------------------
@@ -8123,63 +8023,18 @@ import './gltf.js';
     var fdt = Math.min(0.05, (_now - figLastT) / 1000) || 0.016; figLastT = _now;
     /* 第一次调用时 figRoot 还不存在 —— 先建出来 */
     if (!figRoot) {
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
-        /* 前传首帧：直接把小人摆在当前格（原地，不播走路） */
-        var p0 = GAME.prologue.pos();
-        if (M.buildLordWalking(p0, p0)) { walkAnim = null; M._standVer = 'p' + p0 + '|||' + (_tileCells || []).length; return; }
-      }
+      /* ⛔ v157.85：前传首帧把君主人偶摆到 pos 的分支已删。 */
       buildFigures();
       return;
     }
-    /* ① 正在走的那一个：沿地表弧线插值位置 + 姿态（含朝向） */
-    if (walkAnim) {
-      var w = walkAnim, c2w = _tileCells && _tileCells[w.to];
-      var kw = Math.min(1, (Date.now() - w.t0) / w.dur);
-      var ew = kw * kw * (3 - 2 * kw);
-      if (c2w && c2w.dir) {
-        var rTo = R + Math.max(0, sphElev(w.toDir)) * HSC + 0.55;
-        var rr0 = w.fromPos.length();
-        var rr2 = rr0 + (rTo - rr0) * ew + Math.sin(Math.PI * kw) * 0.8;
-        var curDir = w.fromPos.clone().normalize();
-        var dir3 = slerpVec([curDir.x, curDir.y, curDir.z], w.toDir, ew);
-        w.g.position.set(dir3[0] * rr2, dir3[1] * rr2, dir3[2] * rr2);
-        if (w.fromQ && w.toQ) w.g.quaternion.copy(w.fromQ).slerp(w.toQ, ew);
-        if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
-          w.g.userData.actor.skill('walk');
-          w.g.userData.actor.update(fdt);
-        } else if (w.g.userData && w.g.userData.legs) {
-          var sw2 = Math.sin(Date.now() / 70) * 0.5;
-          w.g.userData.legs[0].rotation.x = sw2;
-          w.g.userData.legs[1].rotation.x = -sw2;
-        }
-        if (kw >= 1) {
-          if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
-            w.g.userData.actor.skill('idle');
-            w.g.userData.actor.update(fdt);
-          } else if (w.g.userData && w.g.userData.legs) {
-            w.g.userData.legs[0].rotation.x = 0;
-            w.g.userData.legs[1].rotation.x = 0;
-          }
-          walkAnim = null;
-        }
-      } else walkAnim = null;
-      /* 走路期间不许重建（否则会被刷新成"直接站在终点"） */
-      if (walkAnim) return;
-    }
+    /* ⛔ v157.85：原「① 正在走的那一个：沿地表弧线插值」整段删除（前传退役）。 */
     /* ② 谁该站在哪 —— 版本变化才重建（换格只挪） */
-    var ver = (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos ? ('p' + GAME.prologue.pos()) : '')
-      + '|' + ((GAME.state && GAME.state._standCi) || '')
+    var ver = ((GAME.state && GAME.state._standCi) || '')
       + '|' + (GAME.currentCity && GAME.currentCity() ? (GAME.currentCity().ci || '') : '')
       + '|' + ((_tileCells || []).length);
     if (ver !== M._standVer) {
       M._standVer = ver;
-      var lordCi = (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos) ? GAME.prologue.pos() : null;
-      var lordFig = figCache.lord && figCache.lord.g;
-      if (lordCi != null && lordFig && figCache.lord.ci !== lordCi && !walkAnim) {
-        figCache.lord.ci = lordCi;
-        startWalk('lord', lordFig, lordCi);
-        return;
-      }
+      /* ⛔ v157.85：君主人偶的"换格就补走路动画"已删（前传退役）。 */
       buildFigures();
       return;
     }
@@ -8198,33 +8053,15 @@ import './gltf.js';
       g.scale.y = (g.userData.baseScale || g.scale.y) * (1 + br * 0.1);
     });
   }
-  /* v153d：前传里"当前格"小人的唯一建法 —— 先摆到**上一格**，再沿地表走一步。
-     （syncFigures 里只拦 ver 变化、buildFigures 里没有 from 信息 —— 那是 bug。） */
-  M.buildLordWalking = function (fromCi, toCi) {
-    if (figRoot) { scene.remove(figRoot); figRoot = null; }
-    figCache = {};
-    figRoot = new THREE.Group();
-    scene.add(figRoot);
-    var cellW = Math.sqrt((4 * Math.PI * R * R / Math.max(1, (_tileCells || []).length)) || 1);
-    var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
-    var g = makeFigure(0xffd166, sc * 1.15, 'RobotExpressive');
-    if (!placeFigure(g, fromCi)) return false;
-    figCache.lord = { g: g, ci: toCi };
-    figRoot.add(g);
-    /* 记下版本，免得 syncFigures 在走路途中又重建一次 */
-    M._standVer = 'p' + toCi + '|' + ((GAME.state && GAME.state._standCi) || '')
-      + '|' + (GAME.currentCity && GAME.currentCity() ? (GAME.currentCity().ci || '') : '')
-      + '|' + ((_tileCells || []).length);
-    startWalk('lord', g, toCi);
-    return true;
-  };
+  /* ⛔ v157.85：`M.buildLordWalking(fromCi, toCi)` 整条删除 —— 它是前传君主
+     「先摆上一格再走过来」的唯一建法，前传退役后无调用者。 */
   M.buildFigures = buildFigures;
   M.syncFigures = syncFigures;
   /* v153：给脚本/测试看小人此刻的真实世界坐标与所在格（只读出口） */
   M.figureOf = function (key) {
     var f = figCache[key || 'lord'];
     if (!f || !f.g) return null;
-    return { ci: f.ci, pos: [f.g.position.x, f.g.position.y, f.g.position.z], walking: !!walkAnim };
+    return { ci: f.ci, pos: [f.g.position.x, f.g.position.y, f.g.position.z], walking: false };  /* v157.85：前传行走插值已退役，该字段恒 false（保留读取兼容） */
   };
 
   /* 点击拾取：Raycaster 打到地块填充 → 取格类型/等级 → 存为选中（画在画布上）*/
@@ -8384,12 +8221,7 @@ import './gltf.js';
      * 放在迷雾判定**之前**：雾里的格子也要能点（`P.pathTo` 会算到已探明的边上），
      * 否则新人点远处只会得到一句"未探明"，而不知道该怎么过去。
      * ============================================================ */
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
-      var pr = GAME.prologue.mapClick(ci);
-      if (pr && pr.msg && GAME.ui && GAME.ui.toast) GAME.ui.toast(pr.msg);
-      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-      return;
-    }
+    /* ⛔ v157.85：前传「点格子 = 让它算能不能走过去」分支已删（前传退役）。 */
     /* ============================================================
      * v92.240k：放置模式 —— 手上拿着东西时，点格 = 落位（不走地块原逻辑）。
      * ------------------------------------------------------------

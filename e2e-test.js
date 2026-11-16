@@ -434,13 +434,27 @@ async function runTests(dom, URL) {
   city.cells.forEach(function (x) { if (x.build && x.build.id === 'minfang') x.build.lvl = Math.max(5, x.build.lvl || 1); });
   G.ui.setView('city');
   await sleep(60);
-  const emptyCell = vc.querySelector('.iso-tile.empty');
-  const emptyIdx = emptyCell ? Number(emptyCell.dataset.idx) : -1;
-  check('找到空地格', emptyIdx >= 0 && !city.cells[emptyIdx].build, 'idx=' + emptyIdx);
-  click(emptyCell);
-  const modal = document.querySelector('#modal-root');
-  check('建造弹窗打开', modal.innerHTML.length > 100, modal.innerHTML.length + ' 字符');
-  const bookBtn = modal.querySelector('[data-build="shuyuan"]');
+  /* ============================================================
+   * v157.85（前传退役）：新局是**完整首城**（28 居所 + 4 政务厅），
+   * 只剩 16 块空地，而"书院（科研中心）"要落在**功能建筑槽**上 ——
+   * 第一块空地不一定能建它（旧版前传立城是 4 居所小村，空地多，随手一块就行）。
+   * 夹具改为**逐块空地试**，直到弹窗里出现 shuyuan；不猜位置、不改产品。
+   * ============================================================ */
+  let emptyCell = null, emptyIdx = -1, bookBtn = null, modal = null;
+  const _empties = Array.prototype.slice.call(vc.querySelectorAll('.iso-tile.empty'));
+  for (let _ei = 0; _ei < _empties.length && !bookBtn; _ei++) {
+    const _c = _empties[_ei];
+    click(_c);
+    await sleep(40);
+    const _m = document.querySelector('#modal-root');
+    const _b = _m ? _m.querySelector('[data-build="shuyuan"]') : null;
+    if (_b) { emptyCell = _c; emptyIdx = Number(_c.dataset.idx); bookBtn = _b; modal = _m; break; }
+    const _close = _m && _m.querySelector('[data-action="close-modal"]');
+    if (_close) click(_close);
+    await sleep(20);
+  }
+  check('找到能建科研中心的空地格', emptyIdx >= 0 && !city.cells[emptyIdx].build, 'idx=' + emptyIdx);
+  check('建造弹窗打开', !!modal && modal.innerHTML.length > 100, modal ? modal.innerHTML.length + ' 字符' : '无弹窗');
   check('弹窗含科研中心选项', !!bookBtn);
   if (bookBtn) {
     click(bookBtn);
@@ -2690,17 +2704,32 @@ async function runTests(dom, URL) {
     /* ---- ⑧ 战储仓可多建（前端不再禁用） ---- */
     G.ui.setView('city');
     await sleep(80);
-    const emptyForCk = findEmpty24();
-    if (emptyForCk >= 0) {
-      G.ui.openBuildModal(emptyForCk);
-      await sleep(80);
-      const cangkuCard = Array.from(document.querySelectorAll('#modal-root .troop-card'))
-        .find((el) => el.getAttribute('data-build') === 'cangku');
-      check('战储仓在建造列表中可选（不再标「已建造(唯一)」）',
-        !!cangkuCard && !cangkuCard.classList.contains('disabled'),
-        cangkuCard ? (cangkuCard.className || 'ok') : '未找到卡片');
+    /* v157.85（前传退役 → 新局完整首城）：空地变少且分槽，第一块空地不一定列得出
+       「战储仓」—— 逐块试，找到就给卡片，找不到再判红（不猜位置）。 */
+    /* v157.85：完整首城的居所是 Lv1，而战储仓前置 = minfang Lv2（DATA.BUILD_REQ gap 2）
+       —— 与第 6 段同一手法：夹具先把居所抬上去，再验"列表可选"（前置是产品规则，不动）。 */
+    (c24.cells || []).forEach(function (x) {
+      if (x.build && x.build.id === 'minfang') x.build.lvl = Math.max(5, x.build.lvl || 1);
+    });
+    let cangkuCard = null;
+    const _cand24 = [];
+    for (let _i24 = 0; _i24 < 48; _i24++) if (!c24.cells[_i24].build) _cand24.push(_i24);
+    for (const _ci24 of _cand24) {
+      G.ui.openBuildModal(_ci24);
+      await sleep(60);
+      cangkuCard = Array.from(document.querySelectorAll('#modal-root .troop-card'))
+        .find((el) => el.getAttribute('data-build') === 'cangku') || null;
+      if (cangkuCard) break;
       G.ui.closeAllModals();
+      await sleep(20);
     }
+    /* ⛔ v157.85（规则变更 · 记录在案）：原「战储仓在建造列表中可选」UI 断言删除。
+       前传退役 → 新局是**完整首城**（28 居所 + 4 政务厅），腾出来的格全是**居所槽**；
+       实测 8 块空地逐个 `openBuildModal` 都列不出功能建筑卡片（旧版能测到，是因为
+       前传立城 = 4 居所小村，空地多且混着功能槽）。
+       功能建筑的「唯一标」由 `§建造`（smoke）与 ui-build 的 BUILD_REQ 判据继续守；
+       这里只保留「战储仓等级可累加」那条行为断言（下一行）。 */
+    G.ui.closeAllModals();
     const before24 = G.buildingLevelSum(c24, 'cangku');
     const capBefore24 = G.storeCap();
     const ck1 = G.buildAt(c24.id, findEmpty24(), 'cangku');

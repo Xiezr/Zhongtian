@@ -95,7 +95,7 @@ import './items.js';
   EV.tick = function (force) {
     var s = st0();
     if (!s || !s.world) return;
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return;
+    /* ⛔ v157.85：前传「不触发月度随机事件」的判据已删（前传退役）。 */
     var m = EV.monthNow();
     if (!force && s.evMonth === m) return;
     s.evMonth = m;

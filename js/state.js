@@ -183,11 +183,8 @@ import './data.js';
   GAME.res = function (city) {
     var c = city || GAME.currentCity();
     if (!c) {
-      /* v131：前传 = 没有城（君主个人冒险）→ 资源落在**随身物资**上。
-         存在 state.prologue.res 而不是 GAME._orphanRes，是为了随存档往返
-         （内存兜底会让读档后背包清空）。随机事件消耗/采集所得都走这里。 */
-      var s0 = GAME.state;
-      if (s0 && s0.prologue && s0.prologue.res) return s0.prologue.res;
+      /* v157.85：前传退役 → 不再有"随身物资"这条分支。
+         无城只剩**异常/迁移中途**这一种可能，落到内存孤儿池（通用兜底，不随存档往返）。 */
       return GAME._orphanRes || (GAME._orphanRes = GAME.emptyRes());
     }
     if (!c.res) c.res = GAME.emptyRes();
@@ -222,14 +219,12 @@ import './data.js';
            前传现在真的没有城，于是任何 `s.res = {...}`（读档迁移 / 工具造局 / 测试注入）
            都会写失败而无人报错；表现出来是"资源莫名其妙是 0"（e2e 当场照出：
            研究科技报「资源不足」）。现在按三层兜底，一层都不丢：
-             有城 → 写该城 · 前传期 → 写随身物资 · 都没有 → 写内存孤儿池。 */
+             有城 → 写该城 · 都没有 → 写内存孤儿池（v157.85 起前传已退役）。 */
         set: function (v) {
           if (!v) return;
           var c = GAME.currentCity();
           if (c) { c.res = v; return; }
-          var s0 = GAME.state;
-          if (s0 && s0.prologue && s0.prologue.res) { s0.prologue.res = v; return; }
-          GAME._orphanRes = v;
+          GAME._orphanRes = v;   /* v157.85：前传背包分支已删（无城只会是异常/迁移中途） */
         },
         enumerable: false,
         configurable: true,
@@ -608,13 +603,24 @@ import './data.js';
      * 资源：无城时 `GAME.res()` 落到 `_orphanRes`（本项目早预留了这条兜底），
      * 前传把开局物资放进这口"随身背包"，立城时再一次性搬进城。
      * ============================================================ */
-    var prologueMode = !!(rulerOpts && rulerOpts.prologue && GAME.prologue);
-    var city = prologueMode ? null : GAME.makeCity({
+    /* ============================================================
+     * ⛔ v157.85（老板「去掉……前传的任务机制」→ 整段前传退役）
+     * ------------------------------------------------------------
+     * 原来按 `rulerOpts.prologue` 分流：前传局**不建城**（城要等玩家在格子上真的立起来）。
+     * 前传退役后新局**一律有城** —— 这里不再有第二个分支，`makeCity` 无条件执行。
+     * 旧的前传存档由 `GAME.migratePrologueCity()`（见 loadGame 前的迁移段）就地转正。
+     * ============================================================ */
+    var city = GAME.makeCity({
       id: 'p1',
       name: rulerOpts.cityName || '新城市',
       x: startPos.x, y: startPos.y,
       state: startPos.state,
       initialExt: true,          // 首城预置 2 田 1 木 1 石 1 铁
+      /* v157.85：前传退役后新局 = **完整首城**（28 座居所 + 功能槽空着）。
+         ⚠️ 曾试过 `village: true`（前传立城那一刻的"小村庄"）——
+           它会让人口容量掉到村社级，smoke 里 9 条人口/居所断言集体翻红；
+           而且"新局就是小村庄"等于把前传的"白手起家"叙事又搬回来。
+         e2e 需要空地建科研中心 → 由 e2e 自己找空地（见 e2e-test.js 的 §v105 段）。 */
       res: U.deep(DATA.INITIAL_RES),   // v60：开局库存进首城（不再是全境共享的 s.res）
     });
     var gen = GAME.makeGeneral(DATA.INITIAL_GENERAL, 1, 'idle', city ? city.id : null, true);
@@ -764,11 +770,9 @@ import './data.js';
        `generate()` 内部就是 `if (!s.map.cities) { buildNpcCities(seed) ... }`，
        幂等：已有城就跳过。 */
     try { if (GAME.map && GAME.map.generate) GAME.map.generate(); } catch (e) { /* 建城失败不挡住开局 */ }
-    /* v139：前传在这里才开局 —— 球面已定型、NPC 城已落位，
-       此刻算出的出生点才是"真的能用"的那个（脚下有事、平地不远）。 */
-    if (rulerOpts && rulerOpts.prologue && GAME.prologue) {
-      try { GAME.prologue.begin(GAME.state); } catch (e) { /* 开局失败不挡住新局 */ }
-    }
+    /* ⛔ v157.85：这里原有 `if (rulerOpts.prologue) GAME.prologue.begin(...)` ——
+       前传整段退役，连带 v139 这条"等球面定型再开局"的时序说明一起删除。
+       现在 newGame 走完就是**正式局**：城已建、NPC 城已落、君主已在城里。 */
     return GAME.state;
   };
 
@@ -3556,7 +3560,7 @@ import './data.js';
     each(st.gathers, function (g) { if (g.ci != null) { g.ci = map1(g.ci); n++; } });
     each(st.marches, function (m) { if (m.tci != null) { m.tci = map1(m.tci); n++; } });
     each(st.battles, function (b) { if (b.ci != null) { b.ci = map1(b.ci); n++; } });
-    if (st.prologue && st.prologue.pos != null) { st.prologue.pos = map1(st.prologue.pos); n++; }
+    /* ⛔ v157.85：前传 `pos` 的索引重排已删 —— 前传退役后没有"君主站位"这个字段要迁。 */
     Object.keys(st.sieges || {}).forEach(function (k) {
       var m2 = /^p(\d+)\|c(\d+)$/.exec(k);
       if (m2) {
@@ -3574,6 +3578,52 @@ import './data.js';
     return n;
   };
 
+  /* ============================================================
+   * v157.85（老板「去掉……前传的任务机制」→ **整段前传退役**）
+   * ------------------------------------------------------------
+   * 前传档的特征是「`prologue.on === true` 且 `cities: []`」——城还没立。
+   * 前传退役后这种档不能再进来（否则玩家读到一座没有城的世界：无产出、
+   * 无法招兵、所有面板空转）。
+   *
+   * 迁移口径：**就地转正**，一步补齐到"正常开局"：
+   *   ① 关掉 `prologue.on`（背包 `res` 之后清空 —— 内容已搬进城）；
+   *   ② 没有城 → 在君主站的那一格立城（坐标走 `cellOf` → `xyOfLonLat`，
+   *      算不出就退回 `map.startPos`：宁可位置不完美，也不让玩家丢档）；
+   *   ③ 将领 cityId 回填、`ui._cityId` 指向新城。
+   * ⚠️ 必须在 `GAME.state = st` 之后调用 —— `makeCity` 会读全局 state 取编号。
+   * ============================================================ */
+  GAME.migratePrologueCity = function (st) {
+    if (!st || !st.prologue || st.prologue.on !== true) return 0;
+    var carry = st.prologue.res || null;
+    st.prologue.on = false;
+    st.prologue.builtAt = st.prologue.builtAt || 0;
+    if (!(st.cities || []).length && GAME.makeCity) {
+      var sp = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere
+        : ((GAME.mapSphere && GAME.mapSphere.cells) ? GAME.mapSphere : null);
+      var pos = st.prologue.pos | 0;
+      var cell = (sp && sp.cellOf) ? sp.cellOf(pos) : null;
+      var xy = (cell && sp.xyOfLonLat && cell.lon != null) ? sp.xyOfLonLat(cell.lon, cell.lat) : null;
+      var p0 = (st.map && st.map.startPos) || {};
+      if (!xy) xy = { x: p0.x, y: p0.y };
+      var city = GAME.makeCity({
+        id: 'p1',
+        name: (st.ruler && st.ruler.cityName) || '新城市',
+        x: xy.x, y: xy.y,
+        state: (p0 && p0.state) || (st.ruler && st.ruler.region) || '烬环',
+        initialExt: true,
+        res: carry ? GAME.utils.deep(carry) : undefined,
+        village: true
+      });
+      if (city) {
+        st.cities = [city];
+        (st.generals || []).forEach(function (g) { if (g && !g.cityId) g.cityId = city.id; });
+        if (GAME.ui) GAME.ui._cityId = city.id;
+      }
+    }
+    st.prologue.res = null;
+    return 1;
+  };
+
   GAME.adoptState = function (st) {
     /* v89.209（v89.208 评估缺陷链 ①）：形状抽检（读路径同闸）—— importText 已拦一道，
        这里再拦一道：手改 localStorage / 旧版导入残留的坏档同样进不了迁移链；
@@ -3587,6 +3637,9 @@ import './data.js';
        异常时回滚 prev 再抛出：失败后内存里**不留半迁移态**，游戏继续跑完好的旧档。 */
     var _prev209 = GAME.state;
     GAME.state = st;
+    /* v157.85：旧前传档就地转正（补城 + 关标记）。放在这里而不是 saveShapeChk 之前：
+       `makeCity` 要读全局 state 发号，那时 `GAME.state` 还没换上本档。 */
+    try { GAME.migratePrologueCity(st); } catch (eMP) { /* 转正失败不挡住读档 */ }
     try {
       /* ============================================================
        * v60 迁移：全境共享库存 → **各城独立库存**
@@ -3619,8 +3672,8 @@ import './data.js';
       /* v89.161（老板 5）：**旧币上收玩家层级** —— 老档把各城 res.gold 相加迁入 s.gold；
          新档以 st.gold 为权威（各城那份只是冗余副本，**不再累加**，否则 ×城数）。 */
       GAME.migrateGoldPool(st);
-      /* v134：**前传档跨版本补字段**（必须在 attachRes 之前 —— attachRes 要读 prologue.res） */
-      if (GAME.migratePrologue) GAME.migratePrologue(st);
+      /* ⛔ v157.85：`GAME.migratePrologue`（v134 的"前传档补字段"，含 prologue.res）
+         随前传整段退役删除 —— 旧档的转正由 `migratePrologueCity` 在本链之前一次做完。 */
       GAME.attachRes(st);
       /* v89.191（老板 3-④）：科技由"全境一份"迁为"各城一份"（老档平移 + 队列补城）。 */
       GAME.migrateTechs191(st);
@@ -4283,9 +4336,10 @@ import './data.js';
   GAME.saveShapeChk = function (st) {
     if (!st || typeof st !== 'object' || Array.isArray(st)) return { ok: false, msg: '存档状态不是有效对象' };
     if (!Array.isArray(st.cities)) return { ok: false, msg: '存档内容不完整（城市数据不是列表）' };
-    /* ⛔ v132（前传存档往返实测抓到，v131 留下的尾巴）：
-       这条原来写 `|| !st.cities.length` —— 只要没有城就判坏档。
-       而 v131 起前传局**真的没有城**（`cities: []`），于是：
+    /* v132 放宽判据 → v157.85 起只作为**历史档兼容**（前传已退役）：
+       老前传档是「`prologue.on === true` + `cities: []`」，读进来先由
+       `GAME.migratePrologueCity()` 补城转正；判据保留是为了让**补城之前**的档
+       能通过这一道闸，而不是为了继续支持前传玩法。
          · `saveShapeChk` 判 false
          · `adoptState` 抛"存档形状损坏"
          · `loadGame` 的 catch 吞掉异常 → 返回 null
@@ -4797,9 +4851,8 @@ import './data.js';
     var s = GAME.state, ts = GAME.timeScale();
     var out = { grain: 0, wood: 0, stone: 0, iron: 0, gold: 0 };
     if (!city) return out;
-    /* v105（前传）：还没有城 —— 开局那点库存是**辎重**，不是城产。
-       一处闸门断全部产出来源（拆账、结算、界面读的都是这个函数）。 */
-    if (GAME.prologue && GAME.prologue.on()) return out;
+    /* ⛔ v157.85：这里原有 `if (GAME.prologue.on()) return out;` —— 前传退役后
+       不存在"有城却在前传"的状态，闸门整条删除（产出 = 城的产出，只有这一个口径）。 */
     var mpG = (opt && opt.mpGlobal != null) ? opt.mpGlobal : null;
     /* v79：「本城产量」加成 = 名城档位 + 威望 + 主城 + 神器（唯一汇总口）
        v89.157（老板 4）：「资源产量的各种加成，应分别对**基础产量**加成，叠加的话有点夸张了」——

@@ -3222,7 +3222,7 @@
 
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
-  M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#pl' + ((GAME.prologue && GAME.prologue.on && GAME.prologue.on()) ? (GAME.prologue.pos ? GAME.prologue.pos() : -1) : -1) + '#' + _tileSub; };
+  M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub;   /* v157.85：`#pl<pos>`（前传君主站位）随前传退役删除 */ };
   M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; }
       /* v93.2：村社——活着几处、护着几处、空了几处（任一变化都要重建标记） */
       if (GAME.state && GAME.state.villages) {
@@ -4974,45 +4974,21 @@
      * 口径：标记面上的**非己方**格子，统一按"该格是否已探明"再滤一遍（用 ci 直查）。
      * ============================================================ */
     try {
-      /* v152d: in the prologue the player is a lone wanderer -- faction/admin city
-         paint blobs are noise (they read like render bugs). Keep only: you + places
-         where something is happening. */
-      var _inPro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
+      /* ⛔ v157.85：这里原有 v152d 的「前传里把非己方城市色块删掉」分支 ——
+         前传整段退役后不存在"独行者"阶段，城市/行政区色块按正常规则（探明与否）显示。 */
       Object.keys(mark).forEach(function (k) {
         var _k = +k;
         if (cellKind[_k] === 'own' || cellKind[_k] === 'lord') return;
-        if (_inPro) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; return; }
         var _f = (GAME.fog && GAME.fog.get) ? GAME.fog.get(_k) : 2;
         if (_f === 0) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; }
       });
     } catch (eF152) { /* 过滤失败不挡地图 */ }
-    /* ============================================================
-     * v132：前传里"**我站在这一格**"（平涂部分）。
-     * ------------------------------------------------------------
-     * 前传是君主一个人在大地图上走，之前屏幕上没有任何标记指向自己
-     * （视野区域中心就是自己，但玩家不知道中心在哪）。
-     * 写在 `fogHides` 过滤**之后** —— 脚下必然已探明，放后面省得被雾判掉。
-     * ⚠️ 已核对：`_tileCells = SP.cells`（map3d.js:252/278），
-     * 所以 `mark[ci]` 与消费端 `_tileCells[ci]` 是**同一套索引**。
-     * 悬浮标签另在 floatName 定义之后补（那里 grp/lp 才初始化好）。
-     * ============================================================ */
-    var _lordCi = -1;
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
-      var _ciP = GAME.prologue.pos ? GAME.prologue.pos() : -1;
-      if (_ciP >= 0 && _tileCells[_ciP]) {
-        _lordCi = _ciP;
-        mark[_ciP] = [255, 216, 92];
-        cellKind[_ciP] = 'lord';
-        cellRef[_ciP] = { lord: true };
-      }
-      /* ⛔ v157.72（老板 2026-11-16「去除那些任务型地块标色并退役任务」）：
-         v151「雾里有动静的格子自己发光」整条退役 —— 曾在君主视野 ≤10 环内把
-         「有荒野事、且已探明」的格子涂成暗金色，让地图自己当任务板。
-         老板看过地图后要求去掉这层任务型标色（连同那个专用 cellKind 分支）。
-         ⚠️ 荒野行动内核（`GAME.jianghuActsAt`）**未动**：它仍是前传探索 / 斗将 /
-            场景动手共用的唯一判据口 —— 退役的是「地图上的任务点提示」这一层，
-            不是「这格能不能做事」。 */
-    }
+    /* ⛔ v157.85：v132 的「前传里把君主那一格涂成金色」整段删除（前传退役）。 */
+    /* ⛔ v157.72（老板 2026-11-16「去除那些任务型地块标色并退役任务」）：
+       v151「雾里有动静的格子自己发光」整条退役 —— 曾在君主视野 ≤10 环内把
+       「有荒野事、且已探明」的格子涂成暗金色，让地图自己当任务板。
+       ⚠️ 荒野行动内核（`GAME.jianghuActsAt`）**未动**：它是"这格能不能做事"的唯一判据口，
+          退役的是「地图上的任务点提示」这一层。 */
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
     var pos = [], col = [], idx = [], base = 0;
@@ -5038,14 +5014,7 @@
     var grp = new THREE.Group();
     var lp = [];
     function floatName(dir, text, colHex) {
-      /* v152：前传里只浮脚下那一个名字 —— 远处的城名地名都是没探明就不该知道的信息。 */
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
-        try {
-          var _lp = GAME.prologue.pos ? GAME.prologue.pos() : -1;
-          var _ci2 = dir ? SP.nearestCell(dir) : -1;
-          if (_ci2 !== _lp) return;
-        } catch (ePN) { }
-      }
+      /* ⛔ v157.85：前传「只浮脚下那个名字」的过滤已删 —— 现在一律按迷雾决定是否浮名。 */
       /* v92：未探明格**不浮名**。否则雾里还飘着"灰烬城 / 某某府"，
          等于把整张地图的行省结构白送 —— 迷雾就形同虚设了。
          ⚠️ 必须用 **SP**（= GAME.mapSphere）反查，不能用 GAME.sphere：
@@ -5092,10 +5061,7 @@
       if (!c.water) return;
       floatName(dirOfCell(c.x, c.y), (c.name || '城') + ' · 水上', '#6fd7e8');
     });
-    /* v132 前传：君主头顶一个"▲ 你"（这里 grp/lp 已初始化，才能安全调 floatName） */
-    if (_lordCi >= 0 && _tileCells[_lordCi] && _tileCells[_lordCi].dir) {
-      floatName(_tileCells[_lordCi].dir, '▲ 你', '#ffe28a');
-    }
+    /* ⛔ v157.85：前传的「▲ 你」头顶标签已删（前传退役，不再有"君主人偶"）。 */
     if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x0b0f14, transparent: true, opacity: 0.92, depthWrite: false }))); }
     M._labels = grp; scene.add(grp);
   }
@@ -6559,16 +6525,9 @@
     /* v90.81（老板 4 · L0 自转）：地图页静止 10s 无操作 → 星球按 PLANET.spinSec 自动旋转。
        见下方 insetInterval 驱动器（每 33ms 步进 + 重绘）。 */
     if (M._lastAct == null) M._lastAct = Date.now();
-    /* v152d: prologue camera stays glued to the player's tile (undo centerOn / slider).
-       v92.241b：加了 `!M.camFree` —— 玩家主动拉远过就不再抢镜头，
-       否则"往外滚一格、下一帧又被拽回贴地"，表现就是"相机支点被人物焊死了"。 */
-    /* v92.242：支点已废 —— 这里只剩"前传期别把镜头甩太远"这一条软约束。
-       距离基准统一为从**球心**算：贴地 = R + 1.5×HSC。 */
-    var _inPro241 = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
-    if (_inPro241 && !M.camFree) {
-      var _nearD152 = R + HSC * 1.5;
-      if (camO.dist > _nearD152 * 1.05) { camO.dist = _nearD152; _syncZoom(); }
-    }
+    /* ⛔ v157.85：这里是 v152d/v92.241b「前传期相机贴着君主那一格」的软约束 ——
+       前传退役后**相机距离只由滚轮决定**（与 v157.74「滚轮只管高度」同一口径），
+       整段删除。 */
     M._focus = null;                                      /* 兼容壳：任何残留都清掉 */
     _updateWind();                                        /* v157l：风场时间轴/阵风/风向 */
     placeCamera();
@@ -6948,10 +6907,8 @@
     }
     /* v90.83：**当前星球标识**（左下常驻）—— 换球后一眼可辨"现在是哪颗"（生成/进入星球后即时更新）。
        放左下：右上被地形/行政检索栏占用。 */
-    /* v131：前传不画这条 —— 那时候玩家是**一个人**在野外，不是一颗星球的统治者；
-       「🪐 老家 · 种子 … / 行迹 0.1% · 视野 4 格」摆在那里纯属噪音（截图里最扎眼的一处）。 */
-    var _inPrologue = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
-    if (GAME.state && GAME.state.planets && !_inPrologue) {
+    /* ⛔ v157.85：原来前传期不画这条（"一个人不是统治者"）。前传退役 → 恒画。 */
+    if (GAME.state && GAME.state.planets) {
       var _ap = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
       if (_ap) {
         var _pt = '🪐 ' + _ap.name + ' · 种子 ' + _ap.seed;
@@ -7018,8 +6975,8 @@
          v157e：改由**显式开关** M.spinOn 控制（老板要一个"自转"按钮）。
            原来那套"静止 10 秒自动转"是隐式的：玩家没动它却自己转了，
            想停也停不下来。现在只有开关打开才转，且操作后 1.5 秒内让路（拖动不打架）。 */
-      var _inPro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
-      var ok = M.spinOn && !M._surf && !_inPro
+      /* ⛔ v157.85：`!_inPro`（前传不自转）已删 —— 前传退役，判据只剩"开关 + 非地表 + 在地图页"。 */
+      var ok = M.spinOn && !M._surf
         && GAME.ui && GAME.ui.view === 'map' && GAME.state
         && (Date.now() - (M._lastAct || 0) > 1500);
       if (!ok) {
@@ -7283,7 +7240,7 @@
     var _hovLast = 0, _hovCi = -1;
     canvas.addEventListener('mousemove', function (e) {
       if (!M._collider || drag) return;
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return;
+      /* ⛔ v157.85：前传"不弹悬停卡"的判断已删。 */
       var now = (Date.now ? Date.now() : 0);
       if (now - _hovLast < 90) return;
       _hovLast = now;
@@ -7739,41 +7696,9 @@
          建造模式一旦落在前传期，拿着物品怎么点都放不下去（实测 count 恒 0）。
          建造是"编辑地图"，与"角色移动"本来就是两件事。 */
       if (M.mode === M.MODE_BUILD) { M.pickAt(canvas, e.clientX, e.clientY); return; }
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick && M._collider) {
-        var r0 = canvas.getBoundingClientRect();
-        if (!r0.width) { M.pickAt(canvas, e.clientX, e.clientY); return; }
-        /* 用 window 坐标落点（窗口偏移不再影响）：先换算成画布内坐标 */
-        var inX = Math.max(0, Math.min(canvas.width, e.clientX - window.scrollX - r0.left));
-        var inY = Math.max(0, Math.min(canvas.height, e.clientY - window.scrollY - r0.top));
-        var nx0 = (inX / r0.width) * 2 - 1, ny0 = -(inY / r0.height) * 2 + 1;
-        var rc0 = new THREE.Raycaster();
-        rc0.setFromCamera(new THREE.Vector2(nx0, ny0), cam);
-        var h0 = rc0.intersectObject(M._collider, false);
-        if (!h0.length) return;
-        /* v155h：拾取壳已是低模球 → 用命中点方向反查格 */
-        var _pt0 = h0[0].point;
-        var ci0 = pickCiByRay(rc0, _pt0);
-        if (ci0 < 0) return;
-        var fromCi = GAME.prologue.pos();
-        M._lastClickDebug = { ci0: ci0, fromCi: fromCi, moved: moved, drag: wasDrag };
-        if (ci0 === fromCi) { M.pickAt(canvas, e.clientX, e.clientY); return; }   /* 点脚下：开面板 */
-        var res0 = GAME.prologue.mapClick(ci0);
-        M._lastClickDebug.steps = res0 && res0.steps;
-        M._lastClickDebug.ok = res0 && res0.ok;
-        M._lastClickDebug.msg = res0 && res0.msg;
-        if (res0 && res0.ok && res0.steps > 0) {
-          M.buildLordWalking(fromCi, GAME.prologue.pos());
-          M._lastClickDebug.started = true;
-          /* 走完再刷（避免"人还在这边、地图已经换成那边"） */
-          setTimeout(function () {
-            if (GAME.refreshAll) GAME.refreshAll();
-            if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-          }, 240);
-        } else if (res0 && res0.msg && GAME.ui && GAME.ui.toast) {
-          GAME.ui.toast(res0.msg);
-        }
-        return;
-      }
+      /* ⛔ v157.85：这里原有「前传里点地图 = 君主沿地表走过去」整块（含
+         `buildLordWalking` / `_lastClickDebug` / `prologue.mapClick` 三路调用）——
+         前传整段退役，点击一律走 `M.pickAt()`（选地块）。 */
       M.pickAt(canvas, e.clientX, e.clientY);   /* 没拖动 = 点击 → 选地块 */
     });
     canvas.addEventListener('wheel', function (e) {
@@ -8000,12 +7925,9 @@
     cellW = Math.sqrt(cellW);
     var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
     var who = [];
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos) {
-      who.push({ ci: GAME.prologue.pos(), color: 0xffd166, scale: sc * 1.15, key: 'lord', actor: 'RobotExpressive' });
-    } else {
-      var pc = GAME.currentCity && GAME.currentCity();
-      if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
-    }
+    /* ⛔ v157.85：前传的「金色君主人偶」分支已删 —— 现在一律画当前城市。 */
+    var pc = GAME.currentCity && GAME.currentCity();
+    if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
     var stc = (GAME.state && GAME.state._standCi);
     if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xcfd6df, scale: sc * 0.95, key: 'stand' });
     who.forEach(function (w) {
@@ -8021,31 +7943,9 @@
    * 走的那 0.22 秒里腿在摆；到了再触发一次"落脚"动作（`state._walkTo` 清空）。
    * 地图上其他人（战斗单位）走地表由 `M.surfaceWalk()` 同一套插值处理。
    * ============================================================ */
-  var walkAnim = null;          /* { key, from:{pos,quat}, to:ci, t0, dur } */
-  M.walkDur = 220;              /* v153: 走一格用多少毫秒（玩家可感知的位移时长） */
-  function slerpVec(a, b, t) {
-    var dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    dot = Math.max(-1, Math.min(1, dot));
-    var th = Math.acos(dot) || 1e-6;
-    var s1 = Math.sin((1 - t) * th) / Math.sin(th), s2 = Math.sin(t * th) / Math.sin(th);
-    return [a[0] * s1 + b[0] * s2, a[1] * s1 + b[1] * s2, a[2] * s1 + b[2] * s2];
-  }
-  function startWalk(key, g, ci) {
-    var c = _tileCells && _tileCells[ci];
-    if (!c || !c.dir) return false;
-    /* 终点姿态：按终点格重算一次（照 placeFigure 的算法），只取姿态不落位 */
-    var d = c.dir;
-    var n = new THREE.Vector3(d[0], d[1], d[2]).normalize();
-    var qTo = applyQuad(new THREE.Quaternion(), d, ci % 360);
-    walkAnim = {
-      key: key, g: g, to: ci, t0: Date.now(), dur: (M.walkDur || 220),
-      fromPos: g.position.clone(),
-      toDir: [n.x, n.y, n.z],
-      fromQ: g.quaternion.clone(),
-      toQ: qTo
-    };
-    return true;
-  }
+  /* ⛔ v157.85：`walkAnim` / `M.walkDur` / `slerpVec` / `startWalk` 整条链删除 ——
+     它们只服务「前传君主点地图沿地表走过去」（`M.buildLordWalking`）。
+     前传退役后没有人偶需要逐格插值，城市人偶换格直接重摆（`buildFigures`）。 */
   /* ============================================================
    * v92.240k（老板：「在地图界面的地块上放置物体……形成标准化的物品放置和组件引擎」）
    * ------------------------------------------------------------
@@ -8417,63 +8317,18 @@
     var fdt = Math.min(0.05, (_now - figLastT) / 1000) || 0.016; figLastT = _now;
     /* 第一次调用时 figRoot 还不存在 —— 先建出来 */
     if (!figRoot) {
-      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
-        /* 前传首帧：直接把小人摆在当前格（原地，不播走路） */
-        var p0 = GAME.prologue.pos();
-        if (M.buildLordWalking(p0, p0)) { walkAnim = null; M._standVer = 'p' + p0 + '|||' + (_tileCells || []).length; return; }
-      }
+      /* ⛔ v157.85：前传首帧把君主人偶摆到 pos 的分支已删。 */
       buildFigures();
       return;
     }
-    /* ① 正在走的那一个：沿地表弧线插值位置 + 姿态（含朝向） */
-    if (walkAnim) {
-      var w = walkAnim, c2w = _tileCells && _tileCells[w.to];
-      var kw = Math.min(1, (Date.now() - w.t0) / w.dur);
-      var ew = kw * kw * (3 - 2 * kw);
-      if (c2w && c2w.dir) {
-        var rTo = R + Math.max(0, sphElev(w.toDir)) * HSC + 0.55;
-        var rr0 = w.fromPos.length();
-        var rr2 = rr0 + (rTo - rr0) * ew + Math.sin(Math.PI * kw) * 0.8;
-        var curDir = w.fromPos.clone().normalize();
-        var dir3 = slerpVec([curDir.x, curDir.y, curDir.z], w.toDir, ew);
-        w.g.position.set(dir3[0] * rr2, dir3[1] * rr2, dir3[2] * rr2);
-        if (w.fromQ && w.toQ) w.g.quaternion.copy(w.fromQ).slerp(w.toQ, ew);
-        if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
-          w.g.userData.actor.skill('walk');
-          w.g.userData.actor.update(fdt);
-        } else if (w.g.userData && w.g.userData.legs) {
-          var sw2 = Math.sin(Date.now() / 70) * 0.5;
-          w.g.userData.legs[0].rotation.x = sw2;
-          w.g.userData.legs[1].rotation.x = -sw2;
-        }
-        if (kw >= 1) {
-          if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
-            w.g.userData.actor.skill('idle');
-            w.g.userData.actor.update(fdt);
-          } else if (w.g.userData && w.g.userData.legs) {
-            w.g.userData.legs[0].rotation.x = 0;
-            w.g.userData.legs[1].rotation.x = 0;
-          }
-          walkAnim = null;
-        }
-      } else walkAnim = null;
-      /* 走路期间不许重建（否则会被刷新成"直接站在终点"） */
-      if (walkAnim) return;
-    }
+    /* ⛔ v157.85：原「① 正在走的那一个：沿地表弧线插值」整段删除（前传退役）。 */
     /* ② 谁该站在哪 —— 版本变化才重建（换格只挪） */
-    var ver = (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos ? ('p' + GAME.prologue.pos()) : '')
-      + '|' + ((GAME.state && GAME.state._standCi) || '')
+    var ver = ((GAME.state && GAME.state._standCi) || '')
       + '|' + (GAME.currentCity && GAME.currentCity() ? (GAME.currentCity().ci || '') : '')
       + '|' + ((_tileCells || []).length);
     if (ver !== M._standVer) {
       M._standVer = ver;
-      var lordCi = (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos) ? GAME.prologue.pos() : null;
-      var lordFig = figCache.lord && figCache.lord.g;
-      if (lordCi != null && lordFig && figCache.lord.ci !== lordCi && !walkAnim) {
-        figCache.lord.ci = lordCi;
-        startWalk('lord', lordFig, lordCi);
-        return;
-      }
+      /* ⛔ v157.85：君主人偶的"换格就补走路动画"已删（前传退役）。 */
       buildFigures();
       return;
     }
@@ -8492,33 +8347,15 @@
       g.scale.y = (g.userData.baseScale || g.scale.y) * (1 + br * 0.1);
     });
   }
-  /* v153d：前传里"当前格"小人的唯一建法 —— 先摆到**上一格**，再沿地表走一步。
-     （syncFigures 里只拦 ver 变化、buildFigures 里没有 from 信息 —— 那是 bug。） */
-  M.buildLordWalking = function (fromCi, toCi) {
-    if (figRoot) { scene.remove(figRoot); figRoot = null; }
-    figCache = {};
-    figRoot = new THREE.Group();
-    scene.add(figRoot);
-    var cellW = Math.sqrt((4 * Math.PI * R * R / Math.max(1, (_tileCells || []).length)) || 1);
-    var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
-    var g = makeFigure(0xffd166, sc * 1.15, 'RobotExpressive');
-    if (!placeFigure(g, fromCi)) return false;
-    figCache.lord = { g: g, ci: toCi };
-    figRoot.add(g);
-    /* 记下版本，免得 syncFigures 在走路途中又重建一次 */
-    M._standVer = 'p' + toCi + '|' + ((GAME.state && GAME.state._standCi) || '')
-      + '|' + (GAME.currentCity && GAME.currentCity() ? (GAME.currentCity().ci || '') : '')
-      + '|' + ((_tileCells || []).length);
-    startWalk('lord', g, toCi);
-    return true;
-  };
+  /* ⛔ v157.85：`M.buildLordWalking(fromCi, toCi)` 整条删除 —— 它是前传君主
+     「先摆上一格再走过来」的唯一建法，前传退役后无调用者。 */
   M.buildFigures = buildFigures;
   M.syncFigures = syncFigures;
   /* v153：给脚本/测试看小人此刻的真实世界坐标与所在格（只读出口） */
   M.figureOf = function (key) {
     var f = figCache[key || 'lord'];
     if (!f || !f.g) return null;
-    return { ci: f.ci, pos: [f.g.position.x, f.g.position.y, f.g.position.z], walking: !!walkAnim };
+    return { ci: f.ci, pos: [f.g.position.x, f.g.position.y, f.g.position.z], walking: false };  /* v157.85：前传行走插值已退役，该字段恒 false（保留读取兼容） */
   };
 
   /* 点击拾取：Raycaster 打到地块填充 → 取格类型/等级 → 存为选中（画在画布上）*/
@@ -8678,12 +8515,7 @@
      * 放在迷雾判定**之前**：雾里的格子也要能点（`P.pathTo` 会算到已探明的边上），
      * 否则新人点远处只会得到一句"未探明"，而不知道该怎么过去。
      * ============================================================ */
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
-      var pr = GAME.prologue.mapClick(ci);
-      if (pr && pr.msg && GAME.ui && GAME.ui.toast) GAME.ui.toast(pr.msg);
-      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-      return;
-    }
+    /* ⛔ v157.85：前传「点格子 = 让它算能不能走过去」分支已删（前传退役）。 */
     /* ============================================================
      * v92.240k：放置模式 —— 手上拿着东西时，点格 = 落位（不走地块原逻辑）。
      * ------------------------------------------------------------
@@ -11533,8 +11365,6 @@
     renderHud();
     lastT = performance.now();
     if (!rafId) rafId = requestAnimationFrame(step);
-    var ph = document.getElementById('prologue-screen');
-    if (ph) ph.style.display = 'none';
     return { name: B.name || bid, bid: bid, lvl: lvl };
   }
   S._buildPreviewScene = buildPreviewScene;   /* 排障/探针：直接看它建得出来建不出来 */
@@ -12148,8 +11978,6 @@
       renderHud();
       lastT = performance.now();
       if (!rafId) rafId = requestAnimationFrame(step);
-      var ph0 = document.getElementById('prologue-screen');
-      if (ph0) ph0.style.display = 'none';
       return { ok: true, scene: 'city', name: '我的城（3D）' };
     }
     /* v147：**建造预览**不是一张静态场景，而是照着候选建筑现搭一格 + 当前城做参照 */
@@ -12174,11 +12002,7 @@
     renderHud();
     lastT = performance.now();
     if (!rafId) rafId = requestAnimationFrame(step);
-    /* 让 HUD 层知道现在在场景里（前传 HUD 要暂时让位） */
-    if (G.prologue && G.prologue.on && G.prologue.on()) {
-      var ph = document.getElementById('prologue-screen');
-      if (ph) ph.style.display = 'none';
-    }
+    /* ⛔ v157.85：前传 HUD（#prologue-screen）的让位逻辑已删 —— 前传退役。 */
     return { ok: true, scene: sceneId, name: cfg.name };
   };
 
@@ -12224,8 +12048,7 @@
     /* v143.2：行人随 propRoot 清（数组同步空，_cityNpcs() 归零） */
     cityNpcs = [];
     npcMatSkin = null; npcMatTint = null; npcMatPants = null;
-    var ph = document.getElementById('prologue-screen');
-    if (ph) ph.style.display = '';
+    /* ⛔ v157.85：恢复前传 HUD 的显示已删（前传退役）。 */
     if (G.refreshAll) { try { G.refreshAll(); } catch (e) {} }
     /* v143：回地块界面（带 ci 重开那一格的面板）—— 失败不挡关门，场景必须能退 */
     if (exitTo === 'land' && exitCi != null && G.ui && G.ui.openLandModalCi) {
@@ -12275,17 +12098,12 @@
 
   S.play = function (actId, ci, opts) {
     opts = opts || {};
-    /* v143（正式阶段也走场景）：宿主分序章/正式两路。
-       序章：结算走 G.prologue.act（不锁日、双倍率）—— 老路不动；
-       正式：结算走 GAME.jianghuDo（日锁/将选/账目全在那儿）—— 也不新写一份。
-       默认按 prologue.on() 推断；调用方（ui.doJianghu）显式传 host:'live'。 */
-    var live = opts.host === 'live'
-      || (opts.host == null && !(G.prologue && G.prologue.on && G.prologue.on()));
+    /* ⛔ v157.85：前传整段退役 → 场景只有一个宿主 = **正式阶段**（`live` 恒真）。
+       原来这里按 `prologue.on()` 分两路，还从 `prologue.cellTypeOf` 取地形；
+       现在地形统一取逻辑球面字段（与 `jianghuActsAt` 同源）。 */
+    var live = true;
     var terrain = null;
-    if (G.prologue && G.prologue.cellTypeOf && ci != null) terrain = G.prologue.cellTypeOf(ci);
-    /* 正式阶段没有 prologue.cellTypeOf —— 回退到逻辑球面的地形字段
-       （jianghuActsAt 判「有没有荒野事」用的就是它，同源不会打架）。 */
-    if (terrain == null && ci != null && G.sphere && G.sphere.cells && G.sphere.cells[ci]) {
+    if (ci != null && G.sphere && G.sphere.cells && G.sphere.cells[ci]) {
       terrain = G.sphere.cells[ci].type;
     }
     /* 进场景的门槛与按钮一致：这一格今天能做这件事，才让进 */
@@ -12374,24 +12192,15 @@
         showResult(nd, _set.res, 'tao');
         return _set.res;
       }
-      var _foe = G.prologue.duelFoe(_ci, nd.speciesId);
-      var _r2 = G.prologue.duelBegin(_ci, _foe);
-      if (!_r2.ok) {
-        showResult(nd, { ok: false, msg: _r2.msg }, 'duel');
-        return _r2;
-      }
-      nd.done = true;
-      if (nd.ring) nd.ring.visible = false;
-      dimProp(o);
-      if (G.ui && G.ui.openDuelPanel) G.ui.openDuelPanel();
-      spawnDuelFoe(nd);                   /* 斗将视觉：玩家身前立一个敌人 */
-      return _r2;
+      /* ⛔ v157.85：`G.prologue.duelFoe/duelBegin` 分支已删（前传的君主斗将）。
+         正式阶段的遭遇在上面的 `ctx.live` 分支走 `jianghuDo(…,'tao')`。 */
+      return { ok: false, msg: '这里现在打不了' };
     }
     if (nd.done) return { ok: false, msg: '这里已经收拾过了' };
     var actId = nd.act || (ctx && ctx.actId) || 'cai';
     var ci = (ctx && ctx.ci != null) ? ctx.ci : null;
     var res = null;
-    if (ctx && ctx.live) {
+    {
       /* v143：正式宿主 —— 结算走 GAME.jianghuDo（地块按钮那一个出口）。
          失败（日锁/精力体力不够）不标 done：那不是"收拾过了"，是"今天没干成"，
          节点得留着，明天还能来。成功才落 done + 记退出落点（回地块界面）。 */
@@ -12409,10 +12218,6 @@
         bad: r0.bad
       } : { ok: false, msg: '没有结果' };
       if (res.ok) ctx.exitTo = 'land';   /* 结算成功 → 退出时回地块界面（ux：看完结果回主线） */
-    } else {
-      try {
-        res = G.prologue && G.prologue.act ? G.prologue.act(ci, actId) : null;
-      } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
     }
     nd.done = true;
     playerActing = true;                   /* 采集/垂钓：蹲下动作，走动即取消 */
@@ -12516,7 +12321,10 @@
     return h >>> 0;
   }
   function encounterFor(cfg, ci) {
-    if (!(G.prologue && G.prologue.on && G.prologue.on())) return null;   /* 只有前传君主一个人在外面走 */
+    /* ⛔ v157.85：前传退役 —— 原先「只有前传君主一个人在外面走才有随机遭遇」，
+       现在没有前传，这条随机遭遇随之取消（正式阶段的红圈遭遇走 jianghuDo 那条账）。 */
+    return null;
+    // eslint-disable-next-line no-unreachable
     var LIST = (D && D.DUEL_FOES) || [];
     if (!LIST.length) return null;
     var h = hashStr(cfg.id + '|' + (ci | 0) + '|' + sceneDay());
@@ -14194,9 +14002,9 @@
       name: name, avatar: avatar, gender: gender,
       region: $('#create-region').value,
       portraitSeed: avatarIdx,
-      /* v105：走界面的玩家从**前传**开始（无城 → 打怪升到 Lv20 → 立城）。
-         `newGame` 默认 false —— 324 处测试直接调它，默认开会集体假红。 */
-      prologue: true,
+      /* ⛔ v157.85（老板「去掉前传的任务机制」→ 确认口径：**整段前传**）：
+         原来这里传 `prologue: true` —— 从界面进来的玩家先玩"无城荒野"，
+         打怪升到 Lv20 才立城。前传整段退役后，新局**一律直接有城**。 */
     });
     GAME.map.generate();
     GAME.log('欢迎 ' + name + ' 踏上争霸之路！');
@@ -14209,8 +14017,9 @@
   ui.enterGame = function () {
     $('#screen-create').classList.add('hidden');
     $('#screen-game').classList.remove('hidden');
-    /* v105：前传从**地图**进 —— 你手上没有城，只有一队人 */
-    ui.setView((GAME.prologue && GAME.prologue.on()) ? 'map' : 'city');
+    /* ⛔ v157.85：原来按 `GAME.prologue.on()` 决定进地图还是进城市 ——
+       前传退役后新局一定有城，直接进城市管理。 */
+    ui.setView('city');
     /* v91.36（老板）：「不要在首次载入主页/城市管理界面时预加载别的了，太影响心情」——
        v91.33 的后台预建（即便 v91.35 已分帧 + 遮罩）仍会在进城市管理时占用 CPU、
        给低配机带来可感的迟滞。**整段撤除**：3D 地图改为**首次进地图时**才构建
@@ -17189,7 +16998,7 @@
   ui._tutIdx = 0;
   ui.tutorialSteps = function () {
     var c = GAME.currentCity();
-    var pro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
+    /* ⛔ v157.85：`pro`（是否前传）随前传退役删除；后续按 `pro` 分支的地方改走正式口径。 */
     var steps = [
       {
         t: '这颗星球，归你了',
@@ -17206,14 +17015,9 @@
         n: '继续'
       }
     ];
-    if (pro) {
-      steps.push({
-        t: '先活着',
-        b: '你现在<b>还没有城</b>，只有一队人。<br><br>'
-          + '在地图上走到附近的营地和遗迹，打几场、升到 <b>Lv20</b>，就能<b>立城</b>。',
-        n: '开始'
-      });
-    } else {
+    /* ⛔ v157.85：原来这里按 `pro` 分两套引导（前传 = "先活着，升到 Lv20 立城"）。
+       前传退役 → 只剩正式阶段这一套。 */
+    {
       var h = c ? ui.nextHintOf(c) : null;
       steps.push({
         t: '接下来的第一步',
@@ -17959,8 +17763,7 @@
    * ============================================================ */
   ui.phaseOf = function () {
     var s = GAME.state;
-    if (!s) return 'prologue';
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return 'prologue';
+    if (!s) return 'early';      /* v157.85：'prologue' 阶段随前传退役删除 */
     var n = ((GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || [])).length;
     var wins = GAME.stat ? (GAME.stat('wins') | 0) : 0;
     /* early 的退出口径只看「城 + 胜场」：
@@ -22655,7 +22458,7 @@
        只留天数 / 等级 / 三个动作。立城后 P.on() 变 false，这里自动撤掉。
        放在**所有刷新路径的汇合点**（renderView）而不是 setView：
        ctx.refresh 走的是 GAME.refreshView → renderView，漏了它打完一场界面就不更新。 */
-    if (GAME.prologue && GAME.prologue.syncScreen) GAME.prologue.syncScreen();
+    /* ⛔ v157.85：前传 HUD 的 syncScreen 已删（前传退役）。 */
     /* v150（P0-1）：顶栏按阶段软隐藏（幂等、不删节点）——
        放在同一个汇合点：任何刷新路径都会经过这里。 */
     ui.syncPhase();
@@ -22772,14 +22575,10 @@
   /* --------- 城内（36格：政务厅占右侧4格 + 32格可建；围墙环绕不占格） --------- */
   ui.cityHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
-    /* ============================================================
-     * v131（老板：「应当根治」）：前传 = 君主个人冒险 → **开局真的没有城**。
-     * 这里必须兜住：`renderView` 每秒都会调到本函数，
-     * 旧代码第 2 行就 `c.col` —— 无城时整页抛异常、刷新链整条断掉
-     * （实测：`Cannot read properties of null (reading 'col')`）。
-     * 无城时给一页"营地"：只说你现在站在哪、周围是什么、往哪走。
-     * ============================================================ */
-    if (!c) return ui.campHTML();
+    /* ⛔ v157.85：前传退役 → 不存在"开局没有城"。这里只留一句兜底文案，
+       防止异常档（城数据损坏）把每秒刷新链炸断（旧写法第 2 行就 `c.col`）。 */
+    if (!c) return '<div class="ui-page"><div class="gold-heading">还没有城</div>'
+      + '<div class="ui-sub">当前存档没有可用城市 —— 请回到主菜单重新开局。</div></div>';
     var COLS = c.col || 6, ROWS = c.row || 6;
     ui.fitBoard(COLS, ROWS);              /* v27：按窗口算格子边长 */
     var M = ui.isoMetrics(COLS, ROWS);
@@ -22862,16 +22661,7 @@
    * `ui.viewBoxSize` 在 jsdom 下拿不到布局（clientWidth 恒 0），
    * 于是回落到基准值 —— 测试因此仍然是确定性的。
    * ------------------------------------------------------------ */
-  /* ============================================================
-   * v131：**营地视图**（前传 · 没有城时的"我的地盘"页）
-   * ------------------------------------------------------------
-   * 前传是君主个人冒险，开局没有城 —— 但 `renderView` 每秒都会调 `cityHTML`，
-   * 那里第 2 行就 `c.col`，无城直接把刷新链炸断。
-   * 所以这一页的职责有两件：
-   *   ① 兜住"无城"这个状态（不抛异常）；
-   *   ② 说清**玩家此刻在哪、周围是什么、往哪走** —— 这就是个人冒险的地图页。
-   * 只说事实，不写"你要重建文明"之类（沿用 prologue.js 的调性）。
-   * ============================================================ */
+  /* ⛔ v157.85：「营地视图」（v131 前传 · 没有城时的地盘页）随前传整段退役删除。 */
   /* ============================================================
    * v132：**点名斗将**（老板「就是大地图加地块探索加斗将等」）
    * ------------------------------------------------------------
@@ -22893,223 +22683,12 @@
    * ⚠️ 一分一合都不在这里算：血量与伤害全由 `GAME.duel.play` 从头复算
    *   （见 js/duel.js —— 三条口径与数值表都在那里），面板只负责画。
    * ============================================================ */
-  ui.openDuelPanel = function () {
-    var P = GAME.prologue || {};
-    var d = P.duelOf ? P.duelOf() : null;
-    if (!d) { ui.toast('没有正在进行的斗将'); return; }
-    /* v151：两种模式共用同一张竞技场 —— `mode:'act'` 是"打这一格的事"（回合制），
-       胜负回灌 `P.resolve`；其余仍是"点名斗将"（P.duelStep）。 */
-    var isAct = d.mode === 'act';
-    var DUA = (GAME.DATA && GAME.DATA.DUEL_ARENA) || {};
-    var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
-    var MV = DU.moves || {}, ORDER = DU.moveOrder || Object.keys(MV);
-    var lord = P.lord ? P.lord() : null;
-    var f = d.foe || {};
-    /* 复算（不存血量）：血条永远是"这一串招式"的确定结果 —— 与 duelStep 同源。
-       对手走 `P.duelFoeFull`（开局快照），杜绝"判定一个对手、画面另一个"。 */
-    var foe = P.duelFoeFull ? P.duelFoeFull(d) : null;
-    var r = (GAME.duel && GAME.duel.play && lord && foe)
-      ? GAME.duel.play(lord, foe, d.moves || [], d.seed) : null;
-    if (!r) { ui.toast('斗将状态读不出来'); return; }
-    var last = r.rounds.length ? r.rounds[r.rounds.length - 1] : null;
-    var mvShow = function (m) {
-      var x = MV[m] || {};
-      var mu = (x.mul == null ? 1 : x.mul), tk = (x.taken == null ? 1 : x.taken);
-      return (x.name || m) + ' ×' + mu.toFixed(2) + '/×' + tk.toFixed(2);
-    };
+  /* ⛔ v157.85：`ui.openDuelPanel`（前传「点名斗将」的竞技场面板）整函数删除 ——
+     它读的是 `GAME.prologue.duelOf()`，前传退役后没有数据源。
+     ⚠️ 3D 斗将舞台 `duel3d` 本身保留：它是"表现层"，后续做正式斗将时还要用。 */
 
-    /* ============================================================
-     * v156.20（老板「目前还是偏文字游戏了，把文字场景化，3D 对战」）
-     * ------------------------------------------------------------
-     * 原来这一块是「两张画像 + 中间 VS」——本质还是一张文字卡。
-     * 现在：**3D 舞台占主体**（两个角色真的站上去打），
-     *   名字/血条/攻防压成半透明的 HUD 贴在舞台两侧上方 ——
-     *   画在 3D 里必糊，且读数读不出来，所以数值仍走 DOM。
-     * 舞台本体由 `GAME.duel3d`（js/duel3d.js）驱动；它**只读**本函数算出的结果，
-     * 不另算一份胜负（判定唯一出口仍是 GAME.duel.play）。
-     * ============================================================ */
-    var hud = function (side, g, icon, name, lv, tag, hp, max, atk, def, dmg, crit) {
-      var pct = Math.max(0, Math.min(100, Math.round(hp / Math.max(1, max) * 100)));
-      var col = pct > 60 ? 'var(--green-ok)' : (pct > 30 ? 'var(--gold-light)' : 'var(--red-light)');
-      return '<div class="duel-hud ' + side + '">'
-        + (dmg ? '<div class="duel-dmg' + (crit ? ' crit' : '') + '">-' + dmg + (crit ? ' 暴击' : '') + '</div>' : '')
-        + '<div class="duel-hud-name">' + U.escape(name)
-        + '<span class="duel-hud-sub">Lv' + lv + (tag ? ' · ' + U.escape(tag) : '') + '</span></div>'
-        + '<div class="duel-hp"><i style="width:' + pct + '%;background:' + col + ';"></i></div>'
-        + '<div class="duel-hud-num">' + hp + ' / ' + max
-        + '　<span class="duel-hud-sub">攻 ' + atk + ' 防 ' + def + '</span></div>'
-        + '</div>';
-    };
-    var fly = !!last && !r.over;
-    var arena = '<div class="duel-stage">'
-      + '<div class="duel-stage3d" id="duel-stage3d"></div>'
-      + hud('me', lord, '', (lord && lord.name) || '君主', (lord && lord.level) | 0, '我',
-        r.hpA, r.maxA, r.atkA, r.defA, fly ? last.dmgToA : 0, !!(last && last.res === 'b'))
-      + hud('foe', foe, (f.icon || (foe && foe.species && foe.species.icon) || '👤'),
-        f.name || '对手', f.level | 0, f.tag || '',
-        r.hpB, r.maxB, r.atkB, r.defB, fly ? last.dmgToB : 0, !!(last && last.res === 'a'))
-      + '<div class="duel-stage-vs">VS</div>'
-      + '</div>';
-
-    /* ---- 对手路数读不读得出来（心理战那一半仍保留） ---- */
-    var tendTxt = '', readable = false, bestK = null;
-    try {
-      if (GAME.battle && GAME.battle.duelTendency) {
-        var w = GAME.battle.duelTendency({ yw: f.yw, zm: f.zm, tong: f.tong });
-        var keys = Object.keys(w);
-        var sortv = keys.map(function (k) { return w[k]; }).sort(function (a, b) { return b - a; });
-        bestK = keys[0];
-        keys.forEach(function (k) { if (w[k] > w[bestK]) bestK = k; });
-        var ratio = sortv[1] > 0 ? (sortv[0] / sortv[1]) : 9;
-        readable = ratio >= 1.15;
-        if (readable) {
-          var why = bestK === 'stab' ? '手上有劲' : bestK === 'guard' ? '守得稳'
-            : bestK === 'feint' ? '心思多' : '脾气慢';
-          tendTxt = '看它架势：偏' + ((MV[bestK] || {}).name || bestK) + '（' + why + '）';
-        } else {
-          tendTxt = '看它架势：四平八稳 —— 读不出偏哪一手，只能临场赌';
-        }
-      }
-    } catch (e) {}
-
-    /* ---- 交手记录：只留最近 3 合 ---- */
-    var hist = '';
-    r.rounds.slice(-3).forEach(function (rr, k) {
-      var idx = Math.max(1, r.rounds.length - Math.min(3, r.rounds.length) + k + 1);
-      var cl = rr.res === 'a' ? 'var(--green-ok)' : (rr.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
-      hist += '<div style="font-size:var(--fs-cap);padding:1px 0;color:' + cl + ';">'
-        + '第' + idx + '合　我' + U.escape(rr.aName) + ' ⚔ ' + U.escape(rr.bName)
-        + '　我掉 <b>' + rr.dmgToA + '</b> · 他掉 <b>' + rr.dmgToB + '</b></div>';
-    });
-
-    var body = '';
-    if (!r.over) {
-      body = arena
-        + '<div class="ui-sub" style="margin-top:7px;text-align:center;">'
-        + '第 <b>' + (r.rounds.length + 1) + '</b> 合　每合双方各出手 <b>1</b> 次'
-        + '（打满 ' + (r.maxRounds || 12) + ' 合 · 血见底即分胜负）</div>'
-        + '<div class="ui-sub" style="margin-top:2px;text-align:center;opacity:.75;">'
-        + '血 = 体力（我的 ' + r.maxA + ' · 他的 ' + r.maxB + '）　伤害 = 攻防对冲 × 招式倍率</div>'
-        + (tendTxt ? '<div style="margin-top:4px;text-align:center;font-size:var(--fs-cap);'
-            + 'color:' + (readable ? 'var(--green-ok)' : 'var(--gold-light)') + ';">' + U.escape(tendTxt) + '</div>' : '')
-        + (f.desc ? '<div class="ui-sub" style="margin-top:3px;text-align:center;opacity:.75;font-size:var(--fs-cap);">'
-            + U.escape(f.desc) + '</div>' : '')
-        + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px;">'
-        + ORDER.map(function (id) {
-            var m = MV[id] || {};
-            var hot = bestK && m.beats === bestK ? ' outline:1px solid var(--gold-light);' : '';
-            return '<button class="btn gold" data-action="' + (isAct ? 'prologue-fight-hit' : 'prologue-duel-hit') + '" data-mv="' + id + '"'
-              + ' style="min-width:96px;' + hot + '"'
-              + ' title="' + U.escape(m.note || '') + '">' + U.escape(mvShow(id)) + '</button>';
-          }).join('')
-        + '</div>'
-        /* v151：打这一格的事可以"先撤"（账不结、费用不退）—— 打不动就走，不是死局 */
-        + (isAct ? '<div style="margin-top:8px;text-align:center;">'
-            + '<button class="btn" data-action="prologue-fight-flee" data-ci="' + (d.ci | 0) + '">先撤（这一趟白跑）</button></div>' : '')
-        + '<div class="ui-sub" style="margin-top:7px;text-align:center;opacity:.7;font-size:var(--fs-cap);">'
-        + '出手× / 挨打×　·　突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
-    } else {
-      /* ---- 结算卡（老板：「最终胜利有一个弹窗显示，并提示经验和物资收获」） ---- */
-      /* ============================================================
-       * v152（实测踩到）：**大字与账本两套口径** ——
-       *   斗将 5 合是我输了（防御方先倒下），可账本按 force:'lose' 判成"这趟失败"，
-       *   面板却还按斗将的 winner 写大字「胜」。玩家看到"胜"，拿到的却是输的奖励。
-       * 口径：**大字只认账本**（`d.actRes.bad`）—— 回合只是过程，结果只有一份。
-       * ============================================================ */
-      var act0p = d.actRes || null;
-      var win = act0p ? !act0p.bad : (r.winner === 'atk');
-      var lose = act0p ? !!act0p.bad : (r.winner === 'def');
-      var big = win ? '胜' : (lose ? '负' : (d.winner === 'flee' ? '撤' : '平'));
-      var bigCol = win ? '#ffd166' : (lose ? '#d9534f' : '#9a9284');
-      var d0 = d || {};
-      /* v151：mode:'act' 的账是 `P.resolve` 结的（d.actRes / d.gain / d.txt） */
-      var act0 = d0.actRes || null;
-      var gain0 = (d0.gain != null) ? (d0.gain | 0) : (d0.gain | 0);
-      var loot = (d0.loot || []).map(function (it) {
-        return '<span style="display:inline-block;padding:2px 8px;border:1px solid var(--wood-light);'
-          + 'border-radius:4px;margin:0 4px;">' + U.escape(it.name) + ' ×' + it.n + '</span>';
-      }).join('');
-      body = arena
-        + '<div style="text-align:center;margin-top:10px;">'
-        /* ⚠️ 结算大字不能写裸 px（smoke 的"零裸字号"会照出来）——走令牌 + transform 放大。 */
-        + '<div style="font-size:var(--fs-h1);font-weight:800;color:' + bigCol
-        + ';line-height:var(--lh-1);transform:scale(1.6);margin:4px 0 8px;">' + big + '</div>'
-        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d0.txt || (act0 && act0.msg) || '') + '</div>'
-        + '<div class="ui-sub" style="margin-top:2px;">共 ' + r.rounds.length + ' 合 · 占先 '
-        + (r.wa | 0) + ' : ' + (r.wb | 0) + '</div></div>'
-        + '<div style="margin-top:9px;padding:9px 11px;border:1px solid var(--wood-light);'
-        + 'border-radius:7px;background:rgba(var(--sh-rgb),.3);">'
-        + '<div style="font-size:var(--fs-cap);">经验　<b style="color:var(--gold-light);">+'
-        + gain0 + '</b></div>'
-        + (loot ? '<div style="font-size:var(--fs-cap);margin-top:4px;">物资　' + loot + '</div>'
-          : (win ? '' : '<div class="ui-sub" style="margin-top:4px;">这一战没捞到东西</div>'))
-        + '</div>'
-        + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
-        + '<div style="margin-top:11px;text-align:center;">'
-        + '<button class="btn" data-action="prologue-duel-close">' + (isAct ? '收手 · 回地图' : '收手') + '</button></div>';
-    }
-
-    var _titleWin = (d && d.actRes) ? !d.actRes.bad : (r.winner === 'atk');
-    var _titleLose = (d && d.actRes) ? !!d.actRes.bad : (r.winner === 'def');
-    var title = r.over
-      ? '⚔ 斗将 · ' + (_titleWin ? '拿下' : _titleLose ? '败退' : '平手')
-      : '⚔ 斗将 · ' + U.escape(f.name || '对手');
-    ui.openModal('<div class="gold-heading">' + title + '</div>' + body, { size: 'auto' });
-    /* v156.20：3D 舞台挂载（幂等 —— 每合重绘都会再进来一次，场景只建一次）。
-       `mount` 只做表现，不参与判定；WebGL 不可用时它返回 false，面板照旧能用。 */
-    try {
-      if (GAME.duel3d && GAME.duel3d.mount) {
-        GAME.duel3d.mount({
-          holderId: 'duel-stage3d',
-          roundNo: r.rounds.length,
-          over: r.over,
-          winner: r.winner,
-          dmgToA: last ? last.dmgToA : 0,
-          dmgToB: last ? last.dmgToB : 0
-        });
-      }
-    } catch (e) { }
-  };
-
-
-  ui.campHTML = function () {
-    var s = GAME.state || {};
-    var P = GAME.prologue || {};
-    var pos = (s.prologue && s.prologue.pos) | 0;
-    var sp = GAME.sphereOf ? GAME.sphereOf() : GAME.sphere;
-    var cell = (sp && sp.cellOf) ? sp.cellOf(pos) : null;
-    var T = ((GAME.DATA || {}).TERRAIN || {})[cell && cell.type] || { name: '荒野', icon: '·' };
-    var lord = P.lord ? P.lord() : null;
-    var lv = lord ? (lord.level | 0) : 1;
-    var need = P.needLv ? P.needLv() : 20;
-    var en = (lord && GAME.energyNowOf) ? Math.round(GAME.energyNowOf(lord)) : 0;
-    var enMax = (lord && GAME.energyMaxOf) ? Math.round(GAME.energyMaxOf(lord)) : 100;
-    var nb = P.neighbors ? P.neighbors() : [];
-    var coord = (sp && sp.dirOf) ? (sp.dirOf(pos) || '') : '';
-    var rows = nb.map(function (n) {
-      var tn = ((GAME.DATA || {}).TERRAIN || {})[n.type] || { name: '荒野', icon: '·' };
-      var marks = (n.acts || []).map(function (a) { return a.name || a.id || ''; }).filter(Boolean);
-      return '<button class="btn" data-action="prologue-move" data-ci="' + n.ci + '" '
-        + 'style="display:flex;justify-content:space-between;align-items:center;width:100%;'
-        + 'margin-bottom:6px;text-align:left;">'
-        + '<span>' + (n.dir ? '<b style="opacity:.7;">' + U.escape(n.dir) + '</b>　' : '')
-        + (tn.icon || '·') + ' ' + U.escape(tn.name || '荒野') + '</span>'
-        + '<span style="opacity:.7;font-size:var(--fs-cap);">'
-        + (marks.length ? U.escape(marks.slice(0, 2).join(' · ')) : '走过去看看')
-        + '</span></button>';
-    }).join('');
-    return '<div class="ui-page" style="max-width:620px;margin:0 auto;padding:10px 4px;">'
-      + '<div class="gold-heading">🏕 营地</div>'
-      + '<div class="ui-sub" style="margin:6px 0 2px;">你们 ' + U.numText(s.prologue && s.prologue.res ? (s.prologue.res.pop || 0) : 0, 0)
-      + ' 个人，还没有城。此刻站在「' + U.escape(T.name || '荒野') + '」' + (coord ? '　' + U.escape(coord) : '') + '。</div>'
-      + '<div class="ui-sub" style="margin-bottom:12px;">君主 Lv<b style="color:var(--gold-light);">' + lv + '</b> / '
-      + need + '　⚡ 精力 ' + en + ' / ' + enMax + '</div>'
-      + (rows || '<div class="ui-sub">四周一片死寂，走不动了。</div>')
-      + '<div class="ui-sub" style="margin-top:12px;opacity:.75;">点一格就往前走一步（耗 1 精力）。'
-      + '走到 Lv' + need + ' 就能在这里立城。</div>'
-      + '</div>';
-  };
+  /* ⛔ v157.85：`ui.campHTML`（前传「营地」页：没有城时兜住 renderView 并给荒野行动列表）
+     整函数删除。前传退役后 `renderView` 一定有城可渲染。 */
 
   ui.DESIGN = { w: 1180, h: 820 };
   ui.SIDE_W = 283;          /* v43：CSS 侧栏宽度已固定为 283px（原为 clamp(272px,24vw,320px) 浮动值），
@@ -28071,11 +27650,7 @@
       canvas.addEventListener('click', function (e) {
         var r = GAME.map.pick(canvas, e.clientX, e.clientY);
         if (!r) return;
-        if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
-          var mr = GAME.prologue.mapClick(r.ci);
-          if (mr && mr.msg && !mr.here && !mr.arrived) ui.toast(mr.msg);
-          return;
-        }
+        /* ⛔ v157.85：前传「点击 = 君主走路」分支已删（前传退役）。 */
         /* ============================================================
          * v156.39：**2D 兜底路径的点击要开面板**。
          * ------------------------------------------------------------
@@ -29294,82 +28869,15 @@ ui.openDuel = function (fid, moveId) {
       '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
 
-  /* ============================================================
-   * v151（老板：「地图就是游戏本体」）：**前传里点脚下这一格 = 就地动手**
-   * ------------------------------------------------------------
-   * 改前：点地图（含脚下）→ 弹出一整套"未占领野地面板"（守军/派驻/掠夺/占领），
-   * 而前传没有兵、没有城，那些按钮一个都用不了 —— "点了一块迷雾地，
-   * 弹出一个讲它有什么的面板"。
-   * 改后：前传在脚下一格只给两件事：这格能做什么（⚔ 打 / ⛏ 采）、
-   * 以及"走进去"（2.5D 场景）。正式阶段的门票是兵，前传的门票是体力 ——
-   * 同一格在两种阶段给两种面板，各自只说自己用得上的一句话。
-   * ⚠️ 单独成函数（不塞进 openLandModalCi 体内）：那份 14k 字的地块界面
-   * 由 smoke §v89.136 按源码窗口切片断言，往里插分支会把它挤出窗口。
-   * ============================================================ */
-  ui.openPrologueLand = function (ci) {
-    var Pg = GAME.prologue;
-    if (!Pg || !Pg.pos || ci !== Pg.pos()) {
-      ui.toast('先点地图走过去 —— 站在那一格上才能动手');
-      return;
-    }
-    var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
-    var pacts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
-    var lordP = Pg.lord ? Pg.lord() : null;
-    var hereT = (DATA.TERRAIN || {})[(tile || {}).type] || { name: (tile || {}).type || '荒野' };
-    var actRows = pacts.length ? pacts.map(function (a) {
-      var d = a.def || a;
-      var nm = d.name || a.name || a.id;
-      var kind = d.kind || '';
-      var ktxt = kind === 'fight' ? '⚔' : kind === 'trial' ? '🗿' : kind === 'gather' ? '⛏'
-        : kind === 'cultivate' ? '🧘' : kind === 'visit' ? '🏡' : '·';
-      /* 打斗（fight/trial）→ 回合制：先把这一格的对手摆出来，再逐合出招 */
-      if (Pg.combatKind && Pg.combatKind(a.id)) {
-        var foe = Pg.duelFoe ? Pg.duelFoe(ci) : null;
-        return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px;">'
-          + '<button class="btn gold" data-action="prologue-fight" data-ci="' + ci + '" data-act="' + U.escape(a.id) + '">'
-          + ktxt + ' ' + U.escape(nm) + ' · 跟他打</button>'
-          + '<span class="ui-sub">' + U.escape(foe ? (foe.name + ' Lv' + (foe.level | 0)) : '') +
-          '　·　精力 −' + (d.energy | 0) + ' 体力 −' + (d.stam | 0) + '</span></div>';
-      }
-      return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px;">'
-        + '<button class="btn" data-action="prologue-act" data-ci="' + ci + '" data-act="' + U.escape(a.id) + '">'
-        + ktxt + ' ' + U.escape(nm) + '</button>'
-        + '<span class="ui-sub">精力 −' + (d.energy | 0) + ' 体力 −' + (d.stam | 0) + '</span></div>';
-    }).join('') : '<div class="q-empty" style="margin-top:6px;">这儿没什么可做的 —— 往别处走走。</div>';
-    var walkBtn = pacts.length
-      ? '<div style="margin-top:9px;"><button class="btn" data-action="prologue-scene" data-ci="' + ci
-        + '" data-act="' + U.escape(pacts[0].id) + '">🚶 走进去（自己找地方动手）</button></div>'
-      : '';
-    var duelBtn = (Pg.duelReady && Pg.duelReady(ci))
-      ? '<div style="margin-top:9px;"><button class="btn" data-action="prologue-duel">⚔ 点名斗将</button>'
-        + '<span class="ui-sub" style="margin-left:8px;">不耗兵；赢了他服 3 次（难度 −40%）</span></div>'
-      : '';
-    ui.openModal(
-      '<div class="gold-heading">📍 ' + U.escape(hereT.name || '荒野') + ' · 就在脚下</div>'
-      + '<div class="ui-sub" style="margin-top:3px;">精力 ' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lordP) : 0)
-      + ' / ' + Math.round(GAME.energyMaxOf ? GAME.energyMaxOf(lordP) : 100)
-      + '　体力 ' + Math.round(GAME.staNow ? GAME.staNow(lordP) : 0) + ' / '
-      + Math.round(GAME.staMax ? GAME.staMax(lordP) : 0) + '</div>'
-      + actRows + walkBtn + duelBtn
-      + '<div class="modal-foot"><button class="btn" data-action="close-modal">再看看</button></div>'
-    );
-  };
+  /* ⛔ v157.85：`ui.openPrologueLand`（前传点脚下格 = ⚔打/⛏采/🗿试炼/🏡拜访 的行动列表）
+     整函数删除 —— 这就是老板说的「前传的任务机制」那排按钮。
+     现在 `openLandModalCi` 只有一套面板（正式阶段：守军/侦察/掠夺/占领）。 */
 
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;
     var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
     if (!tile) return;
-    /* ============================================================
-     * v151（老板：「地图就是游戏本体」）：**前传里点脚下这一格 = 就地动手**。
-     * ------------------------------------------------------------
-     * 改前：点地图（含脚下）→ 弹出一整套"未占领野地面板"（守军/派驻/掠夺/占领），
-     * 而前传没有兵、没有城，那些按钮一个都用不了 —— "点了一块迷雾地，
-     * 弹出一个讲它有什么的面板"。
-     * 改后：前传在脚下一格只给两件事：这格能做什么（⚔ 打 / ⛏ 采）、
-     * 以及"走进去"（2.5D 场景）。正式阶段的门票是兵，前传的门票是体力 ——
-     * 同一格在两种阶段给两种面板，各自只说自己用得上的一句话。
-     * ============================================================ */
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) { ui.openPrologueLand(ci); return; }
+    /* ⛔ v157.85：前传的「点脚下格 → 行动列表」分派已删（前传整段退役）。 */
     /* ============================================================
      * v89.193（老板 2）：**我方前哨格专属面板** ——
      * 前哨格（占据后 terrain='city'、map.pick 落 kind='land'）此前掉进下方
@@ -30818,16 +30326,8 @@ ui.openDuel = function (fid, moveId) {
     }
     ui._expOwn = !!(target && target.kind === 'owncity');
     var s = GAME.state, c = (ui._expFrom && GAME.cityById(ui._expFrom)) || GAME.currentCity();
-    /* v131：前传 = 君主个人冒险，**没有城就出不了征**（没有兵、没有出发地）。
-       旧代码在这里直接往下面走，随后 `filter` 里用 `c.id` 抛
-       `Cannot read properties of null (reading 'id')` —— 面板整个打不开。
-       这里给一句人话，比抛异常好：告诉玩家现在该干什么。 */
-    if (!c) {
-      ui.toast(GAME.prologue && GAME.prologue.on && GAME.prologue.on()
-        ? '还没有城 —— 先在野外把君主练到 Lv' + ((GAME.prologue.needLv && GAME.prologue.needLv()) || 20) + '，再立城'
-        : '还没有可用的城');
-      return;
-    }
+    /* ⛔ v157.85：前传「没有城」的专属文案已删（前传退役），只留通用兜底。 */
+    if (!c) { ui.toast('还没有可用的城'); return; }
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;
@@ -36002,7 +35502,7 @@ ui.openDuel = function (fid, moveId) {
 
 
 
-
+/* ⛔ v157.85：`import './prologue.js'` 随前传整段退役删除（文件已删）。 */
 
 
 
@@ -39591,14 +39091,7 @@ ui.openDuel = function (fid, moveId) {
       var G = GAME.map;
       var hit = G.pick(t, e.clientX, e.clientY);
       if (hit) {
-        /* v151（老板「地图就是游戏本体」）：前传的点击 = 走路 / 就地动手。
-           以前这里把 kind:'land' 送进「未占领野地面板」—— 点一块走不到的迷雾地，
-           弹出一个讲它有什么的面板。 */
-        if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
-          var mr = GAME.prologue.mapClick(hit.ci);
-          if (mr && mr.msg && !mr.here && !mr.arrived && GAME.ui) GAME.ui.toast(mr.msg);
-          return;
-        }
+        /* ⛔ v157.85：前传的「点击 = 君主走路 / 就地动手」分支已删（前传整段退役）。 */
         if (hit.kind === 'npc') {
           ui.openAttackModal(hit.city);
         } else if (hit.kind === 'player') {
@@ -40165,7 +39658,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.84';
+  GAME.VERSION = 'v157.85';
   function boot() {
     fitAppSize();
     try {

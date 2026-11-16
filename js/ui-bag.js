@@ -33,8 +33,7 @@ import './ui.js';
    * ============================================================ */
   ui.phaseOf = function () {
     var s = GAME.state;
-    if (!s) return 'prologue';
-    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return 'prologue';
+    if (!s) return 'early';      /* v157.85：'prologue' 阶段随前传退役删除 */
     var n = ((GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || [])).length;
     var wins = GAME.stat ? (GAME.stat('wins') | 0) : 0;
     /* early 的退出口径只看「城 + 胜场」：

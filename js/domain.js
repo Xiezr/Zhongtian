@@ -1306,10 +1306,7 @@ import './state.js';
 
   /* --------- 城内建造 / 升级 / 拆除 --------- */
   GAME.buildAt = function (cityId, gridIndex, buildId) {
-    /* v105（前传）：还没有城 —— 你带的是一队人，不是一座城。三个闸门之一。 */
-    if (GAME.prologue && GAME.prologue.on()) {
-      return { ok: false, msg: '你们还没有城，建不了东西（君主升到 Lv20 才能立城）' };
-    }
+    /* ⛔ v157.85：前传「没有城不能建」闸门已删（前传退役，城一定有）。 */
     var s = GAME.state, city = GAME.cityById(cityId);
     if (!city) return { ok: false, msg: '城市不存在' };
     /* v89.128：'wall' = 环城槽（围墙不占格） */
@@ -1869,10 +1866,7 @@ import './state.js';
   };
 
   GAME.train = function (troopId, count, cityId, bIdx) {
-    /* v105（前传）：还没有城 —— 没有营房就没有兵。三个闸门之二。 */
-    if (GAME.prologue && GAME.prologue.on()) {
-      return { ok: false, msg: '你们还没有城，招不了兵（君主升到 Lv20 才能立城）' };
-    }
+    /* ⛔ v157.85：前传「没有城不能招兵」闸门已删（前传退役）。 */
     var s = GAME.state, t = DATA.TROOPS[troopId];
     var city = GAME.cityById(cityId || (s && s.cities[0] && s.cities[0].id));
     if (!t) return { ok: false, msg: '未知兵种（请先在上方选择要训练的兵种）' };
@@ -6153,7 +6147,7 @@ import './state.js';
     var s = GAME.state;
     if (!s) return { ok: false, msg: '尚未开局' };
     pid = (pid == null) ? GAME.curPid() : pid;
-    if (pid === 1 || (s.prologue && s.prologue.on)) return { ok: true };
+    if (pid === 1) return { ok: true };   /* v157.85：前传分支已删 */
     var f = GAME.colonyFundOf(pid);
     if (f) return { ok: true, fund: f };
     return { ok: false, msg: '这颗星球没有补给线 —— 先在空间站「星际投送」一船人过去圈锚地' };

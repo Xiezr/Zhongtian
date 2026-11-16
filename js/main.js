@@ -51,7 +51,7 @@ import './idle.js';      /* v97：惰性 —— 「在配给表上活了三代�
 import './ending.js';    /* v98：终局 —— 接进去，还是关灯（一次性全局选择） */
 import './muster.js';    /* v99：兵源 —— 人从哪来（流民/战后/远征） */
 import './founding.js';  /* v103：开城 —— 棚户挤不下时，带他们去开一座城 */
-import './prologue.js';  /* v105：前传 —— 先没有城，打怪升到 20 级才立城 */
+/* ⛔ v157.85：`import './prologue.js'` 随前传整段退役删除（文件已删）。 */
 import './market.js';    /* v117：集市与行情 —— 每月三次开市，寒潮月粮贵 */
 import './events.js';    /* v121：路上遇到的事 —— 每月一件，两三条路，代价全摊开 */
 import './placement.js'; /* v92.240k：地块放置物引擎（一格一件 · 程序化几何 · 组件接口预留） */
@@ -3640,14 +3640,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       var G = GAME.map;
       var hit = G.pick(t, e.clientX, e.clientY);
       if (hit) {
-        /* v151（老板「地图就是游戏本体」）：前传的点击 = 走路 / 就地动手。
-           以前这里把 kind:'land' 送进「未占领野地面板」—— 点一块走不到的迷雾地，
-           弹出一个讲它有什么的面板。 */
-        if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
-          var mr = GAME.prologue.mapClick(hit.ci);
-          if (mr && mr.msg && !mr.here && !mr.arrived && GAME.ui) GAME.ui.toast(mr.msg);
-          return;
-        }
+        /* ⛔ v157.85：前传的「点击 = 君主走路 / 就地动手」分支已删（前传整段退役）。 */
         if (hit.kind === 'npc') {
           ui.openAttackModal(hit.city);
         } else if (hit.kind === 'player') {
@@ -4214,7 +4207,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.84';
+  GAME.VERSION = 'v157.85';
   function boot() {
     fitAppSize();
     try {
