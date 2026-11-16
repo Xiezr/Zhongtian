@@ -7358,9 +7358,25 @@
             ((px - _rcG.left) / _rcG.width) * 2 - 1,
             -((py - _rcG.top) / _rcG.height) * 2 + 1);
         };
-        var _tgtG = (M._surf && SR && SR.plate) ? SR.plate : M._collider;
         var _rayG = new THREE.Raycaster();
         var _P0 = null, _P1 = null;
+        /* ============================================================
+         * v157.78（老板：「左键旋转还有死角，有个地方无法跨过」）
+         * ------------------------------------------------------------
+         * 抓取式旋转（"揪住球面一点"）在**球边缘**必然衰减：
+         * 相机在球外时，球的最上/最下缘在屏幕上被压成极窄一条，
+         * 鼠标拖到那里抓点几乎不动 → 实测 dir.y 单调爬到 0.9314（≈68.6°）
+         * 就开始回落，**极点永远到不了**。这不是 clamp，是几何。
+         * 而 v157h 定过的增量口径本来就能滚过极点
+         * （「纬度不 clamp，渲染时 dir 由 sin/cos 现算，越界自动折回」），
+         * 只是 v157i 换成抓取后把它覆盖了。
+         *
+         * 现在两种并存、按**抓点离球心的角**自动接管：
+         *   · 抓点在内侧（≤0.86×球角半径）→ 抓取（跟手，v157i 口径不变）
+         *   · 贴边或打到球外 → 增量（竖拖改 pitch / 横拖改 yaw，pitch 不 clamp）
+         * 地表模式（抓地砖）始终用抓取，不参与这套。
+         * ============================================================ */
+        var _tgtG = (M._surf && SR && SR.plate) ? SR.plate : M._collider;
         if (_tgtG) {
           _rayG.setFromCamera(_ndcG(_prevX, _prevY), cam);
           var _h0 = _rayG.intersectObject(_tgtG, false);
@@ -7369,7 +7385,34 @@
           var _h1 = _rayG.intersectObject(_tgtG, false);
           if (_h1.length) _P1 = _h1[0].point.clone();
         }
-        if (_P0 && _P1) {
+        var _R0 = (M.R || 300);
+        var _camD = cam.position.clone().normalize();
+        var _edgeA = Math.asin(Math.min(1, _R0 / Math.max(1, cam.position.length())));
+        var _angP0 = _P0
+          ? Math.acos(Math.max(-1, Math.min(1, _P0.clone().normalize().dot(_camD))))
+          : Math.PI;
+        var _useStep = !M._surf && (!_P0 || !_P1 || _angP0 > _edgeA * 0.86);
+        if (_useStep) {
+          var _sdx = e.clientX - _prevX, _sdy = e.clientY - _prevY;
+          /* ============================================================
+           * 增量口径：纬度**累积**、跨极点时**归一化一次**。
+           * v156.55 记过一版"反射折叠"每帧翻 180° 直接震颤 —— 那是因为
+           * 折完没有把累积量扣掉，下一帧又越界。这里用「离散步数」：
+           *   n = floor((pitch + π/2) / π)，一次把 pitch 扣回 (−π/2, π/2)，
+           *   yaw 补 n×π（等价姿态）。
+           * 于是跨一次极点只翻一次，之后必须再转半个 π 才会跨下一次，
+           * 不会在边界反复横跳 —— 北极 → 南极 → 回北极可以连成一个圆。
+           * ============================================================ */
+          var _K = 0.0018;
+          camO.pitch += _sdy * _K;
+          camO.yaw -= _sdx * _K;
+          var _nP = Math.floor((camO.pitch + Math.PI / 2) / Math.PI);
+          if (_nP !== 0) {
+            camO.pitch -= _nP * Math.PI;
+            camO.yaw += _nP * Math.PI;
+          }
+          camO.quat = null; camO._euler = null;   /* 让 placeCamera 按 yaw/pitch 重建 */
+        } else if (_P0 && _P1) {
           _P0.normalize(); _P1.normalize();
           var _dqG = new THREE.Quaternion().setFromUnitVectors(_P1, _P0);
           var _q0G = camO.quat || cam.quaternion;
@@ -7379,28 +7422,13 @@
           camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dvG.y)));
           camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dvG);
           camO._euler = [camO.yaw, camO.pitch];
-        } else {
-          /* 边缘打空（球/地砖之外）→ 退回单位球，保证拖拽不中断 */
-          var _spG2 = function (px, py) {
-            var x = ((px - _rcG.left) / _rcG.width) * 2 - 1;
-            var y = -((py - _rcG.top) / _rcG.height) * 2 + 1;
-            var l2 = x * x + y * y;
-            if (l2 > 1) { var k = 1 / Math.sqrt(l2); return new THREE.Vector3(x * k, y * k, 0); }
-            return new THREE.Vector3(x, y, Math.sqrt(1 - l2));
-          };
-          var _q0H = camO.quat || cam.quaternion;
-          var _w0 = _spG2(_prevX, _prevY).applyQuaternion(_q0H);
-          var _w1 = _spG2(e.clientX, e.clientY).applyQuaternion(_q0H);
-          if (_w0.lengthSq() > 1e-9 && _w1.lengthSq() > 1e-9) {
-            var _dqH = new THREE.Quaternion().setFromUnitVectors(_w1.normalize(), _w0.normalize());
-            var _nqH = _q0H.clone().premultiply(_dqH).normalize();
-            var _dvH = new THREE.Vector3(0, 0, 1).applyQuaternion(_nqH).normalize();
-            camO.yaw = Math.atan2(_dvH.x, _dvH.z);
-            camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dvH.y)));
-            camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dvH);
-            camO._euler = [camO.yaw, camO.pitch];
-          }
         }
+
+        /* ⛔ v157.78：「边缘打空 → 退回单位球」那条分支整段退役。
+           它是在"交点可能为空"的前提下写的兜底；现在轨道模式取射线方向，
+           `_P0/_P1` 恒非空，那段永远不会执行 —— 留着就是死代码。
+           而且它本身就是死角的一半成因：单位球在屏幕球外会把方向**折反**
+           （x,y 超出单位圆时按 1/|v| 拉回边缘），拖到球边缘就变成往回转。 */
       }
       /* v157i（老板：「轴心不完全是球心」）：右键转头的偏移会残留在相机朝向上，
          带着它去抓球，视觉旋转中心就偏了。抓取时快速衰减回 0 ——
@@ -39902,7 +39930,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.77';
+  GAME.VERSION = 'v157.78';
   function boot() {
     fitAppSize();
     try {

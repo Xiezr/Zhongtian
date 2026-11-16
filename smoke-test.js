@@ -49319,6 +49319,50 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       '六类映射 + 去重后追加');
   })();
 
+  /* ============================================================
+   * §586r（v157.78 · 老板「左键旋转还有死角，有个地方无法跨过」）
+   * ------------------------------------------------------------
+   * 真因不是 clamp，是**抓取式旋转在球边缘的几何衰减**：
+   *   相机在球外时，球的最上/下缘在屏幕上被压成极窄一条，鼠标拖到那里
+   *   抓点几乎不动 → 实测 dir.y 单调爬到 0.9314（≈68.6°）就回落，
+   *   极点永远到不了（向上同样卡在 −0.9303）。
+   * 修法 = **抓取与增量按抓点位置自动接管**：
+   *   抓点在内侧（≤0.86×球角半径，换算方式见源码）→ 抓取（跟手，v157i 口径不变）；
+   *   贴边 / 打到球外 → 增量（竖拖改 pitch、横拖改 yaw），
+   *   且纬度**累积后离散归一化**（每跨极点只翻一次、yaw 补 n×π），
+   *   于是北极→南极→回北极能连成一个圆。
+   * 三层守卫：
+   *   ① 结构面：两套分支都在 + 边界判定存在（防"退回纯抓取"或"退回纯增量"）
+   *   ② 归一化面：必须有 floor((pitch+π/2)/π) 与 n≠0 折回（防"每帧翻 180°"的老震颤）
+   *   ③ 保留面：抓取分支的四元数旋转仍在（防借这次把跟手能力删掉）
+   * ============================================================ */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
+
+    check('§586r 结构面：抓取与增量两套并存，按抓点离球心角自动接管',
+      /var _edgeA = Math\.asin\(Math\.min\(1, _R0 \/ Math\.max\(1, cam\.position\.length\(\)\)\)\);/.test(mp)
+      && /var _useStep = !M\._surf && \(!_P0 \|\| !_P1 \|\| _angP0 > _edgeA \* 0\.86\);/.test(mp)
+      && /if \(_useStep\) \{/.test(mp) && /else if \(_P0 && _P1\) \{/.test(mp),
+      '边缘判定 + 双分支');
+
+    check('§586r 归一化面：纬度累积后离散归一化，跨极点只翻一次',
+      /camO\.pitch \+= _sdy \* _K;/.test(mp)
+      && /var _nP = Math\.floor\(\(camO\.pitch \+ Math\.PI \/ 2\) \/ Math\.PI\);/.test(mp)
+      && /camO\.pitch -= _nP \* Math\.PI;/.test(mp)
+      && /camO\.yaw \+= _nP \* Math\.PI;/.test(mp)
+      /* 反向证据：抓取分支不许再出现"asin 直接写回 pitch 并无归一化"以外的 clamp */
+      && !/camO\.pitch = Math\.max\(-1\.4/.test(mp),
+      'floor 归一化 + yaw 补 n×π');
+
+    check('§586r 保留面：抓取（跟手）分支仍在，没被这次改动删掉',
+      /var _dqG = new THREE\.Quaternion\(\)\.setFromUnitVectors\(_P1, _P0\);/.test(mp)
+      && /camO\.quat = new THREE\.Quaternion\(\)\.setFromUnitVectors\(new THREE\.Vector3\(0, 0, 1\), _dvG\);/.test(mp)
+      /* 单位球回退那段（球外按 1/|v| 拉回边缘）是死角成因之一，必须保持退役 */
+      && !/_spG2/.test(mp),
+      '抓取在岗 · 单位球回退未复活');
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));
