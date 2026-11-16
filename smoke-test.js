@@ -47910,32 +47910,38 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         } catch (e) { dbg586j.s = 'EXC ' + (e && e.message); return false; }
       })(), dbg586j.s);
 
-    check('§586j 标识面：v157.76 探明边界带 —— 独立三角带图层，只碰颜色不碰地形',
-      /* 为什么是三角带而不是线：WebGL 的 linewidth 普遍被忽略（永远 1px），
-         1px 亮线在 900 米高处只剩亚像素、还被地形深度切成零星几点（实机取证）。
-         下限判据锁死「4 顶点 / 6 索引」的带状结构 —— 退化成线就说明有人改回去了。 */
+    check('§586j 标识面：边界 = 6 顶点柔光带 · 参与遮挡(depthTest) · 横向渐变，只碰颜色不碰地形',
+      /* 为什么还是三角带而不是线：WebGL 的 linewidth 普遍被忽略（永远 1px）。
+         v157.82 起每段 **6 顶点 / 4 三角形**（3 个横向位置 × 2 端），
+         这样横截面才能贴「两侧透明 → 中线微亮」的渐变；
+         退化回 4 顶点就贴不了渐变，又会变回"一根白线"（老板说的突兀）。 */
       /function buildFogBoundary\s*\(/.test(mSrc)
-      && /color: 0xdFF2ff/.test(mSrc)
-      && /side: THREE\.DoubleSide/.test(mSrc)
-      && /depthTest: false/.test(mSrc)
-      && /_fogEdgeBuf\[k\+\+\] = ax \+ sx/.test(mSrc)
-      /* v157.79（老板「那个边界壳太丑了」）：带宽/抬升必须保持"细、贴地"。
-         旧值 HW=1.7 / LIFT=4.0 近距离就是一条浮起的粗青带 = 壳。
-         下限反向：不许调回 >1.0 的量级。 */
-      && /var HW = 0\.55;/.test(mSrc)
-      && /var LIFT = 0\.25;/.test(mSrc)
-      && !/var HW = (?:[2-9]|[1-9]\d)/.test(mSrc)
+      && /_fogEdgeGradTex/.test(mSrc)                    /* 横向渐变纹理在岗 */
+      && /geo\.setAttribute\('uv', new THREE\.BufferAttribute\(_fogEdgeUv, 2\)\)/.test(mSrc)
+      && /var needFloats = segs \* 6 \* 3;/.test(mSrc)   /* 6 顶点/段 */
+      && /g2\.setDrawRange\(0, segs \* 12\);/.test(mSrc) /* 4 三角形/段 */
+      && /_fogEdgeUv\[u\+\+\] = 0\.5;/.test(mSrc)        /* 中线顶点（渐变靠它） */
+      && /var HW = 4\.5;/.test(mSrc)                     /* 总宽 9 ≈ 3/4 格 */
+      && /var LIFT = 0\.12;/.test(mSrc)
+      /* ⛔ **反向守卫（本次核心）**：depthTest 必须为 true。
+         关掉它 = 边界无视前后遮挡、球背面的边画到正面 = 老板说的「球体有点透明」。
+         恢复「永远可见」不许再走这条路 —— 用 polygonOffset 压 z-fighting。 */
+      && /depthTest: true/.test(mSrc)
+      && !/depthTest: false[\s\S]{0,80}polygonOffset/.test(mSrc)
+      && /polygonOffset: true, polygonOffsetFactor: -4/.test(mSrc)
+      /* 抬升必须继续是"几乎贴地"的量级：抬高就是 v157.79 那个浮起的壳 */
       && !/var LIFT = (?:[1-9]|\d\d)/.test(mSrc)
-      && /g2\.setDrawRange\(0, segs \* 6\);/.test(mSrc)
+      && /side: THREE\.DoubleSide/.test(mSrc)
       && /_fogEdgeMesh\.visible = segs > 0;/.test(mSrc)
       /* 地表模式必须退场（站在地上时它是"地图语言"，同 v157 城色块/插旗的理由） */
       && /_fogEdgeMesh\.visible = !M\._surf && _fogEdgeSegs > 0;/.test(mSrc)
       /* 必须真的挂在 buildFog 上，否则迷雾推进时边界不更新 */
       && /buildFogBoundary\(\);/.test(bf)
-      /* 只读探针在岗（实机取证靠它读"有没有段 / 画没画出来"） */
+      /* 只读探针在岗（实机取证靠它读"有没有段 / 参不参与遮挡"） */
       && /M\._fogEdgeProbe = function/.test(mSrc)
+      && /depthTest: !!\(_fogEdgeMesh && _fogEdgeMesh\.material/.test(mSrc)
       && /_edgeOther && M\._edgeOtherFor === M\._lineColAttr/.test(mSrc),
-      '细带 0.55 / 抬 0.25 / depthTest=false · 地表退场 · 挂在 buildFog 上');
+      '6 顶点/4 三角形 · HW 4.5 · depthTest=true · 渐变贴图 · 地表退场 · 挂在 buildFog 上');
 
     check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');

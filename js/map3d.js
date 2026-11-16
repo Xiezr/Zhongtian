@@ -3722,6 +3722,51 @@ import './gltf.js';
    * 缓冲按需增长复用：避免每次迷雾推进都 new 一份 GPU buffer。
    * ============================================================ */
   var _fogEdgeMesh = null, _fogEdgeBuf = null, _fogEdgeSegs = 0, _fogEdgeIdxCap = 0;
+  var _fogEdgeUv = null;          /* v157.82：横向渐变用的 UV（每顶点 2 float） */
+
+  /* ============================================================
+   * v157.82：边界的**横截面渐变**纹理（1 维，横向 64px）
+   * ------------------------------------------------------------
+   * 老板：「目前这个边界看起来太突兀了」。单层实心带无论多细都是一根"白棍"。
+   * 真实做柔光的通行做法是让**带的横截面**自带透明度梯度：
+   *   边缘 → 全透明 · 中间 → 淡亮 · 边缘 → 全透明
+   * 这样一条几何就长成"一道光"，而不是"一条线"，且只要一次 draw call。
+   * ============================================================ */
+  function _fogEdgeGradTex() {
+    if (M._fogEdgeTex) return M._fogEdgeTex;
+    try {
+      var cv = document.createElement('canvas');
+      cv.width = 64; cv.height = 4;
+      var c2 = cv.getContext('2d');
+      if (!c2) return null;
+      var gg = c2.createLinearGradient(0, 0, 64, 0);
+      /* v157.82b：**单侧衰减** —— u=0 是边界线本身（最亮），u=1 是向内侧 W 距离处（全透明）。
+         降亮度试过两轮（0.42→0.30 + 白→青）仍然是"一根线"，说明问题在形态不在亮度：
+         骑在边上的窄带一定读作线，而线一定显出六边形硬折角。
+         改成"从边界向里渗出来的一层光"，边界感由亮度梯度给出，不再有实线轮廓。 */
+      /* v157.82c：**对称双坡** —— u=0.5 是边界线（中心），两侧各衰减到全透明。
+         峰值只有 0.20：单看很淡，但带宽 9 世界单位（≈3/4 格），
+         叠加起来是"一圈光"。前几版之所以读作线，是因为带宽太窄
+         （5.5 单位投影只有几像素），渐变根本没地方发生。 */
+      gg.addColorStop(0.00, 'rgba(150,214,232,0)');
+      gg.addColorStop(0.22, 'rgba(178,226,244,0.055)');
+      gg.addColorStop(0.44, 'rgba(202,239,251,0.145)');
+      gg.addColorStop(0.50, 'rgba(214,245,253,0.20)');
+      gg.addColorStop(0.56, 'rgba(202,239,251,0.145)');
+      gg.addColorStop(0.78, 'rgba(178,226,244,0.055)');
+      gg.addColorStop(1.00, 'rgba(150,214,232,0)');
+      c2.fillStyle = gg;
+      c2.fillRect(0, 0, 64, 4);
+      var t = new THREE.CanvasTexture(cv);
+      t.minFilter = THREE.LinearFilter;
+      t.magFilter = THREE.LinearFilter;
+      t.wrapS = THREE.ClampToEdgeWrapping;
+      t.wrapT = THREE.ClampToEdgeWrapping;
+      t.needsUpdate = true;
+      M._fogEdgeTex = t;
+      return t;
+    } catch (eT) { return null; }
+  }
 
   function buildFogBoundary() {
     var SPn = GAME.sphere, up = SPn && SPn.upos, uc = SPn && SPn.uposCell, F = GAME.fog;
@@ -3737,14 +3782,17 @@ import './gltf.js';
       segs++;
     }
 
-    /* 每段边 → 一条固定宽的**细带**（4 顶点 / 2 三角形）。
+    /* 每段边 → 一片**骑在边界上的柔光带**（6 顶点 / 4 三角形）。
        为什么不用 LineSegments：WebGL 的 linewidth 在绝大多数平台被忽略（永远 1px），
-       1px 亮线在 900 米高处只剩亚像素、又被地形深度切成零星几点（实机截图为证）。
-       三角带能真正做出 2~4px 的实心带，且不引入任何"面状色块"。 */
-    var needFloats = segs * 4 * 3;
+       1px 亮线在高空只剩亚像素。三角面片是唯一能控制宽度的做法。
+       为什么是"单侧内渐隐"而不是"骑在边上的对称带"：对称带一定读作一根线，
+       而线一定显出六边形硬折角（三轮实机图都验证过）。单侧渐隐读作"一层光"。 */
+    var needFloats = segs * 6 * 3;   /* v157.82c：6 顶点/段（3 横向 × 2 端） */
     if (!_fogEdgeBuf || _fogEdgeBuf.length < needFloats) {
       var cap = Math.max(6144, needFloats * 2);
       _fogEdgeBuf = new Float32Array(cap);
+      /* v157.82：UV 与 position 同步扩容（每顶点 2 float = position 的 2/3 长度） */
+      _fogEdgeUv = new Float32Array(Math.floor(cap / 3) * 2);
       if (_fogEdgeMesh) {
         scene.remove(_fogEdgeMesh);
         try { _fogEdgeMesh.geometry.dispose(); } catch (e0) { }
@@ -3754,6 +3802,7 @@ import './gltf.js';
     if (!_fogEdgeMesh) {
       var geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(_fogEdgeBuf, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(_fogEdgeUv, 2));
       geo.setDrawRange(0, 0);
       /* 缓冲按需预留、未用部分是 0：不显式给包围球，three 某些路径会拿整条缓冲
          算 boundingSphere → 报 NaN 刷控制台。这条带永远跟着地球，用大球包住即可。 */
@@ -3761,14 +3810,22 @@ import './gltf.js';
       var mat = new THREE.MeshBasicMaterial({
         /* 颜色：**亮青**。地形主色是绿 / 黄 / 蓝 / 灰岩 / 雪白，纯白在荒漠与雪地上
            几乎看不见（实机截图为证）；亮青在三类底色上都跳得出来，又不像品红那样"花"。 */
-        /* v157.79（老板：「那个边界壳太丑了」）：**细、淡、不悬空**。
-           上一版抬 4 单位压地形，近距离成了一条浮起的粗青带 —— 那就是"壳"。
-           现在抬升只留 0.25（视觉贴地），可见性交给 `depthTest: false`：
-           边界线本来就该"永远看得见"（它是 HUD 级信息），不需要参与地形遮挡。
-           配色也从艳青降到冷白偏青，避免抢地形。 */
-        color: 0xdFF2ff, transparent: true, opacity: 0.72,
-        side: THREE.DoubleSide, depthWrite: false, depthTest: false,
-        polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12
+        /* ============================================================
+         * v157.82（老板：「球体有点透明，能看到视野范围的边界……边界太突兀了」）
+         * ------------------------------------------------------------
+         * ① **恢复 depthTest**。v157.79 关掉它是为了"永远看得见"，副作用是
+         *    边界无视前后遮挡 —— 球背面的边被画到正面来，看起来就像"球是透明的"。
+         *    而 Mesh 的 `polygonOffset` 是**生效的**（只有 GL_LINES 无效），
+         *    所以靠它可以压住 z-fighting，不需要把带子抬起来（抬高就是那个"壳"）。
+         * ② **横截面渐变**。单层实心带无论多细都是一根"白棍"；给它贴一张
+         *    横向渐变（边缘透明 → 中心淡亮 → 边缘透明），一条几何就长成"一道光"。
+         *    带宽同时加大（半宽 0.55→1.6）让光晕有余量，但中心不透明度只有 0.42，
+         *    叠起来是柔和的边界感，不是抢眼的硬线。
+         * ============================================================ */
+        map: _fogEdgeGradTex(),
+        transparent: true, opacity: 1,
+        side: THREE.DoubleSide, depthWrite: false, depthTest: true,
+        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8
       });
       _fogEdgeMesh = new THREE.Mesh(geo, mat);
       _fogEdgeMesh.renderOrder = 40;   /* v157.79：HUD 级，画在所有 3D 元素之上 */
@@ -3777,9 +3834,15 @@ import './gltf.js';
       _fogEdgeIdxCap = 0;
     }
 
-    var HW = 0.55;    /* 半宽：带总宽 1.1 世界单位（球半径 300 的 0.37%），900 米高处约 1px */
-    var LIFT = 0.25;  /* 只抬"半根头发"—— 可见性由 depthTest:false 保证，不靠抬高 */
-    var k = 0;
+    /* v157.82c：`HW` 是**对称半宽**（带子骑在边界上，两侧各 HW）。
+       球半径 300、40962 格 → 一格约 12 单位；HW=4.5 → 总宽 9 ≈ 3/4 格。
+       ⚠️ 宽度是这个方案的关键：窄了就是线、宽了才成光。
+          但也不能无限宽，否则会盖到未探明区（等于泄露边界外情报）。 */
+    var HW = 4.5;
+    /* 抬升只用来防 z-fighting（几乎贴地）；可见性由 polygonOffset + depthTest 负责。
+       ⚠️ 千万别再靠"抬高"解决遮挡 —— 那就是 v157.79 之前那个浮起的"壳"。 */
+    var LIFT = 0.12;
+    var k = 0, u = 0;
     for (i = 0; i < uc.length; i++) {
       ob = other[i];
       if (ob < 0) continue;
@@ -3792,7 +3855,15 @@ import './gltf.js';
       var k1 = (L1 + LIFT) / L1, k2 = (L2 + LIFT) / L2;
       var ax = x1 * k1, ay = y1 * k1, az = z1 * k1;
       var bx = x2 * k2, by = y2 * k2, bz = z2 * k2;
-      /* 径向 n = 边中点方向；方向 d = B−A；侧向 s = n × d 归一化 × 半宽 */
+      /* ============================================================
+       * v157.82c：6 顶点 = 3 个横向位置(+s / 中线 / −s) × 2 端(A,B)。
+       * ------------------------------------------------------------
+       * 为什么回到**对称**：上一版让每条边各自朝自己的格中心偏移，
+       *   相邻边在六边形拐角处方向突变 → 带子错开，实机读作一条**白色虚线**。
+       *   对称带的两端位置只由边本身决定（A±s、B±s），相邻边共享顶点，拐角连续。
+       * 为什么 6 顶点而不是 4：4 顶点只有"两侧"两个横向采样，贴渐变只能是硬边；
+       *   加一个**中线**顶点后，横截面可以做"两侧透明 → 中线微亮"，一条带自带柔光。
+       * ============================================================ */
       var mx = (ax + bx) / 2, my = (ay + by) / 2, mz = (az + bz) / 2;
       var ml = Math.sqrt(mx * mx + my * my + mz * mz) || 1;
       var nx = mx / ml, ny = my / ml, nz = mz / ml;
@@ -3800,42 +3871,61 @@ import './gltf.js';
       var sx = ny * dz - nz * dy, sy = nz * dx - nx * dz, sz = nx * dy - ny * dx;
       var sl = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1;
       sx = sx / sl * HW; sy = sy / sl * HW; sz = sz / sl * HW;
+      /* A 端：+s / 中线 / −s */
       _fogEdgeBuf[k++] = ax + sx; _fogEdgeBuf[k++] = ay + sy; _fogEdgeBuf[k++] = az + sz;
+      _fogEdgeBuf[k++] = ax;      _fogEdgeBuf[k++] = ay;      _fogEdgeBuf[k++] = az;
       _fogEdgeBuf[k++] = ax - sx; _fogEdgeBuf[k++] = ay - sy; _fogEdgeBuf[k++] = az - sz;
+      /* B 端：+s / 中线 / −s */
       _fogEdgeBuf[k++] = bx + sx; _fogEdgeBuf[k++] = by + sy; _fogEdgeBuf[k++] = bz + sz;
+      _fogEdgeBuf[k++] = bx;      _fogEdgeBuf[k++] = by;      _fogEdgeBuf[k++] = bz;
       _fogEdgeBuf[k++] = bx - sx; _fogEdgeBuf[k++] = by - sy; _fogEdgeBuf[k++] = bz - sz;
+      /* uv：u 横向 0 → 0.5(中线) → 1，v 区分 A/B 端 */
+      _fogEdgeUv[u++] = 0;   _fogEdgeUv[u++] = 0;
+      _fogEdgeUv[u++] = 0.5; _fogEdgeUv[u++] = 0;
+      _fogEdgeUv[u++] = 1;   _fogEdgeUv[u++] = 0;
+      _fogEdgeUv[u++] = 0;   _fogEdgeUv[u++] = 1;
+      _fogEdgeUv[u++] = 0.5; _fogEdgeUv[u++] = 1;
+      _fogEdgeUv[u++] = 1;   _fogEdgeUv[u++] = 1;
     }
     _fogEdgeSegs = segs;
 
     var g2 = _fogEdgeMesh.geometry;
     g2.attributes.position.needsUpdate = true;
+    if (g2.attributes.uv) g2.attributes.uv.needsUpdate = true;
     /* 每段 2 个三角形（v0,v0+1,v0+2 / v0+2,v0+1,v0+3）；DoubleSide 下绕序无所谓 */
     if (_fogEdgeIdxCap < segs) {
       var capSeg = Math.max(1024, segs * 2);
-      var idx = new Uint32Array(capSeg * 6);
+      var idx = new Uint32Array(capSeg * 12);
       for (var t = 0; t < capSeg; t++) {
-        var v0 = t * 4;
-        idx[t * 6] = v0; idx[t * 6 + 1] = v0 + 1; idx[t * 6 + 2] = v0 + 2;
-        idx[t * 6 + 3] = v0 + 2; idx[t * 6 + 4] = v0 + 1; idx[t * 6 + 5] = v0 + 3;
+        /* v157.82c：每段 6 顶点 → 4 个三角形（两列，各 2 个）
+           顶点序：0=A+s 1=A中 2=A−s 3=B+s 4=B中 5=B−s */
+        var v0 = t * 6, o6 = t * 12;
+        idx[o6] = v0;     idx[o6 + 1] = v0 + 1; idx[o6 + 2] = v0 + 3;
+        idx[o6 + 3] = v0 + 1; idx[o6 + 4] = v0 + 4; idx[o6 + 5] = v0 + 3;
+        idx[o6 + 6] = v0 + 1; idx[o6 + 7] = v0 + 2; idx[o6 + 8] = v0 + 4;
+        idx[o6 + 9] = v0 + 2; idx[o6 + 10] = v0 + 5; idx[o6 + 11] = v0 + 4;
       }
       g2.setIndex(new THREE.BufferAttribute(idx, 1));
       _fogEdgeIdxCap = capSeg;
     }
-    g2.setDrawRange(0, segs * 6);
-    if (g2.index) { g2.index.needsUpdate = true; g2.index.count = segs * 6; }
+    g2.setDrawRange(0, segs * 12);
+    if (g2.index) { g2.index.needsUpdate = true; g2.index.count = segs * 12; }
     _fogEdgeMesh.visible = segs > 0;
   }
   /* 只读探针：给实机取证 / 自检读「边界线到底有没有段、有没有画出来」 */
   M._fogEdgeProbe = function () {
     return {
       segs: _fogEdgeSegs,
-      used: _fogEdgeSegs * 6,          /* 索引数（drawRange 单位） */
+      used: _fogEdgeSegs * 12,         /* v157.82c：索引数（6 顶点 4 三角形） */
       visible: !!(_fogEdgeMesh && _fogEdgeMesh.visible),
       drawCount: _fogEdgeMesh ? _fogEdgeMesh.geometry.drawRange.count : -1,
       cap: _fogEdgeBuf ? _fogEdgeBuf.length : -1,
       /* 与 M._globe / M._sky / M._lineColAttr 同一惯例：把内部对象交出去，
          取证脚本靠它做「开/关像素差分」这类必须双态对比的验证。 */
-      mesh: _fogEdgeMesh
+      mesh: _fogEdgeMesh,
+      /* v157.82：取证要看「有没有参与遮挡」—— 上一版就是这里给的 false 导致穿透 */
+      depthTest: !!(_fogEdgeMesh && _fogEdgeMesh.material && _fogEdgeMesh.material.depthTest),
+      hasMap: !!(_fogEdgeMesh && _fogEdgeMesh.material && _fogEdgeMesh.material.map)
     };
   };
 
