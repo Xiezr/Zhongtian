@@ -47824,16 +47824,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
-  /* ===================== §586j v157.68 3D 视野去杂色（两态 + 干净边界） =====================
-   * 老板：截图「杂色」；同一口径 v157.63 逐字：「要的是边界感，而不是在视野内增加渲染」。
-   * 规则变更（§0.7 三件套）：旧规则 = fog 三档在 globe 顶点色(1/0.78/0.34)、
-   *   贴地加亮六边形层(0.20/0.10/无)、线框色(冷蓝/灰蓝/隐形) 三处各自分档，
-   *   reveal 半径边缘交错 → 视野内部一片片硬边六边形深浅碎斑（实机截图实锤）。
-   * 新规则 = 已探明(含半明)原色、未探明整体压暗 0.34、视野内部零额外渲染，
-   *   只在明暗交界留一道干净的六边形格边。
-   * 守卫四层：① 源码面（buildFog 不再建任何几何层）
-   *   ② 源码面（两处 kCur 两态 + 线框统一冷蓝，无中间档）
-   *   ③ 行为面（vm 真调两个 paint 函数：fog=1 与 fog=2 同色、fog=0 = 0.34）
+  /* ============ §586j v157.68 3D 视野去杂色 → v157.76 视野只做标识 ============
+   * 老板 v157.68：截图「杂色」；v157.63 逐字：「要的是边界感，而不是在视野内增加渲染」。
+   * 老板 v157.76：「有视野的范围还是保留那个高亮吧……我建议只做这个标识性的调整，
+   *   不要影响到原来的渲染颜色」。
+   * 三段规则沿革（§0.7 三件套）：
+   *   旧①（≤v157e）fog 三档在 globe 顶点色(1/0.78/0.34)、贴地加亮六边形层、线框三处
+   *     各自分档 → 视野内部硬边六边形深浅碎斑（实机截图实锤）。
+   *   旧②（v157.68）已探明原色、未探明**整体压暗 0.34**、视野内部零额外渲染。
+   *   新③（v157.76）**顶点色压暗整条退役** —— 地形色即原色，探明与否只由线框表达：
+   *     已探明（含半明）冷蓝可见 / 未探明隐形。视野内部零额外渲染、零调色。
+   * 守卫四层：① 源码面（buildFog **只**调 paintLineFog，不建几何层）
+   *   ② 源码面（无 paintGlobeFog / _globeColBase / kCur，线框统一冷蓝）
+   *   ③ 行为面（真调 paintLineFog：fog=2/1 同冷蓝、fog=0 = 背景色隐形）
    *   ④ 台账面（v157.68 在需求档案在册）
    * ===================================================================== */
   (function () {
@@ -47843,65 +47846,82 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bfB = mSrc.indexOf('  /* 线框按探明度上色', bfA);
     var bf = (bfA >= 0 && bfB > bfA) ? mSrc.slice(bfA, bfB) : '';
 
-    check('§586j 源码面①：buildFog 不再按格铺加亮/云几何（视野内零额外渲染）',
-      bf.length > 100
-      && /paintGlobeFog\(\);/.test(bf) && /paintLineFog\(\);/.test(bf)
+    check('§586j 源码面①：buildFog 只重算线框色（视野内零额外渲染 · v157.76 起零调色）',
+      bf.length > 60
+      /* ⚠️ 规则变更（v157.76 老板「只做标识性调整，不要影响原来的渲染颜色」）：
+         旧规则要求 buildFog 同时调 paintGlobeFog + paintLineFog（两处重算）；
+         新规则要求**只**调 paintLineFog —— 顶点色压暗整条退役。
+         判据从「必须调用」翻转为「必须不调用」，不是放宽：仍要求至少一处重算。 */
+      && /paintLineFog\(\);/.test(bf) && !/paintGlobeFog/.test(bf)
       && !/makeMesh\(/.test(bf) && !/scene\.add\(/.test(bf)
       && !/AdditiveBlending/.test(bf) && !/M\._cloudMats/.test(bf)
       && !/_fogLit\s*=/.test(mSrc) && !/function makeMesh\(/.test(mSrc)
       && !/function cloudMat\(/.test(mSrc));
 
-    check('§586j 源码面②：globe 顶点色两态 + 线框统一冷蓝，0.78 / 灰蓝中间档退役',
-      /kCur = \(vv >= 1\) \? 1 : 0\.34;/.test(mSrc)
-      && /kCur = \(v2 >= 1\) \? 1 : 0\.34;/.test(mSrc)
+    check('§586j 源码面②：globe 顶点色零压暗（地形色即原色）+ 线框统一冷蓝',
+      /* ⚠️ 规则变更：旧规则 = 顶点色两态 1 / 0.34；新规则 = 顶点色一律原色，
+         迷雾只染线框。用「定义/赋值形态」判残留（墓碑注释会带名字，不能用 indexOf）。 */
+      !/function paintGlobeFog\s*\(/.test(mSrc)
+      && !/M\.paintGlobeFog\s*=/.test(mSrc)
+      && !/M\._globeColBase\s*=/.test(mSrc)
+      && !/kCur/.test(mSrc)
       && !/vv === 1 \? 0\.78/.test(mSrc) && !/v2 === 1 \? 0\.78/.test(mSrc)
       && /else \{ r = 0\.56; g = 0\.70; b = 0\.84; \}/.test(mSrc)
       && !/v === 1\) \{ r = 0\.28/.test(mSrc));
 
     var dbg586j = { s: '未执行' };
-    check('§586j 行为面：真调 paintGlobeFog / paintLineFog —— fog=1 与 fog=2 同色，fog=0 压暗 0.34',
+    check('§586j 行为面：真调 paintLineFog —— fog=2/1 同一冷蓝、fog=0 隐形（背景色）',
       (function () {
         try {
-          var pgA = mSrc.indexOf('  function paintGlobeFog() {');
-          var pgB = mSrc.indexOf('  M.paintGlobeFog = paintGlobeFog;', pgA);
           var plA = mSrc.indexOf('  function paintLineFog() {');
-          var plB = mSrc.indexOf('  /* ============================================================', plA);
-          if (pgA < 0 || pgB <= pgA || plA < 0 || plB <= plA) { dbg586j.s = '函数抽取失败'; return false; }
-          var pgSrc = mSrc.slice(pgA, pgB), plSrc = mSrc.slice(plA, plB);
-          /* 3 个顶点方向 = 三条坐标轴；贪心邻接把 ciCur 依次推到 0→1→2，
-             于是三次 F.get 分别拿到 fog 2 / 1 / 0（不需要 16641 个顶点）。 */
-          var arr = new Float32Array(9), base = new Float32Array(9), parr = new Float32Array(9);
-          for (var i = 0; i < 9; i++) {
-            var _k = Math.floor(i / 3), _j = i % 3;
-            base[i] = 1; parr[i] = (_j === _k) ? 1 : 0;
-          }
-          var attr = { count: 3, array: arr, needsUpdate: false };
-          var posAttr = { array: parr };
-          var M = {
-            _globe: { geometry: { getAttribute: function (k) { return k === 'color' ? attr : (k === 'position' ? posAttr : null); } } },
-            _globeColBase: base, _lineColAttr: null, _skyKeep: 0x0a1020
-          };
-          var ci = 0;
-          var SPn = {
-            nearestCell: function () { return ci++; },
-            adj: [[1], [2], []],
-            cells: [{ dir: [1, 0, 0] }, { dir: [0, 1, 0] }, { dir: [0, 0, 1] }],
-            uposCell: new Int32Array([0, 1, 2])
-          };
-          var GAME = { sphere: SPn, fog: { get: function (c) { return [2, 1, 0][c] || 0; } } };
-          new Function('M', 'GAME', pgSrc + '\nreturn paintGlobeFog;')(M, GAME)();
-          var k2 = arr[0], k1 = arr[3], k0 = arr[6];
-          var globeOk = Math.abs(k2 - 1) < 1e-6 && Math.abs(k1 - 1) < 1e-6
-            && Math.abs(k0 - 0.34) < 1e-6;
-          /* 线框：fog=2 的段(0..2) 与 fog=1 的段(6..8) 必须逐分量相等 */
+          /* ⚠️ 不能用「下一个大注释块」当结尾：v157.76 起 paintLineFog 内部也有
+             `/* ======` 说明块（缩进 6 空格，仍以两个空格开头）→ 会被截断成语法错误。
+             用「函数体自己的 2 空格闭合括号」定位结尾，稳定得多。 */
+          var plEnd = plA < 0 ? -1 : mSrc.indexOf('\n  }\n', plA);
+          if (plA < 0 || plEnd <= plA) { dbg586j.s = '函数抽取失败'; return false; }
+          var plSrc = mSrc.slice(plA, plEnd + 4);
+          /* 三段边对应 fog 2 / 1 / 0 —— 探明度只该影响**线框**，不碰地形色。 */
           var lineArr = new Float32Array(18);
-          M._lineColAttr = { array: lineArr, needsUpdate: false };
-          new Function('M', 'GAME', plSrc + '\nreturn paintLineFog;')(M, GAME)();
-          var lineOk = [0, 1, 2].every(function (q) { return Math.abs(lineArr[q] - lineArr[6 + q]) < 1e-6; });
-          dbg586j.s = 'globe k2=' + k2 + ' k1=' + k1 + ' k0=' + k0 + ' lineEqual=' + lineOk;
-          return globeOk && lineOk;
+          var M = { _lineColAttr: { array: lineArr, needsUpdate: false }, _skyKeep: 0x0a1020 };
+          var SPn = { uposCell: new Int32Array([0, 1, 2]) };
+          var GAME = { sphere: SPn, fog: { get: function (c) { return [2, 1, 0][c] || 0; } } };
+          /* ensureEdgeOther 是 v157.76 新加的（探明边界用），这里给个 null 桩：
+             边界覆盖分支不触发，正好只验线框本身的雾色。 */
+          new Function('M', 'GAME',
+            'function ensureEdgeOther(){ return null; }' + plSrc + '\nreturn paintLineFog;')(M, GAME)();
+          /* 每段边 6 个分量（2 顶点 × RGB）：段0 fog=2 → [0..5]，段1 fog=1 → [6..11]，段2 fog=0 → [12..17] */
+          var cool = [0.56, 0.70, 0.84];
+          var bg = [0x0a / 255, 0x10 / 255, 0x20 / 255];
+          var near = function (a, b2) { return Math.abs(a - b2) < 1e-6; };
+          var ok2 = [0, 1, 2].every(function (q) { return near(lineArr[q], cool[q]); });
+          var ok1 = [0, 1, 2].every(function (q) { return near(lineArr[6 + q], cool[q]); });
+          /* fog=0 必须染成背景色 = 隐形（这是「未探明」与「已探明」在画面上**唯一**的区别） */
+          var ok0 = [0, 1, 2].every(function (q) { return near(lineArr[12 + q], bg[q]); });
+          var hidden = ok0 && !near(lineArr[12], cool[0]);
+          dbg586j.s = 'fog2=' + ok2 + ' fog1=' + ok1 + ' fog0隐形=' + hidden;
+          return ok2 && ok1 && hidden;
         } catch (e) { dbg586j.s = 'EXC ' + (e && e.message); return false; }
       })(), dbg586j.s);
+
+    check('§586j 标识面：v157.76 探明边界带 —— 独立三角带图层，只碰颜色不碰地形',
+      /* 为什么是三角带而不是线：WebGL 的 linewidth 普遍被忽略（永远 1px），
+         1px 亮线在 900 米高处只剩亚像素、还被地形深度切成零星几点（实机取证）。
+         下限判据锁死「4 顶点 / 6 索引」的带状结构 —— 退化成线就说明有人改回去了。 */
+      /function buildFogBoundary\s*\(/.test(mSrc)
+      && /color: 0x35ffe8/.test(mSrc)
+      && /side: THREE\.DoubleSide/.test(mSrc)
+      && /_fogEdgeBuf\[k\+\+\] = ax \+ sx/.test(mSrc)
+      && /var HW = 1\.7;/.test(mSrc)
+      && /g2\.setDrawRange\(0, segs \* 6\);/.test(mSrc)
+      && /_fogEdgeMesh\.visible = segs > 0;/.test(mSrc)
+      /* 地表模式必须退场（站在地上时它是"地图语言"，同 v157 城色块/插旗的理由） */
+      && /_fogEdgeMesh\.visible = !M\._surf && _fogEdgeSegs > 0;/.test(mSrc)
+      /* 必须真的挂在 buildFog 上，否则迷雾推进时边界不更新 */
+      && /buildFogBoundary\(\);/.test(bf)
+      /* 只读探针在岗（实机取证靠它读"有没有段 / 画没画出来"） */
+      && /M\._fogEdgeProbe = function/.test(mSrc)
+      && /_edgeOther && M\._edgeOtherFor === M\._lineColAttr/.test(mSrc),
+      '三角带 + 地表退场 + 挂在 buildFog 上');
 
     check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');
@@ -49155,14 +49175,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       '真调同源 ' + sameN + '/7 · 哨兵 #123456 跟随=' + followsM
         + (mismatch.length ? ' · 不一致 ' + mismatch.join(',') : ''));
 
-    check('§586m 保留面：v157.68 迷雾两态 0.34 未被借机改动',
-      /kCur = \(vv >= 1\) \? 1 : 0\.34/.test(mSrcM)
-      && /kCur = \(v2 >= 1\) \? 1 : 0\.34/.test(mSrcM)
-      && /v157\.68 两态/.test(mSrcM)
-      /* _fogLit 字样允许留在 v157.68 墓碑注释里（项目惯例），但**不许复活成代码** */
+    check('§586m 保留面：迷雾不再参与地形色（v157.76 压暗退役，防复活）',
+      /* ⚠️ 规则变更：旧规则锁「0.34 两态未被借机改动」；新规则锁「压暗不许复活」。
+         仍用「定义/赋值形态」判（墓碑注释会带名字）。同时保住线框两态与
+         「贴地加亮层未复活」，防止为省事把整段视野标识一起删光。 */
+      !/function paintGlobeFog\s*\(/.test(mSrcM)
+      && !/kCur/.test(mSrcM)
+      && !/M\._globeColBase\s*=/.test(mSrcM)
+      && /else \{ r = 0\.56; g = 0\.70; b = 0\.84; \}/.test(mSrcM)
       && !/_fogLit\s*=/.test(mSrcM)
       && !/_fogLit1\s*=/.test(mSrcM),
-      '未探明仍 0.34 均匀压暗 · 已探明原色 · 贴地加亮层未复活');
+      '零压暗 · 线框仍两态 · 贴地加亮层未复活');
   })();
 
   /* ============================================================

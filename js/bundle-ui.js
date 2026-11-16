@@ -597,8 +597,10 @@
    * 云是一块块被挖掉洞的马赛克，洞口边缘随格子走向锯齿，远看像破洞的纱网。
    * 现在改口径：**云层不切割** —— 一整层连续球壳（buildSkyClouds 的 M._sky）
    * 罩住全星，探明度**不再决定有没有云**；
-   * 已探明与否仍由**地表亮度**表达，但 v157.68 起改成「未探明整体压暗」的
-   *   顶点色两态（见 paintGlobeFog）—— 不再按格铺贴地加亮六边形（会在视野内造碎斑）。
+   * 已探明与否仍由**地表亮度**表达（v92.240j 口径，注意：v157.76 起地表亮度
+   *   **不再参与迷雾**——顶点色压暗已退役，见下方墓碑）；
+   *   探明范围自此只由**地块线框**标识（已探明冷蓝 / 未探明隐形），
+   *   且不再按格铺贴地加亮六边形（会在视野内造碎斑）。
    *
    * 大气层基准高度（海平面之上，世界单位）。取 **55** 的依据：
    *   · 最高峰 ≈ 40 —— 云顶必须整体高于它，否则山会穿破云壳、读起来是"地面上的斑块"；
@@ -1308,6 +1310,9 @@
            硬切那一瞬间"天空从深空变灰"，本身就是突变感的一半。 */
       }
       if (M._shellMat) M._shellMat.opacity = M._surf ? 0.12 : 0.6;
+      /* v157.76：探明边界线同样只在太空模式亮 —— 站在地上时它是"地图语言"，
+         会变成地上一条莫名其妙的亮线（同 v157 让城色块/插旗退场的理由）。 */
+      if (_fogEdgeMesh) _fogEdgeMesh.visible = !M._surf && _fogEdgeSegs > 0;
       /* ============================================================
        * v157：地表模式 = **只看世界，不看地图符号**
        * ------------------------------------------------------------
@@ -3493,10 +3498,9 @@
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
-    /* v157e：**存一份原始顶点色**。迷雾压暗是"在原始色上乘系数"，
-       所以要能随时回到原色（迷雾变了重算、撤销探索时要还原）。
-       存副本而不是重新算 —— 重算要跑 10 万个 sphBiome，比拷贝贵两个数量级。 */
-    M._globeColBase = new Float32Array(col);
+    /* ⛔ v157.76：`M._globeColBase`（原始顶点色副本，供顶点色压暗乘回原色）
+       随 `paintGlobeFog` 一起退役 —— globe 顶点色自 buildGlobe 之后不再被改写，
+       副本已无消费者。
     /* v155h（性能）：**单面**渲染。DoubleSide 会把球背面（永远看不到）也逐像素光栅化 ——
        实测地形球单独渲染 232ms，其中约一半花在背面。
        单面后球背的三角面被背面剔除，像素量减半。 */
@@ -3894,78 +3898,26 @@
   /* ⛔ v157.68（老板截图「杂色」）：两级**贴地加亮六边形层**（_fogLit / _fogLit1）整条退役。
      它们按 fog 三档给同一片已探明区铺不同强度的六边形，正是视野内部那些
      硬边浅色碎斑的来源。已探明范围此后不叠加任何几何层，只由
-     paintGlobeFog 在顶点色上做「原色 / 均匀压暗」明暗两态。 */
+     顶点色上做「原色 / 均匀压暗」明暗两态（该压暗已于 v157.76 退役）。 */
   /* ============================================================
-   * v157e：**按迷雾压暗 globe 的顶点色**
+   * ⛔ v157.76（老板：「有视野的范围还是保留那个高亮吧……我建议只做这个
+   * 标识性的调整，不要影响到原来的渲染颜色」）
    * ------------------------------------------------------------
-   * 老板要"未探索的地方不要显示那种模糊的边界"。
-   * 那层"模糊的边界"其实是 globe 顶点色在格与格之间的色差（不是线框 ——
-   * 线框已经单独染成背景色了）。所以只能动颜色本身。
+   * `paintGlobeFog` 整条退役。它自 v157e 起按迷雾给 globe **顶点色**乘系数
+   * （v157.68 收敛成两态：已探明 1.0 / 未探明 0.34），"未探明"那片其实是
+   * 压暗过的地形色 —— 老板认定这正是「影响了原来的渲染颜色」。
    *
-   * 为什么不做成独立图层：试过两版，都毁轮廓（贴地壳 → 多边形边，
-   * 统一球壳 → 露出浅色斑块）。**压暗是颜色的事，就在颜色上做。**
+   * 新口径（本版）：
+   *   · 地形色 = 地形色。globe 顶点色在 buildGlobe 之后**不再被任何东西改写**，
+   *     已探明 / 未探明看到的是同一份原色。
+   *   · 视野范围只做**标识性**调整：地块线框（paintLineFog）——
+   *     已探明（含半明）冷蓝可见、未探明隐形；范围边界 = 线出现在哪、停在哪。
+   *   · 视野内部零额外渲染、零调色（v157.68 口径继续有效）。
    *
- * 系数（v157.68 改为两态）：已探明（fog≥1）1.0 / 未探明 0.34。
- * 未探明仍留 1/3 亮度 —— 地形轮廓看得见（"那里有东西，只是看不清"），
- * 但格间色差被压到几乎不可辨，"网格"就消失了。
- * ⚠️ 旧口径还有「半明 0.78」这一中间档：三档在 reveal 半径边缘交错时，
- *    已探明范围内部会被切成深浅不一的六边形碎斑（老板截图「杂色」）。
- *    v157.68 起半明并入已探明（内容是否可见仍由 fog.get 控制，不靠颜色分档）。
- * ============================================================ */
-  function paintGlobeFog() {
-    var g = M._globe, base = M._globeColBase, SPn = GAME.sphere;
-    if (!g || !base || !SPn || !SPn.nearestCell) return;
-    var geo = g.geometry;
-    if (!geo || !geo.getAttribute) return;
-    var attr = geo.getAttribute('color'), pos = geo.getAttribute('position');
-    if (!attr || !pos) return;
-    var arr = attr.array, parr = pos.array, F = GAME.fog;
-    var n = Math.min(attr.count, Math.floor(base.length / 3));
-    /* ============================================================
-     * 性能：99,846 次 `nearestCell` 实测 **328ms**（探索推进时明显掉帧）。
-     * globe 顶点是**按面行优先**排的，相邻顶点方向几乎连续 ——
-     * 于是用"从上一个格出发，在它的邻格里贪心下降"代替全局最近查找：
-     *   每次 ~6 次点积，比 nearestCell 快一个量级，实测 328ms → 十几 ms。
-     * 每跨一个 cube 面（16641 顶点）重置一次，防跨面时卡在局部最优。
-     * ============================================================ */
-    var PER_FACE = 129 * 129;
-    var ciCur = -1, kCur = 1;
-    for (var i = 0; i < n; i++) {
-      var o = i * 3;
-      var x = parr[o], y = parr[o + 1], z = parr[o + 2];
-      var L = Math.sqrt(x * x + y * y + z * z) || 1;
-      var dx = x / L, dy = y / L, dz = z / L;
-      if (i % PER_FACE === 0 || ciCur < 0) {
-        ciCur = SPn.nearestCell([dx, dy, dz]);          /* 每个面起点做一次全局查找 */
-        var vv = (ciCur >= 0 && F) ? F.get(ciCur) : 2;
-        /* v157.68：两态（已探明含半明 = 原色 / 未探明 = 均匀压暗），
-           中间档 0.78 已在 reveal 边缘造成六边形深浅碎斑，退役。 */
-        kCur = (vv >= 1) ? 1 : 0.34;
-      } else if (SPn.adj && SPn.cells) {
-        var best = ciCur, cd = SPn.cells[ciCur] ? SPn.cells[ciCur].dir : null;
-        var bd = cd ? (cd[0] * dx + cd[1] * dy + cd[2] * dz) : -2;
-        for (var it = 0; it < 6; it++) {
-          var nb = SPn.adj[best], improved = false;
-          if (!nb) break;
-          for (var q = 0; q < nb.length; q++) {
-            var cc2 = SPn.cells[nb[q]];
-            if (!cc2 || !cc2.dir) continue;
-            var dt2 = cc2.dir[0] * dx + cc2.dir[1] * dy + cc2.dir[2] * dz;
-            if (dt2 > bd) { bd = dt2; best = nb[q]; improved = true; }
-          }
-          if (!improved) break;
-        }
-        if (best !== ciCur) {
-          ciCur = best;
-          var v2 = (ciCur >= 0 && F) ? F.get(ciCur) : 2;
-          kCur = (v2 >= 1) ? 1 : 0.34;       /* v157.68 两态，同上一处 */
-        }
-      }
-      arr[o] = base[o] * kCur; arr[o + 1] = base[o + 1] * kCur; arr[o + 2] = base[o + 2] * kCur;
-    }
-    attr.needsUpdate = true;
-  }
-  M.paintGlobeFog = paintGlobeFog;
+   * ⚠️ 代价明写：未探明区现在也看得到真实地形色（只是没有网格线），
+   *    不再有"暗一片"的未知感。这是老板拍板要的取舍，不是遗漏。
+   *    要恢复压暗：`git revert` 本版，或照 v157.68 的两态公式重加一遍。
+   * ============================================================ */
 
   /* ============================================================
    * v157.68（老板截图「杂色」）：3D 视野渲染改成「两态 + 干净边界」。
@@ -3983,20 +3935,192 @@
    *      globe 顶点色回原色，线框统一冷蓝；半明不再单独成一档颜色。
    *   ② 未探明**整体均匀压暗**（paintGlobeFog 的 0.34）+ 线框隐形 ——
    *      一片干净的暗，没有中间档、没有羽化、没有格间色差斑块。
-   *   ③ 边界 = 已探明/未探明之间的六边形格边，明暗分明、一条干净的线。
+   *      ⛔ v157.76 退役：老板「只做标识性调整，不要影响原来的渲染颜色」——
+   *      压暗本身就是改地形色，已整条拆除；未探明现在也是原色，只靠"没有线框"标识。
+   *   ③ 边界 = 已探明/未探明之间的六边形格边 —— 线框的有无即边界（v157.76 起唯一标识）。
    * 大气云壳（buildSkyClouds 的 M._sky）不按格分档，保持不动。
    *
    * 两条历史弯路别再走（v157e 已记录）：贴地压暗层 → 外轮廓多边形棱；
    * 统一球壳 → 露出浅色斑块。压暗是「颜色」的事，就在顶点色上做。
    * ============================================================ */
+  /* ============================================================
+   * v157.76：**探明边界线**（独立图层，不是地块线框）
+   * ------------------------------------------------------------
+   * 为什么必须独立成层：
+   *   老板 v157.56 拍板「线条太杂，不要边线」→ `M.TILE_LINES = false`，
+   *   地块六边形线框整层 opacity 归零。把边界色染在那层上 = 画在隐形图层。
+   *   而重开 TILE_LINES 会把 24.5 万段线全放出来，正是老板嫌的"杂"。
+   * 所以：**只画探明边界那一圈**——几何只含「一侧已探明 / 一侧未探明」的边，
+   *   新局视野小时只有一百来段，视野铺开后也就几千段，量级与全网格差两个数量级。
+   *
+   * 这是「视野范围」在 3D 里**唯一**的视觉标识（地形色一律原色，v157.76 压暗已退役）。
+   * 缓冲按需增长复用：避免每次迷雾推进都 new 一份 GPU buffer。
+   * ============================================================ */
+  var _fogEdgeMesh = null, _fogEdgeBuf = null, _fogEdgeSegs = 0, _fogEdgeIdxCap = 0;
+
+  function buildFogBoundary() {
+    var SPn = GAME.sphere, up = SPn && SPn.upos, uc = SPn && SPn.uposCell, F = GAME.fog;
+    if (!up || !uc || !F || typeof THREE === 'undefined') return;
+    var other = ensureEdgeOther();
+    if (!other) return;
+
+    var i, o, ob, segs = 0;
+    for (i = 0; i < uc.length; i++) {
+      ob = other[i];
+      if (ob < 0) continue;
+      if ((F.get(uc[i]) > 0) === (F.get(ob) > 0)) continue;
+      segs++;
+    }
+
+    /* 每段边 → 一条固定宽的**细带**（4 顶点 / 2 三角形）。
+       为什么不用 LineSegments：WebGL 的 linewidth 在绝大多数平台被忽略（永远 1px），
+       1px 亮线在 900 米高处只剩亚像素、又被地形深度切成零星几点（实机截图为证）。
+       三角带能真正做出 2~4px 的实心带，且不引入任何"面状色块"。 */
+    var needFloats = segs * 4 * 3;
+    if (!_fogEdgeBuf || _fogEdgeBuf.length < needFloats) {
+      var cap = Math.max(6144, needFloats * 2);
+      _fogEdgeBuf = new Float32Array(cap);
+      if (_fogEdgeMesh) {
+        scene.remove(_fogEdgeMesh);
+        try { _fogEdgeMesh.geometry.dispose(); } catch (e0) { }
+        _fogEdgeMesh = null;
+      }
+    }
+    if (!_fogEdgeMesh) {
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(_fogEdgeBuf, 3));
+      geo.setDrawRange(0, 0);
+      /* 缓冲按需预留、未用部分是 0：不显式给包围球，three 某些路径会拿整条缓冲
+         算 boundingSphere → 报 NaN 刷控制台。这条带永远跟着地球，用大球包住即可。 */
+      geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1e9);
+      var mat = new THREE.MeshBasicMaterial({
+        /* 颜色：**亮青**。地形主色是绿 / 黄 / 蓝 / 灰岩 / 雪白，纯白在荒漠与雪地上
+           几乎看不见（实机截图为证）；亮青在三类底色上都跳得出来，又不像品红那样"花"。 */
+        color: 0x35ffe8, transparent: true, opacity: 0.9,
+        side: THREE.DoubleSide, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12
+      });
+      _fogEdgeMesh = new THREE.Mesh(geo, mat);
+      _fogEdgeMesh.renderOrder = 23;
+      _fogEdgeMesh.frustumCulled = false;
+      scene.add(_fogEdgeMesh);
+      _fogEdgeIdxCap = 0;
+    }
+
+    var HW = 1.7;     /* 半宽：球半径 300 → 900 米高处约 2px，贴地时更粗（透视自然） */
+    var LIFT = 4.0;   /* 沿径向抬升：地形顶点起伏最大 40，只抬 0.05 会被埋掉大半 */
+    var k = 0;
+    for (i = 0; i < uc.length; i++) {
+      ob = other[i];
+      if (ob < 0) continue;
+      if ((F.get(uc[i]) > 0) === (F.get(ob) > 0)) continue;
+      o = i * 6;
+      var x1 = up[o], y1 = up[o + 1], z1 = up[o + 2];
+      var x2 = up[o + 3], y2 = up[o + 4], z2 = up[o + 5];
+      var L1 = Math.sqrt(x1 * x1 + y1 * y1 + z1 * z1) || 1;
+      var L2 = Math.sqrt(x2 * x2 + y2 * y2 + z2 * z2) || 1;
+      var k1 = (L1 + LIFT) / L1, k2 = (L2 + LIFT) / L2;
+      var ax = x1 * k1, ay = y1 * k1, az = z1 * k1;
+      var bx = x2 * k2, by = y2 * k2, bz = z2 * k2;
+      /* 径向 n = 边中点方向；方向 d = B−A；侧向 s = n × d 归一化 × 半宽 */
+      var mx = (ax + bx) / 2, my = (ay + by) / 2, mz = (az + bz) / 2;
+      var ml = Math.sqrt(mx * mx + my * my + mz * mz) || 1;
+      var nx = mx / ml, ny = my / ml, nz = mz / ml;
+      var dx = bx - ax, dy = by - ay, dz = bz - az;
+      var sx = ny * dz - nz * dy, sy = nz * dx - nx * dz, sz = nx * dy - ny * dx;
+      var sl = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1;
+      sx = sx / sl * HW; sy = sy / sl * HW; sz = sz / sl * HW;
+      _fogEdgeBuf[k++] = ax + sx; _fogEdgeBuf[k++] = ay + sy; _fogEdgeBuf[k++] = az + sz;
+      _fogEdgeBuf[k++] = ax - sx; _fogEdgeBuf[k++] = ay - sy; _fogEdgeBuf[k++] = az - sz;
+      _fogEdgeBuf[k++] = bx + sx; _fogEdgeBuf[k++] = by + sy; _fogEdgeBuf[k++] = bz + sz;
+      _fogEdgeBuf[k++] = bx - sx; _fogEdgeBuf[k++] = by - sy; _fogEdgeBuf[k++] = bz - sz;
+    }
+    _fogEdgeSegs = segs;
+
+    var g2 = _fogEdgeMesh.geometry;
+    g2.attributes.position.needsUpdate = true;
+    /* 每段 2 个三角形（v0,v0+1,v0+2 / v0+2,v0+1,v0+3）；DoubleSide 下绕序无所谓 */
+    if (_fogEdgeIdxCap < segs) {
+      var capSeg = Math.max(1024, segs * 2);
+      var idx = new Uint32Array(capSeg * 6);
+      for (var t = 0; t < capSeg; t++) {
+        var v0 = t * 4;
+        idx[t * 6] = v0; idx[t * 6 + 1] = v0 + 1; idx[t * 6 + 2] = v0 + 2;
+        idx[t * 6 + 3] = v0 + 2; idx[t * 6 + 4] = v0 + 1; idx[t * 6 + 5] = v0 + 3;
+      }
+      g2.setIndex(new THREE.BufferAttribute(idx, 1));
+      _fogEdgeIdxCap = capSeg;
+    }
+    g2.setDrawRange(0, segs * 6);
+    if (g2.index) { g2.index.needsUpdate = true; g2.index.count = segs * 6; }
+    _fogEdgeMesh.visible = segs > 0;
+  }
+  /* 只读探针：给实机取证 / 自检读「边界线到底有没有段、有没有画出来」 */
+  M._fogEdgeProbe = function () {
+    return {
+      segs: _fogEdgeSegs,
+      used: _fogEdgeSegs * 6,          /* 索引数（drawRange 单位） */
+      visible: !!(_fogEdgeMesh && _fogEdgeMesh.visible),
+      drawCount: _fogEdgeMesh ? _fogEdgeMesh.geometry.drawRange.count : -1,
+      cap: _fogEdgeBuf ? _fogEdgeBuf.length : -1,
+      /* 与 M._globe / M._sky / M._lineColAttr 同一惯例：把内部对象交出去，
+         取证脚本靠它做「开/关像素差分」这类必须双态对比的验证。 */
+      mesh: _fogEdgeMesh
+    };
+  };
+
   function buildFog() {
     var F = GAME.fog;
     if (!F) return;
     F.ensure();
     /* 只在 fog 版本变化时被调用（render 里 M._fogVer 比对）。
-       两处颜色重算：globe 顶点色（明暗两态）+ 地块线框色（已探明 / 隐形）。 */
-    paintGlobeFog();
+       v157.76 起只重算**一处**：地块线框色（已探明冷蓝 / 未探明隐形）。
+       globe 顶点色不再参与迷雾 —— 老板「只做标识性调整，不要影响原来的渲染颜色」，
+       地形色就是地形色，视野范围由"线出现在哪、停在哪"表达。
+       ⚠️ 线框本身受 TILE_LINES=false（v157.56「线条太杂」）隐藏，
+          所以「视野范围」真正可见的标识是下面这条**独立的边界线**。 */
     paintLineFog();
+    buildFogBoundary();
+  }
+
+  /* ============================================================
+   * v157.76：**探明边界的边段映射**
+   * ------------------------------------------------------------
+   * 地块线框的每段边被两侧的格**各画一次**（端点坐标完全相同），所以能用端点
+   * 做键把"另一侧是哪一格"找出来 —— v154 区域边界用的就是这套办法。
+   * 这里把它预计算成 Int32Array：paintLineFog 在迷雾变化时被反复调用，
+   * 不能每次都拼字符串（实测 24.5 万段，一次就够呛）。
+   * 表由 paintRegionEdges 顺手填（同一趟循环，零额外开销），
+   * 缺失时才自己建一次兜底 —— 视野标识不能因为区划生成失败就消失。
+   * ============================================================ */
+  function ensureEdgeOther() {
+    if (M._edgeOther && M._edgeOtherFor === M._lineColAttr) return M._edgeOther;
+    var SPn = GAME.sphere, up = SPn && SPn.upos, uc = SPn && SPn.uposCell;
+    if (!up || !uc) return null;
+    var raw = M._edgePairRaw, keyOf = M._edgeKeyOf;
+    if (!raw || !keyOf) {
+      keyOf = function (o) {
+        var x1 = up[o], y1 = up[o + 1], z1 = up[o + 2], x2 = up[o + 3], y2 = up[o + 4], z2 = up[o + 5];
+        var ka = Math.round(x1 * 100) + ',' + Math.round(y1 * 100) + ',' + Math.round(z1 * 100);
+        var kb = Math.round(x2 * 100) + ',' + Math.round(y2 * 100) + ',' + Math.round(z2 * 100);
+        return ka < kb ? ka + '|' + kb : kb + '|' + ka;
+      };
+      raw = {};
+      for (var i = 0; i < uc.length; i++) {
+        var k = keyOf(i * 6);
+        if (raw[k] == null) raw[k] = uc[i];
+        else if (raw[k] !== uc[i]) raw[k] = { a: raw[k], b: uc[i] };
+      }
+      M._edgePairRaw = raw; M._edgeKeyOf = keyOf;
+    }
+    var n = uc.length, out = new Int32Array(n);
+    for (var j = 0; j < n; j++) {
+      out[j] = -1;
+      var p = raw[keyOf(j * 6)];
+      if (p && typeof p === 'object') out[j] = (p.a === uc[j]) ? p.b : p.a;
+    }
+    M._edgeOther = out; M._edgeOtherFor = M._lineColAttr;
+    return out;
   }
 
   /* 线框按探明度上色（与雾面同一把尺子：fog.get） */
@@ -4004,6 +4128,8 @@
     var attr = M._lineColAttr, SPn = GAME.sphere;
     if (!attr || !SPn || !SPn.uposCell) return;
     var arr = attr.array, uc = SPn.uposCell, F = GAME.fog;
+    /* v157.76：每段边的"另一侧格"，用来判这条边是不是**探明边界** */
+    var other = ensureEdgeOther();
     for (var i = 0; i < uc.length; i++) {
       var v = F ? F.get(uc[i]) : 2;
       var r, g, b;
@@ -4028,6 +4154,19 @@
       /* v154：区域边界色覆盖雾色（**同一条边**，不另画线 → 没有重影） */
       var rc = M._regionEdgeCol && M._regionEdgeCol[i];
       if (rc) { r = rc[0]; g = rc[1]; b = rc[2]; }
+      /* ============================================================
+       * v157.76（老板：「有视野的范围还是保留那个高亮吧……我建议只做这个
+       * 标识性的调整，不要影响到原来的渲染颜色」）
+       * ------------------------------------------------------------
+       * 顶点色压暗退役后，远看已探明 / 未探明是**同一片地形色**，范围就没了标识。
+       * 这里在同一条地块边上只改颜色（不加几何、不加面片、不动地形）：
+       * 一侧已探明、另一侧未探明的那条边 → 亮青白，视野范围自己浮出来。
+       * 优先级最高：它是「我能看到哪」的唯一标识；区划色在其内部照常可见。
+       * ============================================================ */
+      var ob = other ? other[i] : -1;
+      if (ob >= 0 && F && ((v > 0) !== (F.get(ob) > 0))) {
+        r = 0.92; g = 0.98; b = 1.0;
+      }
       var o = i * 6;                                        /* 每段 2 顶点 × 3 分量 */
       arr[o] = r; arr[o + 1] = g; arr[o + 2] = b;
       arr[o + 3] = r; arr[o + 4] = g; arr[o + 5] = b;
@@ -4069,10 +4208,14 @@
     }
     var pal = M.regionPalette || { prov: [80, 140, 255], market: [255, 90, 200], district: [40, 150, 70] };
     var on = M._regionOn || { prov: true };
+    /* v157.76：顺手把「每段边的另一侧格」填好（同一趟循环，零额外 key 开销） */
+    var other = new Int32Array(n);
     for (var j = 0; j < n; j++) {
+      other[j] = -1;
       var pair = m[key(j * 6)];
       if (!pair || typeof pair !== 'object') continue;
       var a = pair.a, b = pair.b;
+      other[j] = (a === uc[j]) ? b : a;
       if (S.provOf[a] < 0 || S.provOf[b] < 0) continue;         /* 海/无分区不画 */
       var col = null;
       if (on.prov && S.provOf[a] !== S.provOf[b]) col = pal.prov;
@@ -4080,7 +4223,11 @@
       else if (on.district && S.districtOf[a] !== S.districtOf[b]) col = pal.district;
       if (col) M._regionEdgeCol[j] = [col[0] / 255, col[1] / 255, col[2] / 255];
     }
+    M._edgeOther = other;
+    M._edgeOtherFor = M._lineColAttr;
     paintLineFog();
+    /* 几何刚建好，fog 版本可能没再变过 —— 这里补一次，免得首次进场没有边界线 */
+    try { buildFogBoundary(); } catch (eFB) { }
   }
   M.paintRegionEdges = paintRegionEdges;
   /* ============================================================
@@ -39687,7 +39834,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.75';
+  GAME.VERSION = 'v157.76';
   function boot() {
     fitAppSize();
     try {
