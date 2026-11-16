@@ -16781,38 +16781,17 @@ import './ui.js';
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
   /* 野外城市弹窗 */
 
-  /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」，再开详情面板。
-     层1 = 本函数（按 kind 给可用动作）；层2 = 既有 openCellPanel（按 kind 分发到各原面板）。
-     所有动作按钮走 data-action → GAME.action，本函数只产菜单、不写业务逻辑。 */
-  ui.openCellMenu = function (ci) {
-    var M = GAME.map3d || {};
-    var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
-    var ref = M.cellRef && M.cellRef[ci];
-    var name = (ref && ref.name) ? ref.name : ('地块 #' + ci);
-    var btns = [];
-    if (kind === 'own') {
-      btns.push(['🏯 经营', 'cell-menu-detail', kind]);
-      btns.push(['🛡 派遣', 'cell-menu-dispatch', kind]);
-    } else if (kind === 'wild') {
-      btns.push(['⚔ 出征', 'cell-menu-exp', kind]);
-      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    } else if (kind === 'npc' || kind === 'adm') {
-      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
-      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    } else if (kind === 'fort') {
-      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    } else {
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    }
-    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + btns.map(function (b) {
-      return '<button class="btn" data-action="' + b[1] + '" data-ci="' + ci +
-        '" data-kind="' + b[2] + '">' + b[0] + '</button>';
-    }).join(' ') + '</div>';
-    ui.openShell({ title: '🗺 地块操作', sub: name, body: body });
-  };
+  /* ⛔ v157.72（老板 2026-11-16「地块统一一层菜单，不要加地块操作这一层」）：
+     `ui.openCellMenu`（「🗺 地块操作」功能主菜单）整条退役。
+     ------------------------------------------------------------
+     来历：v156.15 曾在「点地块」和「原本的面板」之间插过一层短条，v156.15b 老板以
+     「这不是套娃吗」撤掉（点地块直开面板）；v157.57 又按决策把它加了回来。
+     本轮的判定：**详情面板里本来就有**「🔭 侦查 / 🔥 掠夺 / 🚩 占领」（`exp-open`）、
+     「🏯 经营 / 🛡 派遣」（己方城）、「⚡ 一键出征」，多这一层只是多一次点击，
+     不增加任何玩家能按的新东西 —— 按 `AGENTS.md:313` 该退役。
+     去向：`map3d.pickAt` 现在直达 `openCellPanel`（按 kind 分发到原面板）；
+     四个 `cell-menu-detail/exp/dispatch/scout` 动作在 `main.js` 同步删除。
+     `smoke §580②` 已翻转为反向守卫：点击不许再经任何中间菜单。 */
 })();
 
 /* ============================================================

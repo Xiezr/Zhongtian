@@ -4248,7 +4248,7 @@ import './gltf.js';
       var _inPro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
       Object.keys(mark).forEach(function (k) {
         var _k = +k;
-        if (cellKind[_k] === 'own' || cellKind[_k] === 'lord' || cellKind[_k] === 'actspot') return;
+        if (cellKind[_k] === 'own' || cellKind[_k] === 'lord') return;
         if (_inPro) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; return; }
         var _f = (GAME.fog && GAME.fog.get) ? GAME.fog.get(_k) : 2;
         if (_f === 0) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; }
@@ -4273,29 +4273,13 @@ import './gltf.js';
         cellKind[_ciP] = 'lord';
         cellRef[_ciP] = { lord: true };
       }
-      /* ============================================================
-       * v151（老板：「地图就是游戏本体」）：**雾里有动静的格子自己发光**。
-       * ------------------------------------------------------------
-       * 走路、动手都回到地图以后，"往哪走"这件事必须由地图回答 ——
-       * 不能靠 HUD 上写一行"最近的动静：东"。这里把君主视野内（≤10 环）
-       * 有荒野事、且**已探明**的格子标成暗金色，地图自己就是任务板。
-       * 迷雾外（fog=0）不给 —— 那是"未知"，标了等于免费探图。
-       * ============================================================ */
-      try {
-        if (M.cellKind && GAME.jianghuActsAt && SP.hopsWithin) {
-          var _ringP = SP.hopsWithin(_ciP, 10) || [];
-          for (var _ji = 0; _ji < _ringP.length; _ji++) {
-            var _jc = _ringP[_ji];
-            if (_jc === _ciP || !_tileCells[_jc]) continue;
-            if (cellKind[_jc]) continue;
-            if (GAME.fog && GAME.fog.get(_jc) === 0) continue;
-            if (!(GAME.jianghuActsAt(_jc) || []).length) continue;
-            mark[_jc] = [196, 158, 74];
-            cellKind[_jc] = 'actspot';
-            cellRef[_jc] = { actspot: true };
-          }
-        }
-      } catch (e) { /* 标点失败不挡地图 */ }
+      /* ⛔ v157.72（老板 2026-11-16「去除那些任务型地块标色并退役任务」）：
+         v151「雾里有动静的格子自己发光」整条退役 —— 曾在君主视野 ≤10 环内把
+         「有荒野事、且已探明」的格子涂成暗金色，让地图自己当任务板。
+         老板看过地图后要求去掉这层任务型标色（连同那个专用 cellKind 分支）。
+         ⚠️ 荒野行动内核（`GAME.jianghuActsAt`）**未动**：它仍是前传探索 / 斗将 /
+            场景动手共用的唯一判据口 —— 退役的是「地图上的任务点提示」这一层，
+            不是「这格能不能做事」。 */
     }
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
@@ -7758,12 +7742,12 @@ import './gltf.js';
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';   /* 地块属性：野地/城市/据点/行政城/己方城 */
     M._cellKind = kind;
     var reg = M.regionAt(ci);                                  /* 该地块的省/市/区归属 */
-    /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」（ui.openCellMenu），
-       再由菜单调 openCellPanel 作层2。v156.15b 当年嫌"套娃"删掉的中间菜单，现按老板决策加回。
-       保留兜底：若 ui.openCellMenu 不存在，仍直开原面板（不退化成死点击）。
-       smoke §580② 已改为正向守卫：点击必须先经 openCellMenu。 */
-    if (GAME.ui && GAME.ui.openCellMenu) GAME.ui.openCellMenu(ci);
-    else M.openCellPanel(ci);
+    /* v157.72（老板 2026-11-16「地块统一一层菜单，不要加地块操作这一层」）：
+       点地块**直达** `openCellPanel`（按 kind 分发到城市 / 攻打 / 据点 / 野地面板）。
+       v157.57 的「🗺 地块操作」中间菜单整条退役 —— 详情面板里本来就有
+       侦查 / 掠夺 / 占领 / 经营 / 派遣 / 一键出征，那一层只多一次点击。
+       smoke §580② 已翻转为反向守卫：点击不许再经任何中间菜单。 */
+    M.openCellPanel(ci);
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   M.centerOn = function (x, y) {                            /* 相机对准某格（回主城/回本城/灰烬城）· 不高亮 */

@@ -47101,11 +47101,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§580① 地图点击不再有中间层（pickAt 不调 openMapBar / 无 barTargetOf）',
       md.indexOf('ui.openMapBar') < 0 && md.indexOf('M.barTargetOf') < 0
       && md.indexOf('barTargetOf: _barTargetOf') < 0);
-    check('§580② 点地块先弹功能主菜单（pickAt 调 ui.openCellMenu，v157.57 反向 v156.15b）',
-      /if \(GAME\.ui && GAME\.ui\.openCellMenu\) GAME\.ui\.openCellMenu\(ci\)/.test(md)
-      && /ui\.openCellMenu = function/.test(um));
-    check('§580②b 层2 出口仍是 openCellPanel（cell-menu-* 经 map3d.openCellPanel 开原面板）',
-      /case 'cell-menu-detail'/.test(mj) && /GAME\.map3d\.openCellPanel\(/.test(mj));
+    /* v157.72（老板「地块统一一层菜单，不要加地块操作这一层」）：
+       旧版这里要求「点击必须先经 openCellMenu」，本轮**反向** —— 中间菜单整条退役。
+       正向：pickAt 直达 openCellPanel（一层）；反向：openCellMenu 无赋值无调用、
+       cell-menu-* 四个 action case 全清。 */
+    check('§580② 点地块直达面板（pickAt 调 openCellPanel · 无中间菜单 · v157.72 反向 v157.57）',
+      /M\.openCellPanel\(ci\);/.test(md)
+      && !/ui\.openCellMenu\s*=\s*function/.test(um)
+      && !/ui\.openCellMenu\s*\(/.test(um)
+      && md.indexOf('ui.openCellMenu(') < 0,
+      'direct=' + /M\.openCellPanel\(ci\);/.test(md)
+        + ' · openCellMenu 定义=' + /ui\.openCellMenu\s*=\s*function/.test(um)
+        + ' · 调用=' + (md.indexOf('ui.openCellMenu(') >= 0));
+    check('§580②b 地块只有一层：cell-menu-* 四个 action case 全清，「地块操作」标题不再出现',
+      mj.indexOf("case 'cell-menu-") < 0
+      && um.indexOf("'🗺 地块操作'") < 0
+      && !/data-action="' \+ b\[1\]/.test(um));
     check('§580③ 2D 兜底同样直调面板（npc/fort/wild 三个分支都没有中转）',
       /hit\.kind === 'npc'\) \{\s*\n\s*ui\.openAttackModal\(hit\.city\);/.test(mj)
       && /ui\.openFortModal\(hit\.fort\);/.test(mj)
@@ -49133,6 +49144,32 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && !/_fogLit\s*=/.test(mSrcM)
       && !/_fogLit1\s*=/.test(mSrcM),
       '未探明仍 0.34 均匀压暗 · 已探明原色 · 贴地加亮层未复活');
+  })();
+
+  /* ============================================================
+   * §586n（v157.72 · 老板「去除那些任务型地块标色并退役任务」）
+   * 三层：① 源码零残留（不写 actspot / 不写暗金色 / 不再有「地图即任务板」注释）
+   *      ② 下限（cellKind 体系仍活，防「整段删掉也绿」）
+   *      ③ 保留面（荒野行动内核仍被 prologue / scene3d 消费，退役的是提示层）
+   * ============================================================ */
+  (function () {
+    var fsN = require('fs'), pN = require('path');
+    var mdN = fsN.readFileSync(pN.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var prN = fsN.readFileSync(pN.join(__dirname, 'js', 'prologue.js'), 'utf8');
+    var scN = fsN.readFileSync(pN.join(__dirname, 'js', 'scene3d.js'), 'utf8');
+    var hitN = (mdN.match(/actspot/g) || []).length;
+    check('§586n 源码面：任务型地块标色零残留（无 actspot / 无暗金色 / 无任务板注释）',
+      hitN === 0
+      && mdN.indexOf('[196, 158, 74]') < 0
+      && mdN.indexOf('地图自己就是任务板') < 0
+      && /cellKind\[[^\]]+\] = 'wild'/.test(mdN),
+      'actspot ' + hitN + ' 处 · 暗金色 ' + (mdN.indexOf('[196, 158, 74]') >= 0)
+        + ' · cellKind 体系 ' + /cellKind\[[^\]]+\] = 'wild'/.test(mdN));
+    check('§586n 保留面：荒野行动内核仍在岗（退役的是地图提示层，不是能不能做事）',
+      /jianghuActsAt/.test(prN) && /jianghuActsAt/.test(scN)
+      && mdN.indexOf('GAME.jianghuActsAt(') < 0,
+      'prologue=' + /jianghuActsAt/.test(prN) + ' · scene3d=' + /jianghuActsAt/.test(scN)
+        + ' · map3d 已脱钩=' + (mdN.indexOf('GAME.jianghuActsAt(') < 0));
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

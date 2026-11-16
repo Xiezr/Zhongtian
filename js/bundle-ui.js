@@ -4542,7 +4542,7 @@
       var _inPro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
       Object.keys(mark).forEach(function (k) {
         var _k = +k;
-        if (cellKind[_k] === 'own' || cellKind[_k] === 'lord' || cellKind[_k] === 'actspot') return;
+        if (cellKind[_k] === 'own' || cellKind[_k] === 'lord') return;
         if (_inPro) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; return; }
         var _f = (GAME.fog && GAME.fog.get) ? GAME.fog.get(_k) : 2;
         if (_f === 0) { delete mark[_k]; delete cellKind[_k]; delete cellRef[_k]; }
@@ -4567,29 +4567,13 @@
         cellKind[_ciP] = 'lord';
         cellRef[_ciP] = { lord: true };
       }
-      /* ============================================================
-       * v151（老板：「地图就是游戏本体」）：**雾里有动静的格子自己发光**。
-       * ------------------------------------------------------------
-       * 走路、动手都回到地图以后，"往哪走"这件事必须由地图回答 ——
-       * 不能靠 HUD 上写一行"最近的动静：东"。这里把君主视野内（≤10 环）
-       * 有荒野事、且**已探明**的格子标成暗金色，地图自己就是任务板。
-       * 迷雾外（fog=0）不给 —— 那是"未知"，标了等于免费探图。
-       * ============================================================ */
-      try {
-        if (M.cellKind && GAME.jianghuActsAt && SP.hopsWithin) {
-          var _ringP = SP.hopsWithin(_ciP, 10) || [];
-          for (var _ji = 0; _ji < _ringP.length; _ji++) {
-            var _jc = _ringP[_ji];
-            if (_jc === _ciP || !_tileCells[_jc]) continue;
-            if (cellKind[_jc]) continue;
-            if (GAME.fog && GAME.fog.get(_jc) === 0) continue;
-            if (!(GAME.jianghuActsAt(_jc) || []).length) continue;
-            mark[_jc] = [196, 158, 74];
-            cellKind[_jc] = 'actspot';
-            cellRef[_jc] = { actspot: true };
-          }
-        }
-      } catch (e) { /* 标点失败不挡地图 */ }
+      /* ⛔ v157.72（老板 2026-11-16「去除那些任务型地块标色并退役任务」）：
+         v151「雾里有动静的格子自己发光」整条退役 —— 曾在君主视野 ≤10 环内把
+         「有荒野事、且已探明」的格子涂成暗金色，让地图自己当任务板。
+         老板看过地图后要求去掉这层任务型标色（连同那个专用 cellKind 分支）。
+         ⚠️ 荒野行动内核（`GAME.jianghuActsAt`）**未动**：它仍是前传探索 / 斗将 /
+            场景动手共用的唯一判据口 —— 退役的是「地图上的任务点提示」这一层，
+            不是「这格能不能做事」。 */
     }
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
@@ -8052,12 +8036,12 @@
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';   /* 地块属性：野地/城市/据点/行政城/己方城 */
     M._cellKind = kind;
     var reg = M.regionAt(ci);                                  /* 该地块的省/市/区归属 */
-    /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」（ui.openCellMenu），
-       再由菜单调 openCellPanel 作层2。v156.15b 当年嫌"套娃"删掉的中间菜单，现按老板决策加回。
-       保留兜底：若 ui.openCellMenu 不存在，仍直开原面板（不退化成死点击）。
-       smoke §580② 已改为正向守卫：点击必须先经 openCellMenu。 */
-    if (GAME.ui && GAME.ui.openCellMenu) GAME.ui.openCellMenu(ci);
-    else M.openCellPanel(ci);
+    /* v157.72（老板 2026-11-16「地块统一一层菜单，不要加地块操作这一层」）：
+       点地块**直达** `openCellPanel`（按 kind 分发到城市 / 攻打 / 据点 / 野地面板）。
+       v157.57 的「🗺 地块操作」中间菜单整条退役 —— 详情面板里本来就有
+       侦查 / 掠夺 / 占领 / 经营 / 派遣 / 一键出征，那一层只多一次点击。
+       smoke §580② 已翻转为反向守卫：点击不许再经任何中间菜单。 */
+    M.openCellPanel(ci);
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   M.centerOn = function (x, y) {                            /* 相机对准某格（回主城/回本城/灰烬城）· 不高亮 */
@@ -29068,38 +29052,17 @@ ui.openDuel = function (fid, moveId) {
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
   /* 野外城市弹窗 */
 
-  /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹「功能主菜单」，再开详情面板。
-     层1 = 本函数（按 kind 给可用动作）；层2 = 既有 openCellPanel（按 kind 分发到各原面板）。
-     所有动作按钮走 data-action → GAME.action，本函数只产菜单、不写业务逻辑。 */
-  ui.openCellMenu = function (ci) {
-    var M = GAME.map3d || {};
-    var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
-    var ref = M.cellRef && M.cellRef[ci];
-    var name = (ref && ref.name) ? ref.name : ('地块 #' + ci);
-    var btns = [];
-    if (kind === 'own') {
-      btns.push(['🏯 经营', 'cell-menu-detail', kind]);
-      btns.push(['🛡 派遣', 'cell-menu-dispatch', kind]);
-    } else if (kind === 'wild') {
-      btns.push(['⚔ 出征', 'cell-menu-exp', kind]);
-      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    } else if (kind === 'npc' || kind === 'adm') {
-      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
-      btns.push(['🔭 侦查', 'cell-menu-scout', kind]);
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    } else if (kind === 'fort') {
-      btns.push(['⚔ 攻打', 'cell-menu-exp', kind]);
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    } else {
-      btns.push(['📜 详情', 'cell-menu-detail', kind]);
-    }
-    var body = '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + btns.map(function (b) {
-      return '<button class="btn" data-action="' + b[1] + '" data-ci="' + ci +
-        '" data-kind="' + b[2] + '">' + b[0] + '</button>';
-    }).join(' ') + '</div>';
-    ui.openShell({ title: '🗺 地块操作', sub: name, body: body });
-  };
+  /* ⛔ v157.72（老板 2026-11-16「地块统一一层菜单，不要加地块操作这一层」）：
+     `ui.openCellMenu`（「🗺 地块操作」功能主菜单）整条退役。
+     ------------------------------------------------------------
+     来历：v156.15 曾在「点地块」和「原本的面板」之间插过一层短条，v156.15b 老板以
+     「这不是套娃吗」撤掉（点地块直开面板）；v157.57 又按决策把它加了回来。
+     本轮的判定：**详情面板里本来就有**「🔭 侦查 / 🔥 掠夺 / 🚩 占领」（`exp-open`）、
+     「🏯 经营 / 🛡 派遣」（己方城）、「⚡ 一键出征」，多这一层只是多一次点击，
+     不增加任何玩家能按的新东西 —— 按 `AGENTS.md:313` 该退役。
+     去向：`map3d.pickAt` 现在直达 `openCellPanel`（按 kind 分发到原面板）；
+     四个 `cell-menu-detail/exp/dispatch/scout` 动作在 `main.js` 同步删除。
+     `smoke §580②` 已翻转为反向守卫：点击不许再经任何中间菜单。 */
 })();
 
 /* ---- ui-exped.js ---- */
@@ -37156,22 +37119,10 @@ ui.openDuel = function (fid, moveId) {
       case 'exp-open': GAME.doOpenExp(el.dataset.kind, el.dataset.mode); break;
       case 'fort-exp': GAME.doOpenFortExp(el.dataset.mode); break;
       case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y)); break;
-      /* v157.57（老板 2026-11-14 反向 v156.15b）：点地块先弹功能主菜单，这里是其层2 出口。
-         exp/detail/dispatch 都复用既有 openCellPanel（按 kind 分发，零逻辑重复）；
-         scout 须先把目标喂给 ui._expTarget / ui._attackNpc，再走 doOpenExp。 */
-      case 'cell-menu-detail': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
-      case 'cell-menu-exp': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
-      case 'cell-menu-dispatch': GAME.map3d.openCellPanel(Number(el.dataset.ci)); break;
-      case 'cell-menu-scout': {
-        var _sci = Number(el.dataset.ci), _sk = el.dataset.kind || 'wild';
-        var _sref = (GAME.map3d && GAME.map3d.cellRef) ? GAME.map3d.cellRef[_sci] : null;
-        if (GAME.ui) {
-          if (_sk === 'npc' || _sk === 'adm') { GAME.ui._attackNpc = _sref; GAME.ui._expTarget = { kind: 'city', id: _sref && _sref.id, npc: _sref }; }
-          else { GAME.ui._expTarget = { kind: 'wild', ci: _sci }; }
-        }
-        GAME.doOpenExp(_sk === 'npc' || _sk === 'adm' ? 'city' : _sk, 'scout');
-        break;
-      }
+      /* ⛔ v157.72（老板「地块统一一层菜单，不要加地块操作这一层」）：
+         `cell-menu-detail / exp / dispatch / scout` 四个动作随「🗺 地块操作」
+         中间菜单整条退役 —— `map3d.pickAt` 现在直达 `openCellPanel`。
+         侦查入口没丢：详情面板的「🔭 侦查」走 `exp-open` + `mode=scout`。 */
       /* v89.193（老板 2）：前哨总览（入口：地图导航栏「🚩 前哨」/ 前哨面板） */
       case 'open-outposts': ui.openOutposts(); break;
       /* v156.52（老板「提供一个正位按钮（把球体摆正）」）：视角复位 = 南北轴竖直、
@@ -39522,7 +39473,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.71';
+  GAME.VERSION = 'v157.72';
   function boot() {
     fitAppSize();
     try {
