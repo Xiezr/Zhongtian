@@ -36496,18 +36496,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return seg.indexOf('M.resetView(') < 0
           && /e\.button === 2 && !M\._rmbMoved/.test(m243);
       })());
-      c243('§243①p 离开地表的位置量取自 camO.dir（v157.48）· v157.80 起必须带 _surfVis 守卫', (function () {
-        /* 规则变更（§0.7 三件套）：v157.48 的规则本身不变 —— 位置量必须取 camO.dir，
-           不许把视线 `_surfDir` 当位置塞进去。v157.80 新增一层：这段 `asin` 反算
-           **只能"刚从地表退回"那一次执行**，否则它每帧把玩家累加出的 pitch 折回 ±π/2，
-           滚过极点时来回打转（这就是老板第二次说"还有死角"的总根源，
-           实测 pitch 稳停 −1.592、130 帧累加 3.25 弧度一步未生效）。
-           所以锚点换成带守卫的形态，并**额外要求守卫存在**，防有人把守卫去掉。 */
-        var i = m243.indexOf("if (camO.dir && M._surfVis === true) {");
-        var seg = (i >= 0) ? m243.slice(i, i + 480) : '';
-        return seg.indexOf('Math.atan2(camO.dir[0], camO.dir[2])') >= 0
-          && seg.indexOf('_surfDir') < 0
-          && /if \(camO\.dir && M\._surfVis === true\) \{/.test(m243);
+      c243('§243①p 位置量必须取自 camO.dir、不得拿视线当位置（v157.48）· v157.81 起零每帧反算', (function () {
+        /* 规则变更（§0.7 三件套）：v157.48 的规则本身不变 —— 位置量取 camO.dir，
+           不许把视线 `_surfDir` 当位置塞进去。v157.81 把原来那段
+           「if (camO.dir && _surfVis) { yaw=atan2(dir); pitch=asin(dir.y) }」
+           **整段物理删除**（地表模式全程不碰 yaw/pitch，退出时无需重算）。
+           判据升级为更强版本：① M.lookAtDir 仍在（外部对准的唯一正确入口）；
+           ② 全文件 camO.pitch = Math.asin 只允许 2 处；③ 那段带守卫的代码不许复活
+           （按代码形态判 —— 墓碑注释里会提到它的名字）。 */
+        var _asinN = (m243.match(/camO\.pitch = Math\.asin/g) || []).length;
+        return /M\.lookAtDir = function \(d\) \{/.test(m243)
+          && _asinN === 2
+          && !/if \(camO\.dir && M\._surfVis === true\) \{\s*\n\s*camO\.yaw = Math\.atan2/.test(m243);
       })());
       /* ============================================================
        * v157.50（老板「滚轮不能有距离跳变；视线在阈值处要全面平滑」）
@@ -49371,11 +49371,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /camO\.quat = null; camO\._euler = null;/.test(mp),
       '累加两式 + quat 置空重建');
 
-    check('§586r 根因面：placeCamera 的 asin 反算必须有 _surfVis 守卫（否则每帧折回极点）',
-      /if \(camO\.dir && M\._surfVis === true\) \{/.test(mp)
-      /* 反向证据：不许再出现"无守卫的 if (camO.dir) { camO.yaw = atan2..." */
-      && !/if \(camO\.dir\) \{\n      camO\.yaw = Math\.atan2\(camO\.dir\[0\], camO\.dir\[2\]\);/.test(mp),
-      '守卫在岗 · 无守卫版本未复活');
+    /* 规则变更（v157.81）：v157.80 是「给 asin 反算加 _surfVis 守卫」，本版升级为
+       **整段物理删除**。理由：地表模式全程不碰 camO.yaw/pitch（只改 _surfDir /
+       cam.position / cam.up），退出时 pitch/yaw 本来就是进去时的值，不需要重算。
+       留着那段唯一的作用，就是把 asin 反算留在链路里 —— 还有复活的机会。
+       ⚠️ 判据必须看「代码形态」：墓碑注释里提到了被删代码的名字，
+          用裸正则会把「已删」误判成「还在」。 */
+    check('§586r 根因面：placeCamera 内零 asin 反算；全文件仅 2 处合法写点',
+      !/if \(camO\.dir && M\._surfVis === true\) \{\s*\n\s*camO\.yaw = Math\.atan2/.test(mp)
+      && (mp.match(/camO\.pitch = Math\.asin/g) || []).length === 2
+      && /M\.lookAtDir = function \(d\) \{/.test(mp)
+      && /M\.panStepOf\(dx, dy, _B54\)/.test(mp),
+      'asin 写点 ' + (mp.match(/camO\.pitch = Math\.asin/g) || []).length + ' 处（应 2）');
 
     check('§586r 数值面：pitch 越过 ±π/2 后 dir 仍连续、能绕到球另一侧（不许夹回）',
       (function () {
@@ -49404,13 +49411,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§586r 反向证据：三套失败方案与死代码全部保持退役',
       !/_useStep/.test(mp) && !/_edgeA/.test(mp) && !/_angP0/.test(mp)
       && !/_nP = Math\.floor/.test(mp) && !/camO\.pitch -= _nP \* Math\.PI/.test(mp)
-      && !/_arcVec/.test(mp) && !/_spG2/.test(mp),
-      '_useStep/_edgeA/_angP0/_nP/_arcVec/_spG2 均 0');
+      && !/_arcVec/.test(mp) && !/_spG2/.test(mp)
+      /* v157.81 追加：抓球面交点的整条链也不许复活（同样按代码形态判，不看注释） */
+      && !/var _ndcG = function/.test(mp) && !/var _P0 = null/.test(mp)
+      && !/var _tgtG = \(M\._surf/.test(mp),
+      '_useStep/_edgeA/_angP0/_nP/_arcVec/_spG2/_ndcG/_P0/_tgtG 均 0');
 
-    check('§586r 保留面：地表抓地砖分支仍在（那里是"抓地面"，不是"转球"）',
-      /\} else if \(_P0 && _P1\) \{/.test(mp)
-      && /var _dqG = new THREE\.Quaternion\(\)\.setFromUnitVectors\(_P1, _P0\);/.test(mp),
-      '地表抓取在岗');
+    /* 规则变更（v157.81）：原判据锁「地表抓地砖分支（_P0/_P1 + _dqG）」——
+       那条分支是**死代码**（函数上方 `if (M._surf) { ... return; }` 已挡），已删。
+       地表真正在用的路径是 v157.54 的**纯增量平移**（panStepOf + 按下冻结基准），
+       保留面改为锁它 —— 这才是「地表还在、只是换了实现」的正确锚点。 */
+    check('§586r 保留面：地表平移仍在（v157.54 纯增量口径），没被这次删除波及',
+      /if \(M\._surf && M\._panDrag\) \{/.test(mp)
+      && /M\.panStepOf\(dx, dy, _B54\)/.test(mp)
+      && /_B54\.dist \/ _nl54/.test(mp),
+      'panStepOf + 半径归位在岗');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

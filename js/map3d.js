@@ -5959,6 +5959,30 @@ import './gltf.js';
       return;
     }
     cam.position.set(d * _dir0[0], d * _dir0[1], d * _dir0[2]);
+    /* ============================================================
+     * v157.81：**相机方向连续性守卫**（运行时，不是测试）
+     * ------------------------------------------------------------
+     * 相机方向每帧只允许小步变化。任何让它单帧跳 >30° 的改动都会记进
+     * `M._camJumps`（带 surf / rAlt 上下文，便于区分预期跳变）。
+     * 滚轮缩放、切城、进出地表属预期跳变，也会被记下来。
+     * 意义：以后谁再往这条链路里塞"每帧反算 / 夹取 / 归一化"，
+     *       不用等玩家投诉，`M._camJumps` 里直接就有证据。
+     * ============================================================ */
+    if (M._camPrevDir) {
+      var _jd0 = _dir0[0] * M._camPrevDir[0] + _dir0[1] * M._camPrevDir[1] + _dir0[2] * M._camPrevDir[2];
+      var _ja0 = Math.acos(Math.max(-1, Math.min(1, _jd0))) * 180 / Math.PI;
+      if (_ja0 > (M.CAM_JUMP_MAX || 30)) {
+        M._camJumps = M._camJumps || [];
+        if (M._camJumps.length < 60) {
+          M._camJumps.push({
+            deg: Math.round(_ja0 * 10) / 10,
+            surf: !!M._surf,
+            rAlt: Math.round(_rAlt * 10) / 10
+          });
+        }
+      }
+    }
+    M._camPrevDir = [_dir0[0], _dir0[1], _dir0[2]];
     /* 回到轨道相机：清掉地表状态的航向/俯仰 —— 下次进入必须重新从真实相机取，
        否则会拿"上次离开时"的旧航向，又是一次跳变。 */
     /* 地表视线是**自由向量**（可以绕好几圈），切回轨道相机前必须换算成它的欧拉角，
@@ -5971,25 +5995,17 @@ import './gltf.js';
        正解：位置仍用径向 `camO.dir`（人还在原地，只是升高），
        视线偏移（lookYaw/lookPitch）清零 —— 拉远 = 退回太空看这颗球，看球心是自然的。
        原来那条"把视线折算成欧拉角"的注释本身没错，错在把位置量和朝向量混成了一个。 */
-    /* ⛔ v157.80（老板复发「旋转还有死角」的总根源就在这里）：
-       这段 `camO.pitch = asin(dir.y)` 原来**每帧都跑**。asin 的主值域是
-       [−π/2, π/2]，于是玩家累积出来的 pitch 一旦越过 ±π/2（也就是滚过极点），
-       下一帧就被折回 —— 表现为「拖到极点附近来回打转、怎么拖都过不去」。
-       实测：pitch 稳稳停在 −1.592，130 帧累加 3.25 弧度却一步没生效。
-       它的本意只是**从地表退回轨道那一次**把径向换算成欧拉角，
-       所以加上 `M._surfVis` 守卫 —— 轨道模式下 pitch/yaw 完全由输入维护，
-       不再有任何"反算覆盖"。 */
-    if (camO.dir && M._surfVis === true) {
-      camO.yaw = Math.atan2(camO.dir[0], camO.dir[2]);
-      camO.pitch = Math.asin(Math.max(-1, Math.min(1, camO.dir[1])));
-      /* ⚠️ 这里**不能**把 quat 置 null：`_dirty` 判据在本帧更早处已经算过了，
-         置空后本帧末尾 `cam.quaternion.copy(camO.quat)` 直接崩（实测 TypeError）。
-         按同一套公式当场重建，保持 quat 与 yaw/pitch 一致。 */
-      var _cy2 = Math.cos(camO.pitch), _sy2 = Math.sin(camO.pitch);
-      var _dv2 = new THREE.Vector3(_cy2 * Math.sin(camO.yaw), _sy2, _cy2 * Math.cos(camO.yaw)).normalize();
-      camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dv2);
-      camO._euler = [camO.yaw, camO.pitch];
-    }
+    /* ⛔ v157.81：这里原有 `if (camO.dir && M._surfVis === true) { camO.pitch = asin(...) }`
+       —— 整段**物理删除**，不是加条件。
+       ------------------------------------------------------------
+       它自 v157e 起就在，名义作用是"从地表退回轨道时把径向折算成欧拉角"。但这条理由
+       在 v157.48 就失效了：现在地表模式全程**不碰** `camO.yaw/pitch`
+       （只改 `_surfDir` / `cam.position` / `cam.up`），所以退出地表时 pitch/yaw
+       本来就是进去时的值，根本不需要重算。
+       留着的唯一后果：`asin` 主值域 [−π/2, π/2] 把玩家累加出的 pitch 折回 ——
+       一旦任何路径让它每帧执行（v157.78 就是这样），滚过极点就变成"来回打转"。
+       实测证据：pitch 稳停 −1.592，130 帧累加 3.25 弧度一步未生效。
+       现在整段删掉 —— 相机姿态只有一个来源：输入（拖动 / 滚轮 / 外部定位）。 */
     var _wasSurfV = (M._surfVis === true);
     M._surfVis = false;
     _surfTilt = null;              /* v157.48：离开地表，落地过渡作废 */
@@ -7074,56 +7090,21 @@ import './gltf.js';
        * ⚠️ 符号在两种场景**必须不同**（pitch 的语义相反），这就是"分场景联动"。
        *    改任何一处都要重跑 4×2 矩阵，别再凭"统一符号"推断。
        * ============================================================ */
-      /* ============================================================
-       * v157i：左键 = **抓取**（老板：「揪住地面一点，围绕球心随鼠标左右前后移动」）
-       * ------------------------------------------------------------
-       * 走过的三段弯路，都记在这里：
-       *   ① 固定灵敏度改 yaw/pitch → 抓取点横向过度 2.9 倍、纵向不足 0.6 倍；
-       *   ② 单位球 arcball → 位置对了但方向反、幅度仍差 2.6 倍
-       *      （单位球与透视球的表观半径不是一个尺度，且地表误差上千像素）；
-       *   ③ 本版：**射线求真实球面点**，用两点旋转反推相机 —— 不需要任何常数。
-       *
-       * 每帧：
-       *   P0 = 上一帧鼠标位置在**当前相机**下打到的球面点（轨道打拾取壳、地表打地砖）
-       *   P1 = 当前鼠标位置打到的球面点
-       *   相机绕球心转 rotation(P1→P0)：这样 P0 会被摆到鼠标底下，即"抓取点跟手"。
-       * 算完从四元数反算 yaw/pitch 并重建 → 丢掉 roll（早期 arcball 的"斜角"病灶），
-       * 轴心恒为球心（老板：「轴心不完全是球心」）。
-       * ============================================================ */
+        /* ⛔ v157.81：这里原有 v157i 的「抓取球面交点」方案说明 —— 该方案已整条退役。
+           它有三个修不掉的问题（都实测过）：
+             ① 相机在球外时球轮廓被压成极窄一条，鼠标拖到那儿交点几乎不动
+                → `dir.y` 爬到 ±0.93（≈±68.6°）就停住回头，极点永远到不了；
+             ② 每帧要打两次 raycast 求交，纯属浪费；
+             ③ 算完还要"从四元数反算 yaw/pitch"，而反算用的 asin 会把值域折回
+                [−π/2, π/2] —— 这正是"滚过极点就来回打转"的根源。
+           现行方案 = **pitch/yaw 纯累加**（见下方 v157.80 段），不依赖任何射线，
+           也不做任何反算。 */
       var _rcG = canvas.getBoundingClientRect();
       if (_rcG.width > 0 && cam) {
-        var _ndcG = function (px, py) {
-          return new THREE.Vector2(
-            ((px - _rcG.left) / _rcG.width) * 2 - 1,
-            -((py - _rcG.top) / _rcG.height) * 2 + 1);
-        };
-        var _rayG = new THREE.Raycaster();
-        var _P0 = null, _P1 = null;
-        /* ============================================================
-         * v157.78（老板：「左键旋转还有死角，有个地方无法跨过」）
-         * ------------------------------------------------------------
-         * 抓取式旋转（"揪住球面一点"）在**球边缘**必然衰减：
-         * 相机在球外时，球的最上/最下缘在屏幕上被压成极窄一条，
-         * 鼠标拖到那里抓点几乎不动 → 实测 dir.y 单调爬到 0.9314（≈68.6°）
-         * 就开始回落，**极点永远到不了**。这不是 clamp，是几何。
-         * 而 v157h 定过的增量口径本来就能滚过极点
-         * （「纬度不 clamp，渲染时 dir 由 sin/cos 现算，越界自动折回」），
-         * 只是 v157i 换成抓取后把它覆盖了。
-         *
-         * 现在两种并存、按**抓点离球心的角**自动接管：
-         *   · 抓点在内侧（≤0.86×球角半径）→ 抓取（跟手，v157i 口径不变）
-         *   · 贴边或打到球外 → 增量（竖拖改 pitch / 横拖改 yaw，pitch 不 clamp）
-         * 地表模式（抓地砖）始终用抓取，不参与这套。
-         * ============================================================ */
-        var _tgtG = (M._surf && SR && SR.plate) ? SR.plate : M._collider;
-        if (_tgtG) {
-          _rayG.setFromCamera(_ndcG(_prevX, _prevY), cam);
-          var _h0 = _rayG.intersectObject(_tgtG, false);
-          if (_h0.length) _P0 = _h0[0].point.clone();
-          _rayG.setFromCamera(_ndcG(e.clientX, e.clientY), cam);
-          var _h1 = _rayG.intersectObject(_tgtG, false);
-          if (_h1.length) _P1 = _h1[0].point.clone();
-        }
+        /* v157.81：`_ndcG` / `_rayG` 与交点 `_P0`/`_P1`、以及 `_tgtG` 的两次求交
+           —— 整段退役。它们唯一的消费者是上面那条 `else if (_P0 && _P1)`，
+           该分支永远不可达（`M._surf` 已在更早处 return）。
+           顺带每帧省掉两次 `intersectObject`。 */
         /* ============================================================
          * v157.80（老板复发：「高空左键旋转还有死角，有个地方无法跨过」·
          *          「你就不能借鉴现有成熟的方案吗」）
@@ -7161,17 +7142,11 @@ import './gltf.js';
           if (camO.pitch > 1e4 || camO.pitch < -1e4) camO.pitch %= (Math.PI * 2);
           if (camO.yaw > 1e4 || camO.yaw < -1e4) camO.yaw %= (Math.PI * 2);
           camO.quat = null; camO._euler = null;   /* 让 placeCamera 按 yaw/pitch 重建 */
-        } else if (_P0 && _P1) {
-          /* 地表：抓地砖（射线与地砖交点），语义与轨道不同，保留原实现 */
-          _P0.normalize(); _P1.normalize();
-          var _dqG = new THREE.Quaternion().setFromUnitVectors(_P1, _P0);
-          var _q0G = camO.quat || cam.quaternion;
-          var _nqG = _q0G.clone().premultiply(_dqG).normalize();
-          var _dvG = new THREE.Vector3(0, 0, 1).applyQuaternion(_nqG).normalize();
-          camO.yaw = Math.atan2(_dvG.x, _dvG.z);
-          camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dvG.y)));
-          camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dvG);
-          camO._euler = [camO.yaw, camO.pitch];
+          /* ⛔ v157.81：这里原有 `} else if (_P0 && _P1)` 那个分支（抓地砖 → 反算 yaw/pitch）
+             —— 死代码，已删。函数上方 `if (M._surf) { ... return; }` 已经挡住了地表模式，
+             走到这里 `M._surf` 必为 false，该分支永远不可达。
+             而它内部两行 `camO.pitch = asin(...)` 正是"每帧折回 pitch"的同型代码：
+             哪天真有路径漏过那个 return，死角就原地复活。删掉才叫治本。 */
         }
 
         /* ⛔ v157.78：「边缘打空 → 退回单位球」那条分支整段退役。
