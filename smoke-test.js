@@ -47908,10 +47908,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          1px 亮线在 900 米高处只剩亚像素、还被地形深度切成零星几点（实机取证）。
          下限判据锁死「4 顶点 / 6 索引」的带状结构 —— 退化成线就说明有人改回去了。 */
       /function buildFogBoundary\s*\(/.test(mSrc)
-      && /color: 0x35ffe8/.test(mSrc)
+      && /color: 0xdFF2ff/.test(mSrc)
       && /side: THREE\.DoubleSide/.test(mSrc)
+      && /depthTest: false/.test(mSrc)
       && /_fogEdgeBuf\[k\+\+\] = ax \+ sx/.test(mSrc)
-      && /var HW = 1\.7;/.test(mSrc)
+      /* v157.79（老板「那个边界壳太丑了」）：带宽/抬升必须保持"细、贴地"。
+         旧值 HW=1.7 / LIFT=4.0 近距离就是一条浮起的粗青带 = 壳。
+         下限反向：不许调回 >1.0 的量级。 */
+      && /var HW = 0\.55;/.test(mSrc)
+      && /var LIFT = 0\.25;/.test(mSrc)
+      && !/var HW = (?:[2-9]|[1-9]\d)/.test(mSrc)
+      && !/var LIFT = (?:[1-9]|\d\d)/.test(mSrc)
       && /g2\.setDrawRange\(0, segs \* 6\);/.test(mSrc)
       && /_fogEdgeMesh\.visible = segs > 0;/.test(mSrc)
       /* 地表模式必须退场（站在地上时它是"地图语言"，同 v157 城色块/插旗的理由） */
@@ -47921,7 +47928,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* 只读探针在岗（实机取证靠它读"有没有段 / 画没画出来"） */
       && /M\._fogEdgeProbe = function/.test(mSrc)
       && /_edgeOther && M\._edgeOtherFor === M\._lineColAttr/.test(mSrc),
-      '三角带 + 地表退场 + 挂在 buildFog 上');
+      '细带 0.55 / 抬 0.25 / depthTest=false · 地表退场 · 挂在 buildFog 上');
 
     check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');

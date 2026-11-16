@@ -3761,19 +3761,24 @@ import './gltf.js';
       var mat = new THREE.MeshBasicMaterial({
         /* 颜色：**亮青**。地形主色是绿 / 黄 / 蓝 / 灰岩 / 雪白，纯白在荒漠与雪地上
            几乎看不见（实机截图为证）；亮青在三类底色上都跳得出来，又不像品红那样"花"。 */
-        color: 0x35ffe8, transparent: true, opacity: 0.9,
-        side: THREE.DoubleSide, depthWrite: false,
+        /* v157.79（老板：「那个边界壳太丑了」）：**细、淡、不悬空**。
+           上一版抬 4 单位压地形，近距离成了一条浮起的粗青带 —— 那就是"壳"。
+           现在抬升只留 0.25（视觉贴地），可见性交给 `depthTest: false`：
+           边界线本来就该"永远看得见"（它是 HUD 级信息），不需要参与地形遮挡。
+           配色也从艳青降到冷白偏青，避免抢地形。 */
+        color: 0xdFF2ff, transparent: true, opacity: 0.72,
+        side: THREE.DoubleSide, depthWrite: false, depthTest: false,
         polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12
       });
       _fogEdgeMesh = new THREE.Mesh(geo, mat);
-      _fogEdgeMesh.renderOrder = 23;
+      _fogEdgeMesh.renderOrder = 40;   /* v157.79：HUD 级，画在所有 3D 元素之上 */
       _fogEdgeMesh.frustumCulled = false;
       scene.add(_fogEdgeMesh);
       _fogEdgeIdxCap = 0;
     }
 
-    var HW = 1.7;     /* 半宽：球半径 300 → 900 米高处约 2px，贴地时更粗（透视自然） */
-    var LIFT = 4.0;   /* 沿径向抬升：地形顶点起伏最大 40，只抬 0.05 会被埋掉大半 */
+    var HW = 0.55;    /* 半宽：带总宽 1.1 世界单位（球半径 300 的 0.37%），900 米高处约 1px */
+    var LIFT = 0.25;  /* 只抬"半根头发"—— 可见性由 depthTest:false 保证，不靠抬高 */
     var k = 0;
     for (i = 0; i < uc.length; i++) {
       ob = other[i];

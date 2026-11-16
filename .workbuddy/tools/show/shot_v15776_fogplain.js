@@ -98,8 +98,12 @@ var pw = require('playwright-core');
      再把相机对准它 —— 圈落在画面中央才好判断观感。 */
   var grow = await p.evaluate(function () {
     var G = window.GAME, F = G.fog, M = G.map3d;
+    /* 以**相机正对的那一格**为圆心 reveal —— 前面的教训：用城市中心时探明区常在球背面，
+       截图上一条边界都看不见，白验一轮。 */
+    var _cd = new THREE.Vector3(0, 0, 1);
+    try { _cd = G.map3d._cam.position.clone().normalize(); } catch (e0) { }
+    var ci = G.sphere.nearestCell([_cd.x, _cd.y, _cd.z]);
     var c = (typeof G.currentCity === 'function') ? G.currentCity() : null;
-    var ci = (c && typeof c.ci === 'number') ? c.ci : 0;
     F.revealAround(ci, 8, 2);
     var hops = (G.sphere && G.sphere.hopsWithin) ? G.sphere.hopsWithin(ci, 13) : [];
     for (var i = 0; i < hops.length; i += 9) F.revealAround(hops[i], 4, 2);
@@ -110,10 +114,10 @@ var pw = require('playwright-core');
   await p.waitForTimeout(2000);
   console.log('===== reveal 后 =====');
   console.log(JSON.stringify(grow));
-  var probeAfter = await p.evaluate(function () { var pr=window.GAME.map3d._fogEdgeProbe(); return {segs:pr.segs,used:pr.used,visible:pr.visible,drawCount:pr.drawCount}; });
+  var probeAfter = await p.evaluate(function () { var M=window.GAME.map3d; return {segs:M._fogEdgeSegCount, drawn:M._fogEdgeDrawn, surf:!!M._surf, ver:window.GAME.VERSION}; });
   console.log('probeAfter=' + JSON.stringify(probeAfter));
 
-  var AGL = [1100, 700, 420];
+  var AGL = [1200, 800];
   for (var i = 0; i < AGL.length; i++) {
     var agl = AGL[i];
     await p.evaluate(function (a) {
