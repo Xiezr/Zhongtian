@@ -47194,6 +47194,86 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && !/arr\[i3 \+ 1\] \*=/.test(mSrc),
       'base 乘回在岗 · 就地累乘 0 处');
 
+    /* ============================================================
+     * §586v（v157.87 · 老板「地面更精细化，落到海面时，想要一个战舰世界
+     *   那样的场景那么样一个比例和 3D 场景，创建一个人，在场景中自由移动。
+     *   优先采用成熟方案」）
+     * ------------------------------------------------------------
+     * 五层守卫（前四层钉"海面场景"，第五层钉"地面更精细"）：
+     *   ① 场景表：水域格带 sea:true，且**不再**带 water:true
+     *      （旧 lake 是"地上一块 30×26 的水面板"，海面是场景自带的一整片海）
+     *   ② 装配面：透视相机 + 自带天空/海面 —— 正交俯视是"看棋盘"，不是海面
+     *   ③ 同源面：GPU 顶点位移与 CPU 站立高度必须由**同一张 SEA_W** 生成。
+     *      真调 `S._waveY` 与 `S._waveGlsl()`：GLSL 里的常量逐项对得上，
+     *      且 JS 结果与手算三重正弦逐位相等（带非零下限，防 0 === 0）
+     *   ④ 人物面：程序化人形 + 步态在岗；Soldier.glb（蒙皮坏了、渲染成碎片）
+     *      **不许**再被挂到玩家身上
+     *   ⑤ 地面面：法线贴图 + InstancedMesh 散落物 + 96×96 细分
+     * ============================================================ */
+    var scSrc = fs.readFileSync(path.join(__dirname, 'js', 'scene3d.js'), 'utf8');
+
+    check('§586v 场景表：水域格 = 海面场景（sea:true），旧"水面板"配置退役',
+      /id: 'lake'[\s\S]{0,700}?sea: true,/.test(scSrc)
+      && /id: 'lake'[\s\S]{0,700}?act: 'lake_scene'/.test(scSrc)
+      && !/^\s*water: true,/m.test(scSrc),
+      'lake → sea:true · 垂钓入口未动 · water:true 已撤');
+
+    check('§586v 装配面：透视相机 + 自带天空穹顶 + 自带海面网格',
+      /new THREE\.PerspectiveCamera\(52, 16 \/ 9, 0\.1, 7000\)/.test(scSrc)
+      && /if \(!seaCam\) seaCam = new THREE\.PerspectiveCamera/.test(scSrc)
+      && /cam = seaCam;/.test(scSrc)
+      && /seaSky = new THREE\.Mesh\(new THREE\.SphereGeometry\(4200/.test(scSrc)
+      && /seaMesh = new THREE\.Mesh\(og, seaMat\);/.test(scSrc),
+      '透视/天空/海面三件套在岗');
+
+    check('§586v 同源面：GLSL 与 JS 用同一张 SEA_W，浪高逐位一致', (function () {
+      var S3 = G.scene3d;
+      if (!S3 || !S3._waveY || !S3._waveGlsl || !S3._SEA_W) return false;
+      var W = S3._SEA_W, glsl = S3._waveGlsl();
+      /* ① GLSL 里每个振幅/相速都必须来自同一张表（toFixed(5) 逐项比对） */
+      var sameSrc = W.length === 3 && W.every(function (w) {
+        return glsl.indexOf(w.A.toFixed(5)) >= 0 && glsl.indexOf(w.S.toFixed(5)) >= 0;
+      });
+      /* ② 真算三处采样，与手算对照；并带非零下限（三浪叠加必须有起伏） */
+      var t = 1.7, xs = [42.5, -13.25, 7.5], zs = [-17, 6.75, 31];
+      var okNum = true, mag = 0;
+      for (var i = 0; i < xs.length; i++) {
+        var manual = 0;
+        for (var k = 0; k < W.length; k++) {
+          var w = W[k], kk = 2 * Math.PI / w.L;
+          manual += w.A * Math.sin(kk * (w.D[0] * xs[i] + w.D[1] * zs[i]) - w.S * t);
+        }
+        var got = S3._waveY(xs[i], zs[i], t);
+        mag += Math.abs(got);
+        if (Math.abs(got - manual) > 1e-9) okNum = false;
+      }
+      check('§586v 同源面：' + (sameSrc ? 'GLSL 常量逐项对得上' : 'GLSL 与表不一致')
+        + ' · 三处采样手算差 ' + (okNum ? '0' : '≠0') + ' · 起伏和 ' + mag.toFixed(3), 
+        sameSrc && okNum && mag > 0.05, '');
+      return sameSrc && okNum && mag > 0.05;
+    })(), '同源生成 + 真值对照');
+
+    check('§586v 站立面：人站在浪上（seaTick 用 seaWaveY，不是拿常数 0 顶着）',
+      /player\.position\.y = seaWaveY\(player\.position\.x, player\.position\.z, t\) \+ 0\.10;/.test(scSrc)
+      && !/if \(player\) player\.position\.y = 0;/.test(scSrc),
+      '浪高驱动站立高度');
+
+    check('§586v 人物面：程序化人形 + 步态在岗；坏的 Soldier 资产不许挂回玩家',
+      /function buildPerson\s*\(/.test(scSrc)
+      && /function personAnim\s*\(/.test(scSrc)
+      && /var fig = buildPerson\(\);/.test(scSrc)
+      && /personAnim\(now \/ 1000, moving \? 1 : 0\);/.test(scSrc)
+      /* 玩家身上不许再挂 gltf：buildPlayer 里必须直接 return g（没有 Actor.load） */
+      && !/a\.root\.scale\.setScalar\(1\.0\);\s*\n\s*g\.add\(a\.root\);/.test(scSrc),
+      '人形/步态在岗 · 玩家 gltf 分支 0 处');
+
+    check('§586v 地面面：法线贴图 + InstancedMesh 散落物 + 96×96 细分',
+      /normalMap: groundNormalTex\(cfg\.seed \|\| 7\)/.test(scSrc)
+      && /function groundNormalTex\s*\(/.test(scSrc)
+      && /new THREE\.InstancedMesh\(Ly\.geo, Ly\.mat, Ly\.n\)/.test(scSrc)
+      && /new THREE\.PlaneGeometry\(40, 40, 96, 96\)/.test(scSrc),
+      '法线贴图 / 实例化 / 96 段在岗');
+
     check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');
       return arc.indexOf('v157.68') >= 0 && arc.indexOf('现有人口设定') >= 0 && arc.indexOf('杂色') >= 0;

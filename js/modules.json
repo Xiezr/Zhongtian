@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "524e2e366dc8e77b",
+ "sourceHash": "05e474c88bba7d0e",
  "layout": {
   "order": [
    "core",
@@ -1116,7 +1116,7 @@
   {
    "name": "scene3d",
    "file": "js/scene3d.js",
-   "lines": 3568,
+   "lines": 4363,
    "bundle": "ui",
    "duty": "scene3d.js — 2.5D 场景运行时（v140 · 老板 2026-10-24）",
    "deps": [

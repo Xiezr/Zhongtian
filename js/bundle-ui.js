@@ -8817,6 +8817,81 @@
   var LGT = null, _skyBase = 0x8e97a4, _fogBase = 0x8e97a4, _lastPhase = null;
 
   /* ============================================================
+   * v157.87 · 海面场景（老板「地面更精细化，落到海面时，想要一个战舰世界
+   *   那样的场景那么样一个比例和 3D 场景，创建一个人，在场景中自由移动。
+   *   优先采用成熟方案」）
+   * ------------------------------------------------------------
+   * 技术选型**全是成熟做法**，没有一处自创：
+   *   · 相机   → 透视 + 第三人称环绕（舰游/开放世界那一套），不再是正交"看棋盘"
+   *   · 波浪   → 三重正弦涌浪（顶点位移）+ 高频法线细节（片元）。
+   *              这是 three.js Water 与各家海洋 demo 的标准分工：
+   *              **几何只承担采得动的大浪，小浪全部交给法线**
+   *              （顶点永远不够密 —— 12 米一格采不动 2 米的浪）
+   *   · 水面   → Schlick 菲涅尔 + 天空反射 + 太阳镜面（窄高光 + 宽光带）
+   *   · 地平线 → 天空底部、雾、水面远景**同一个颜色**，接缝自然消失
+   *   · 尺度   → 远景军舰按真实舰长拼（驱逐 118 m / 巡洋 182 m / 战列 246 m），
+   *              它们才是"这片海有多大"的参照物
+   *
+   * ⛔ 一条硬约束：**GPU 的顶点位移与 CPU 的站立高度必须是同一个函数**。
+   *   `seaWaveY`（JS）与 `seaWaveGlsl`（GLSL）都由同一份 `SEA_W` 生成，
+   *   改海况只改那张表 —— 分开写两套，人就会在浪里沉浮/踩空，
+   *   而且这种偏差只能靠肉眼才看得出来。
+   * ============================================================ */
+  var SEA = {
+    SIZE: 3000,          /* 海面网格边长（米）：铺得比能见度大，看不到边 */
+    SEG: 240,            /* 240×240 → 12.5 米一格（只有 40 米以上的涌浪采得动） */
+    BOUND: 480,          /* 人可走范围 ±480 米，再远就是雾里 */
+    SPEED: 6.0,          /* 走：地面 4.2 → 6.0（尺度一大，4.2 像冻住） */
+    RUN: 13.5,
+    HORIZON: 0x9dbccc,   /* 地平线色：天空底 / 雾 / 水面远景共用这一个 */
+    ZENITH: 0x18466f,    /* 天顶：深蓝。海面视角只在 0~20° 仰角里，
+                            天顶不深一点，整屏天空就是一片灰（第一版实测） */
+    DEEP: 0x08252f,
+    SHALLOW: 0x1e6274,
+    SUN: 0xfff2da,
+    FOG: 0.00046,        /* 雾密度：600 m 透射 0.93、1500 m 0.62（军舰在雾里但读得出轮廓） */
+  };
+  /* 三重涌浪 { 振幅, 波长, 相速, 方向 } —— 调海况只改这张表 */
+  var SEA_W = [
+    { A: 0.95, L: 160, S: 5.2, D: [0.92, 0.39] },
+    { A: 0.48, L: 82, S: 4.0, D: [-0.36, 0.93] },
+    { A: 0.22, L: 40, S: 3.2, D: [0.71, -0.70] }
+  ];
+  var SEA_AMP = 0;
+  for (var _swi = 0; _swi < SEA_W.length; _swi++) SEA_AMP += SEA_W[_swi].A;
+
+  /* CPU 侧的浪高：与下面 GLSL 逐项对齐 */
+  function seaWaveY(x, z, t) {
+    var y = 0;
+    for (var i = 0; i < SEA_W.length; i++) {
+      var w = SEA_W[i], k = 2 * Math.PI / w.L;
+      y += w.A * Math.sin(k * (w.D[0] * x + w.D[1] * z) - w.S * t);
+    }
+    return y;
+  }
+  /* 把同一张表翻成 GLSL（数字只有一份） */
+  function seaWaveGlsl() {
+    var L = ['float seaH(vec2 p, float t, out vec2 grad) {', '  float h = 0.0; grad = vec2(0.0);'];
+    for (var i = 0; i < SEA_W.length; i++) {
+      var w = SEA_W[i], k = 2 * Math.PI / w.L;
+      L.push('  { float ph = ' + k.toFixed(7) + ' * dot(p, vec2(' + w.D[0].toFixed(5) + ', '
+        + w.D[1].toFixed(5) + ')) - ' + w.S.toFixed(5) + ' * t;'
+        + ' h += ' + w.A.toFixed(5) + ' * sin(ph);'
+        + ' grad += ' + (w.A * k).toFixed(7) + ' * vec2(' + w.D[0].toFixed(5) + ', '
+        + w.D[1].toFixed(5) + ') * cos(ph); }');
+    }
+    L.push('  return h;', '}');
+    return L.join('\n');
+  }
+
+  /* 海面场景的运行时状态 */
+  var seaView = false, seaMesh = null, seaSky = null, seaMat = null, seaSkyMat = null;
+  var seaTime = 0, seaCam = null, orthoCam = null;
+  var seaFloat = [], seaShips = [], seaRipple = [], seaRipT = 0;
+  var seaYaw = 0, seaPitch = 0.26, seaDist = 12.5, seaDrag = null;
+  var _seaPrev = { x: 0, z: 0 };
+
+  /* ============================================================
    * 0. 调色板（废土科技）
    * ------------------------------------------------------------
    * 颜色只在这里定义一次 —— 换风格改这一处，10 个场景一起变。
@@ -9462,7 +9537,7 @@
     wall: gWall, rebar: gRebar, rubble: gRubble, crate: gCrate, barrel: gBarrel,
     reed: gReed, wheat: gWheat, scarecrow: gScarecrow, hut: gHut, fence: gFence,
     tent: gTent, fire: gFire, solar: gSolar, pipe: gPipe, gate: gGate, statue: gStatue,
-    tower: gTower, crystal: gCrystal, wreck: gWreck, stall: gStall, lantern: gLantern,
+    tower: gTower, crystal: gCrystal, wreck: gWreck, raft: seaRaft, stall: gStall, lantern: gLantern,
     rock: gRock, log: gLog, beast: gBeast,
   };
 
@@ -9492,6 +9567,7 @@
     tower: function (o) { return [o.hgt || o.h || 6]; },
     crystal: function (o) { return [o.seed]; },
     wreck: function (o) { return [o.seed]; },
+    raft: function (o) { return [o.seed]; },
     rock: function (o) { return [o.seed]; },
   };
   /* 接地阴影：一块压扁的暗椭圆。
@@ -9765,25 +9841,36 @@
       ],
     },
     {
-      id: 'lake', name: '临湖垂钓', sub: '水面很静，静得像在等你下钩',
+      /* ============================================================
+       * v157.87（老板「落到海面时，想要一个战舰世界那样的场景…」）
+       * ------------------------------------------------------------
+       * `lake`（水域格）从"40 米见方的小水塘"换成**海面场景**：
+       *   · 场景 id 保持 'lake'（`S.pickFor('lake_scene','lake')` 与
+       *     `jianghuActsAt` 的入口一字不改，垂钓/采集/调息的账本也不动）
+       *   · 布景坐标从 ±5 米改成 ±40 米 —— 尺度变了，旧坐标会挤成一坨
+       *   · `water: true` 撤掉：海面是**场景自带的一整片海**（buildSeaScene），
+       *     不是"地上一块水面板"。留 `water` 会在地上再铺一层 30×26 的板子，
+       *     和海面打架（同一位置两层水面，深度冲突）。
+       * ============================================================ */
+      id: 'lake', name: '海上漂流', sub: '水面一直铺到天边 —— 雾里还停着几艘军舰',
       ground: 0x7a6f55, sky: 0x93b3c4, fog: 0x8fa6b2, act: 'lake_scene', seed: 404,
-      water: true,
+      sea: true,
       props: [
-        /* 芦苇贴着岸线（-1.2 ~ -0.4），散开的几丛在岸上；石头在岸，
-           倒木当"凳"，灯在岸上做参照物。全部避开水面中线，免得漂着。 */
-        { t: 'reed', x: -3.6, z: -0.9, n: 8, seed: 1 }, { t: 'reed', x: 4.4, z: -0.7, n: 7, seed: 2 },
-        { t: 'reed', x: -1.4, z: 3.4, n: 6, seed: 3 }, { t: 'reed', x: 5.2, z: 2.2, n: 5, seed: 6 },
-        { t: 'rock', x: -5.2, z: 2.4, seed: 4 }, { t: 'rock', x: 5.6, z: 0.6, seed: 5 },
-        { t: 'log', x: -4.6, z: 0.4, rot: 0.9 },
-        { t: 'deadTree', x: 6.2, z: 3.4, s: 1.1 },
-        { t: 'lantern', x: 2.8, z: -0.6 },
+        /* 水上的东西：半沉的船壳、漂着的桶和箱、芦苇丛、露出水面的礁石。
+           全部在 60 米内 —— 人走到哪儿都能看见"参照物"，才读得出尺度。 */
+        { t: 'barrel', x: 8, z: -12 }, { t: 'barrel', x: 11.5, z: -10.5 },
+        { t: 'crate', x: 6.4, z: -13.6, s: 1.1 },
+        { t: 'reed', x: 14, z: -20, n: 7, seed: 2 }, { t: 'reed', x: 19, z: -17, n: 5, seed: 4 },
+        { t: 'rock', x: -18, z: -9, seed: 5 }, { t: 'rock', x: -21, z: -11, seed: 6 },
+        { t: 'log', x: 3.2, z: -7.5, rot: 1.1 },
+        { t: 'reed', x: -6, z: -3.6, n: 5, seed: 7 },
       ],
       nodes: [
-        /* 钓点在**岸边**（z≈-1.4，水面从 -1 开始）：站在岸上钓，
-           而不是站在水里钓 —— 这是"湖"和"水坑"的区别。 */
-        { t: 'pipe', x: 0.4, z: -1.4, len: 1.4, act: 'lake_scene', label: '下竿垂钓', hint: '肥鱼入篓，偶得水中沉物' },
-        { t: 'reed', x: -3.2, z: -1.0, n: 5, seed: 1, act: 'cai', label: '在芦苇里摸', hint: '水边的药材' },
-        { t: 'rock', x: -4.6, z: 1.6, act: 'xiu', label: '在石上静坐', hint: '辐能充裕处调息' },
+        /* 钓点挂在**半沉的船壳**上：人站在浪里，靠在残骸边下竿。
+           （旧版钓点是"岸上的一根管子"—— 海上没有岸了） */
+        { t: 'raft', x: -16, z: -26, seed: 3, act: 'lake_scene', label: '在浮筏上下竿', hint: '肥鱼入篓，偶得水中沉物' },
+        { t: 'reed', x: 14, z: -20, n: 6, seed: 2, act: 'cai', label: '在芦苇丛里摸', hint: '水边的药材' },
+        { t: 'rock', x: -18, z: -9, seed: 5, act: 'xiu', label: '在礁石上静坐', hint: '辐能充裕处调息' },
       ],
     },
     {
@@ -10014,7 +10101,9 @@
         eq.dispose(); pm.dispose();
       } catch (e) { /* 老版本没有 PMREM → 退回纯直射光，不影响可用性 */ }
     })();
-    cam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 300);
+    /* v157.87：正交相机留一个引用 —— 海面场景要换成透视，退出时必须换回来 */
+    orthoCam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 300);
+    cam = orthoCam;
     /* 光：半球光给环境色，方向光给"太阳"和影子方向感。
        不启用 shadowMap —— 正交场景里靠颜色和轮廓已经够，阴影贴图在移动端太贵。 */
     /* 三层光：
@@ -10070,6 +10159,12 @@
     window.addEventListener('keyup', function (e) { keys[e.key] = false; }, true);
     window.addEventListener('resize', resize, false);
     cvs.addEventListener('pointerdown', onPointerDown);
+    /* v157.87：海面的环绕镜头要拖拽/滚轮 —— 监听挂在 window 上，
+       拖动移出 canvas 也不会丢事件（拖到工具栏就"粘住"是常见毛病）。 */
+    window.addEventListener('pointermove', onPointerMove, false);
+    window.addEventListener('pointerup', onPointerUp, false);
+    window.addEventListener('pointercancel', onPointerUp, false);
+    cvs.addEventListener('wheel', onWheel, { passive: false });
     return;
   }
 
@@ -10079,9 +10174,74 @@
     R3.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     R3.setSize(w, h, false);
     var asp = w / h;
+    /* v157.87：海面场景是透视相机，正交那套 left/right/top/bottom 对它无意义 */
+    if (cam && cam.isPerspectiveCamera) {
+      cam.aspect = asp;
+      cam.updateProjectionMatrix();
+      return;
+    }
     cam.left = -frustumH * asp / 2; cam.right = frustumH * asp / 2;
     cam.top = frustumH / 2; cam.bottom = -frustumH / 2;
     cam.updateProjectionMatrix();
+  }
+
+  /* ============================================================
+   * v157.87 · 地面法线贴图（老板「地面更精细化」）
+   * ------------------------------------------------------------
+   * 之前地面只有颜色贴图 + 顶点色 —— 光照再准，**表面物理上是平的**，
+   * 近景一看就是"一张图铺在板上"。
+   * 法线贴图是这件事的成熟解法：不加一个面，靠切线空间法线骗出凹凸感。
+   * 做法（标准流程）：
+   *   ① 多倍频值噪声 → 高度图
+   *   ② Sobel 求梯度 → RGB 编码法线
+   *   ③ **取样按环绕取模**（x±1 用 % N）→ 贴图可无缝平铺（不透光、不出现接缝线）
+   * 只 256²，每种地面生成一次；和颜色贴图各自 repeat(3,3)。
+   * ============================================================ */
+  function groundNormalTex(seed) {
+    var N = 256;
+    var hgt = new Float32Array(N * N);
+    var R = rng((seed || 7) + 8123);
+    var oct = [[16, 0.55], [7, 0.28], [3, 0.17]];
+    for (var o = 0; o < oct.length; o++) {
+      var cell = oct[o][0], amp = oct[o][1];
+      var gw = Math.ceil(N / cell) + 2;
+      var grid = new Float32Array(gw * gw);
+      for (var q = 0; q < grid.length; q++) grid[q] = R();
+      for (var y = 0; y < N; y++) {
+        var gy = y / cell, iy = Math.floor(gy), fy = gy - iy, sy = fy * fy * (3 - 2 * fy);
+        for (var x = 0; x < N; x++) {
+          var gx = x / cell, ix = Math.floor(gx), fx = gx - ix, sx = fx * fx * (3 - 2 * fx);
+          var a = grid[iy * gw + ix], b = grid[iy * gw + ix + 1];
+          var c = grid[(iy + 1) * gw + ix], d = grid[(iy + 1) * gw + ix + 1];
+          var v0 = a + (b - a) * sx, v1 = c + (d - c) * sx;
+          hgt[y * N + x] += (v0 + (v1 - v0) * sy) * amp;
+        }
+      }
+    }
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = N;
+    var ctx = cv.getContext('2d');
+    var img = ctx.createImageData(N, N);
+    var STR = 7.4;      /* 高度→坡度的放大系数：小了看不出凹凸，大了像橘子皮 */
+    for (var yy = 0; yy < N; yy++) {
+      var ym = ((yy - 1) + N) % N, yp = (yy + 1) % N;
+      for (var xx = 0; xx < N; xx++) {
+        var xm = ((xx - 1) + N) % N, xp = (xx + 1) % N;
+        var dx = (hgt[yy * N + xp] - hgt[yy * N + xm]) * STR;
+        var dz = (hgt[yp * N + xx] - hgt[ym * N + xx]) * STR;
+        var len = Math.sqrt(dx * dx + dz * dz + 1);
+        var i4 = (yy * N + xx) * 4;
+        img.data[i4] = Math.round(((-dx / len) * 0.5 + 0.5) * 255);
+        img.data[i4 + 1] = Math.round(((-dz / len) * 0.5 + 0.5) * 255);
+        img.data[i4 + 2] = Math.round(((1 / len) * 0.5 + 0.5) * 255);
+        img.data[i4 + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    var tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 3);
+    return tex;
   }
 
   /* ---------- 地面贴图（程序生成，1 张 256² 噪声图） ---------- */
@@ -10164,9 +10324,577 @@
     return tex;
   }
 
+
+  /* ============================================================
+   * 海面场景（v157.87）—— 天空 / 海面 / 军舰 / 站在浪上的人
+   * ============================================================ */
+  function seaSkyMaterial() {
+    var vs = [
+      'varying vec3 vDir;',
+      'void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
+    ].join('\n');
+    var fs = [
+      'varying vec3 vDir;',
+      'uniform vec3 uSunDir;',
+      'uniform vec3 uZen;',
+      'uniform vec3 uHor;',
+      'uniform vec3 uSunCol;',
+      'void main() {',
+      '  vec3 d = normalize(vDir);',
+      '  float h = clamp(d.y, -1.0, 1.0);',
+      /* 0.50 次方：天际线附近快速转蓝。0.62 时抬头才见蓝，
+         而海面视角几乎永远在 0~20° 仰角里 —— 于是整屏天空是灰的（第一版实测）。 */
+      '  float t = pow(clamp(h, 0.0, 1.0), 0.42);',
+      '  vec3 col = mix(uHor, uZen, t);',
+      /* 地平线以下：与雾同色。海面盖住它，只在极远处露出一丝 ——
+         如果这里给"另一片天"，地平线上就会出现一条假的色带。 */
+      /* 地平线以下压回雾色（海面盖住它）。带宽从 0.10 收到 0.04：
+         0.10 时地平线上有一条明显的浅灰带，像一张纸的毛边。 */
+      '  col = mix(col, uHor, smoothstep(0.04, -0.02, h));',
+      '  float sd = max(dot(d, normalize(uSunDir)), 0.0);',
+      '  col += uSunCol * pow(sd, 1200.0) * 2.8;',
+      '  col += uSunCol * pow(sd, 22.0) * 0.13;',
+      '  col += uSunCol * pow(sd, 3.0) * 0.045 * smoothstep(-0.15, 0.45, h);',
+      '  gl_FragColor = vec4(col, 1.0);',
+      '  #include <tonemapping_fragment>',
+      '  #include <colorspace_fragment>',
+      '}'
+    ].join('\n');
+    return new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: {
+        uSunDir: { value: new THREE.Vector3(0.20, 0.34, -0.92).normalize() },
+        uZen: { value: new THREE.Color(SEA.ZENITH) },
+        uHor: { value: new THREE.Color(SEA.HORIZON) },
+        uSunCol: { value: new THREE.Color(SEA.SUN) }
+      },
+      vertexShader: vs, fragmentShader: fs
+    });
+  }
+
+  function seaOceanMaterial() {
+    var vs = [
+      'uniform float uTime;',
+      'varying vec3 vW;',
+      'varying vec3 vN;',
+      'varying float vH;',
+      seaWaveGlsl(),
+      'void main() {',
+      '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+      '  vec2 g;',
+      '  float h = seaH(wp.xz, uTime, g);',
+      '  wp.y += h;',
+      '  vW = wp.xyz; vH = h;',
+      '  vN = normalize(vec3(-g.x, 1.0, -g.y));',
+      '  gl_Position = projectionMatrix * viewMatrix * wp;',
+      '}'
+    ].join('\n');
+    var fs = [
+      'uniform float uTime;',
+      'uniform vec3 uSunDir;',
+      'uniform vec3 uSunCol;',
+      'uniform vec3 uDeep;',
+      'uniform vec3 uShallow;',
+      'uniform vec3 uSky;',
+      'uniform vec3 uZen;',
+      'uniform vec3 uFogCol;',
+      'uniform float uFogDen;',
+      'uniform float uAmp;',
+      'varying vec3 vW;',
+      'varying vec3 vN;',
+      'varying float vH;',
+      'float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+      'float vnoise(vec2 p) {',
+      '  vec2 i = floor(p), f = fract(p);',
+      '  f = f * f * (3.0 - 2.0 * f);',
+      '  float a = hash21(i), b = hash21(i + vec2(1.0, 0.0));',
+      '  float c = hash21(i + vec2(0.0, 1.0)), d = hash21(i + vec2(1.0, 1.0));',
+      '  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);',
+      '}',
+      'void main() {',
+      '  vec3 V = normalize(cameraPosition - vW);',
+      /* 高频细节只进法线：顶点 12.5 米一格，2~7 米的浪在几何上根本采不动。
+         三组斜向正弦（系数 = 振幅×波数），叠在涌浪法线上。 */
+      '  vec2 p = vW.xz;',
+      '  vec2 g = vec2(0.0);',
+      /* 6 组不同方向的细节波：3 组时法线干涉成"灯芯绒"（第一版实测：整片海是
+         一排平行斜纹）。真实的近岸海面是多个方向的浪互相错开的，加方向数最有效。 */
+      '  { float ph = 0.70 * dot(p, vec2(0.80, 0.60)) - 1.55 * uTime; g += 0.048 * vec2(0.80, 0.60) * cos(ph); }',
+      '  { float ph = 1.13 * dot(p, vec2(-0.62, 0.78)) - 1.95 * uTime; g += 0.030 * vec2(-0.62, 0.78) * cos(ph); }',
+      '  { float ph = 1.70 * dot(p, vec2(0.96, -0.28)) - 2.40 * uTime; g += 0.020 * vec2(0.96, -0.28) * cos(ph); }',
+      '  { float ph = 2.35 * dot(p, vec2(0.35, -0.94)) - 2.85 * uTime; g += 0.013 * vec2(0.35, -0.94) * cos(ph); }',
+      '  { float ph = 3.10 * dot(p, vec2(-0.90, -0.44)) - 3.30 * uTime; g += 0.009 * vec2(-0.90, -0.44) * cos(ph); }',
+      '  { float ph = 4.20 * dot(p, vec2(0.12, 0.99)) - 3.90 * uTime; g += 0.006 * vec2(0.12, 0.99) * cos(ph); }',
+      /* 细节强度随大尺度噪声起伏：海面不会处处一样"毛"——
+         均匀的毛，看上去就是一块有纹路的布（这是第一版最明显的问题）。 */
+      '  float rough = 0.55 + 0.85 * vnoise(p * 0.021 + vec2(uTime * 0.02, 0.0));',
+      '  g *= rough;',
+      /* 太阳"碎金"：真实海面的反光是**无数小面**在闪，不是一整块渐变。
+         解析正弦给不了这个（波长再短就采不动），用两个噪声斜率当场抖：
+         只在 240 米内生效 —— 远处像素小于波长，抖起来就是噪点（会闪）。 */
+      '  float nearK = 1.0 - smoothstep(25.0, 130.0, length(cameraPosition - vW));',
+      '  float s1 = vnoise(p * 2.1 + vec2(uTime * 0.55, -uTime * 0.31));',
+      '  float s2 = vnoise(p * 3.7 - vec2(uTime * 0.42, uTime * 0.66));',
+      '  g += vec2(s1 - 0.5, s2 - 0.5) * 0.20 * nearK;',
+      '  vec3 N = normalize(vec3(vN.x - g.x, vN.y, vN.z - g.y));',
+      '  float NdV = max(dot(N, V), 0.0);',
+      /* Schlick：水的 F0 = 0.02（垂直看是透明的深色，掠射才成镜面） */
+      '  float fres = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);',
+      '  vec3 R = reflect(-V, N);',
+      '  vec3 refl = mix(uSky, uZen, pow(clamp(R.y, 0.0, 1.0), 0.62));',
+      '  float sd = max(dot(R, normalize(uSunDir)), 0.0);',
+      /* 反射里的太阳：收紧到 420 次幂 —— 260 次时它是一大片白斑，不像反光 */
+      '  refl += uSunCol * pow(sd, 420.0) * 0.75;',
+      /* 水体：浪尖透光（次表面散射的廉价近似），浪谷更深 */
+      '  float crest = clamp(vH / max(uAmp, 0.001) * 0.5 + 0.5, 0.0, 1.0);',
+      '  vec3 body = mix(uDeep, uShallow, crest * 0.75);',
+      '  body += uSunCol * pow(crest, 7.0) * 0.05;',
+      '  vec3 col = mix(body, refl, fres);',
+      /* 太阳镜面：窄（720 次幂，一点星芒）+ 宽（64 次幂，一条光带） */
+      '  vec3 Hv = normalize(normalize(uSunDir) + V);',
+      '  float sh = max(dot(N, Hv), 0.0);',
+      /* 太阳镜面：窄项给"星点"，宽项只留一丝 —— 宽项 0.20 时水面上是一块
+         像探照灯的白斑（第一版实测），WoWS 那种是一条细碎的金路。 */
+      '  col += uSunCol * (pow(sh, 1400.0) * 1.45 + pow(sh, 110.0) * 0.07);',
+      /* 白沫：浪尖 + 稀疏泡沫斑（噪声很慢地漂） */
+      '  float foam = smoothstep(0.78, 1.0, crest) * 0.42;',
+      '  foam += smoothstep(0.74, 0.97, vnoise(p * 0.42 + vec2(uTime * 0.33, uTime * 0.21))) * 0.10 * crest;',
+      '  col = mix(col, vec3(0.86, 0.92, 0.95), clamp(foam, 0.0, 0.7));',
+      /* 雾：公式与 THREE.FogExp2 完全一致，否则水面和军舰会在同一距离上
+         变成两种颜色，地平线附近会出现一条谁都不属于的带子 */
+      '  float d = length(cameraPosition - vW);',
+      '  float fg = 1.0 - exp(-pow(d * uFogDen, 2.0));',
+      '  col = mix(col, uFogCol, clamp(fg, 0.0, 1.0));',
+      '  gl_FragColor = vec4(col, 1.0);',
+      '  #include <tonemapping_fragment>',
+      '  #include <colorspace_fragment>',
+      '}'
+    ].join('\n');
+    return new THREE.ShaderMaterial({
+      fog: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uSunDir: { value: new THREE.Vector3(0.20, 0.34, -0.92).normalize() },
+        uSunCol: { value: new THREE.Color(SEA.SUN) },
+        uDeep: { value: new THREE.Color(SEA.DEEP) },
+        uShallow: { value: new THREE.Color(SEA.SHALLOW) },
+        uSky: { value: new THREE.Color(SEA.HORIZON) },
+        uZen: { value: new THREE.Color(SEA.ZENITH) },
+        uFogCol: { value: new THREE.Color(SEA.HORIZON) },
+        uFogDen: { value: SEA.FOG },
+        uAmp: { value: SEA_AMP }
+      },
+      vertexShader: vs, fragmentShader: fs
+    });
+  }
+
+  /* 烟的贴图（软灰团）：军舰在雾里冒烟，是"这艘船在开"的唯一线索 */
+  var _smokeTex = null;
+  function smokeSprite(size, op) {
+    if (!_smokeTex) {
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = 128;
+      var g = cv.getContext('2d');
+      var rg = g.createRadialGradient(64, 64, 2, 64, 64, 62);
+      rg.addColorStop(0.00, 'rgba(196,196,196,0.95)');
+      rg.addColorStop(0.45, 'rgba(150,150,150,0.42)');
+      rg.addColorStop(1.00, 'rgba(120,120,120,0)');
+      g.fillStyle = rg; g.fillRect(0, 0, 128, 128);
+      _smokeTex = new THREE.CanvasTexture(cv);
+    }
+    var sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: _smokeTex, color: 0x9aa1a6, transparent: true, opacity: op == null ? 0.26 : op,
+      depthWrite: false, fog: true
+    }));
+    sp.scale.set(size, size, 1);
+    return sp;
+  }
+
+  /* 军舰：几百米外只看得到轮廓 —— 基本体拼装就够，比例按真实舰长给 */
+  var SEA_SHIP = {
+    dd: { len: 118, beam: 11.5, dep: 8.0, tower: 17, turret: 2, funnel: 2, mast: 19 },
+    cl: { len: 182, beam: 18.5, dep: 11.5, tower: 26, turret: 3, funnel: 2, mast: 27 },
+    bb: { len: 246, beam: 33.0, dep: 15.0, tower: 30, turret: 3, funnel: 2, mast: 34 }
+  };
+  function seaShip(kind) {
+    var K = SEA_SHIP[kind] || SEA_SHIP.cl;
+    var g = new THREE.Group();
+    /* ⚠️ 必须显式 vertexColors:false：lam() 默认开顶点色（走 mesh() 的几何都带
+       bakeAO 的 color 属性），而这里的几何是直接 new 出来的，没有 color 属性，
+       开顶点色会读到默认值 (0,0,0) → 整艘船全黑。 */
+    var hullMat = lam(0x2f3a45, { roughness: 0.80, metalness: 0.18, vertexColors: false, noMap: true });
+    var deckMat = lam(0x6b6557, { roughness: 0.96, vertexColors: false, noMap: true });
+    var supMat = lam(0x9aa3aa, { roughness: 0.68, metalness: 0.16, vertexColors: false, noMap: true });
+    var darkMat = lam(0x2a3138, { roughness: 0.86, vertexColors: false, noMap: true });
+
+    var L2 = K.len / 2, B2 = K.beam / 2;
+    var sh = new THREE.Shape();
+    sh.moveTo(-L2, -B2 * 0.92);
+    sh.lineTo(L2 * 0.52, -B2);
+    sh.quadraticCurveTo(L2 * 0.88, -B2 * 0.82, L2, 0);
+    sh.quadraticCurveTo(L2 * 0.88, B2 * 0.82, L2 * 0.52, B2);
+    sh.lineTo(-L2, B2 * 0.92);
+    sh.closePath();
+    var hg = new THREE.ExtrudeGeometry(sh, { depth: K.dep, bevelEnabled: false, curveSegments: 6 });
+    hg.rotateX(-Math.PI / 2);          /* 形状在 XY 面 → 立起来：X 是舰长、Z 是舰宽、Y 是吃水 */
+    var hull = new THREE.Mesh(hg, hullMat);
+    /* 干舷 ≈ 吃水的 54%：0.55 时露出水面的太少，远看就是"一块漂着的板"（截图确认） */
+    hull.position.y = -K.dep * 0.46;
+    g.add(hull);
+
+    var deckY = K.dep * 0.45;
+    var deck = new THREE.Mesh(new THREE.BoxGeometry(K.len * 0.86, 0.5, K.beam * 0.82), deckMat);
+    deck.position.set(-K.len * 0.03, deckY + 0.2, 0);
+    g.add(deck);
+
+    /* 舰桥（前部）+ 后部甲板室 */
+    var bw = K.len * 0.17, bh = K.tower * 0.50, bd = K.beam * 0.70;
+    var bridge = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), supMat);
+    bridge.position.set(K.len * 0.08, deckY + bh / 2 + 0.4, 0);
+    g.add(bridge);
+    var bridge2 = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.60, bh * 0.46, bd * 0.66), supMat);
+    bridge2.position.set(K.len * 0.09, deckY + bh + bh * 0.23 + 0.4, 0);
+    g.add(bridge2);
+    var hangar = new THREE.Mesh(new THREE.BoxGeometry(K.len * 0.20, K.tower * 0.22, K.beam * 0.58), supMat);
+    hangar.position.set(-K.len * 0.22, deckY + K.tower * 0.11 + 0.4, 0);
+    g.add(hangar);
+
+    /* 烟囱 */
+    for (var fi = 0; fi < K.funnel; fi++) {
+      var fr = K.beam * 0.12;
+      var fn = new THREE.Mesh(new THREE.CylinderGeometry(fr * 0.86, fr, K.tower * 0.46, 8), darkMat);
+      fn.position.set(K.len * (0.02 - fi * 0.15), deckY + K.tower * 0.23 + 0.4, 0);
+      g.add(fn);
+      /* 烟：三团往上飘，位置按烟囱给 */
+      for (var si = 0; si < 3; si++) {
+        var sm = smokeSprite(K.len * (0.22 + si * 0.10), 0.30 - si * 0.06);
+        sm.position.set(K.len * (0.02 - fi * 0.15) - si * K.len * 0.035,
+          deckY + K.tower * 0.52 + si * K.tower * 0.20, 0);
+        g.add(sm);
+      }
+    }
+
+    /* 桅杆（一根细杆 + 一根横桁）：远看就是"那上面有东西"，尺度感很靠它 */
+    var mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, K.mast * 0.5, 6), darkMat);
+    mast.position.set(K.len * 0.09, deckY + bh + K.mast * 0.25 + 0.4, 0);
+    g.add(mast);
+    var yard = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, K.beam * 0.5), darkMat);
+    yard.position.set(K.len * 0.09, deckY + bh + K.mast * 0.40 + 0.4, 0);
+    g.add(yard);
+
+    /* 主炮：炮塔方块 + 两根炮管（朝舰艏） */
+    var tr = K.beam * 0.26;
+    for (var ti = 0; ti < K.turret; ti++) {
+      var tx = (ti === 0) ? K.len * 0.30 : (ti === 1 ? K.len * 0.38 : -K.len * 0.34);
+      var tz = (ti === 1) ? -K.beam * 0.24 : (ti === 2 ? K.beam * 0.20 : 0);
+      var tb = new THREE.Mesh(new THREE.BoxGeometry(tr * 1.5, tr * 0.72, tr * 1.15), supMat);
+      tb.position.set(tx, deckY + tr * 0.42, tz);
+      g.add(tb);
+      for (var bi = 0; bi < 2; bi++) {
+        var br = new THREE.Mesh(new THREE.CylinderGeometry(tr * 0.11, tr * 0.13, tr * 1.7, 6), darkMat);
+        br.rotation.z = -Math.PI / 2;
+        br.position.set(tx + tr * 1.25, deckY + tr * 0.46, tz + (bi ? 1 : -1) * tr * 0.26);
+        g.add(br);
+      }
+    }
+    g.traverse(function (o) { o.castShadow = false; o.receiveShadow = false; });
+    g.name = 'ship';
+    return g;
+  }
+
+
+  /* 海上浮筏：木板 + 浮桶 + 竿架 —— 钓点必须有个"能站的地方"，
+     否则"站在浪里下竿"读起来像是浮空。 */
+  function seaRaft(seed) {
+    var g = new THREE.Group(), R = rng(seed || 7);
+    var wood = lam(0x6b533a), wood2 = lam(0x554431);
+    var iron = lam(0x6a3a22, { roughness: 0.9 });
+    var dark = lam(0x2a2a2c);
+    for (var i = 0; i < 6; i++) {
+      var pl = mesh(new THREE.BoxGeometry(0.40, 0.12, 1.9), (i % 2) ? wood : wood2,
+        -1.02 + i * 0.41, 0.06, 0);
+      pl.rotation.y = (R() - 0.5) * 0.035;
+      g.add(pl);
+    }
+    for (var k = 0; k < 4; k++) {
+      var b = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.92, 10), iron,
+        (k < 2 ? -0.62 : 0.62), -0.10, (k % 2 ? -0.58 : 0.58));
+      b.rotation.z = Math.PI / 2;
+      g.add(b);
+    }
+    g.add(mesh(new THREE.CylinderGeometry(0.045, 0.055, 1.4, 6), wood2, 0.95, 0.80, -0.42));
+    var rod = mesh(new THREE.CylinderGeometry(0.012, 0.030, 2.3, 5), dark, 1.62, 1.34, -1.05);
+    rod.rotation.z = -0.62; rod.rotation.x = 0.26;
+    g.add(rod);
+    g.add(mesh(new THREE.BoxGeometry(0.66, 0.46, 0.66), wood, -0.62, 0.35, 0.34));
+    g.add(mesh(new THREE.CylinderGeometry(0.085, 0.105, 0.22, 8),
+      lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0, noMap: true }), -1.0, 0.86, -0.55));
+    return g;
+  }
+
+  /* 光照/配色：时段 tint 乘进来（与 applyPhase 的雾色口径完全一致） */
+  function seaApplyLight() {
+    if (!seaSkyMat || !seaMat) return;
+    var ph = PHASES[phaseOf(hourNow())] || PHASES.day;
+    var tint = ph.tint;
+    var su = seaSkyMat.uniforms, ou = seaMat.uniforms;
+    su.uZen.value.setHex(SEA.ZENITH).multiplyScalar(tint);
+    su.uHor.value.setHex(SEA.HORIZON).multiplyScalar(tint);
+    su.uSunCol.value.setHex(SEA.SUN).multiplyScalar(Math.max(0.30, tint));
+    ou.uDeep.value.setHex(SEA.DEEP).multiplyScalar(tint);
+    ou.uShallow.value.setHex(SEA.SHALLOW).multiplyScalar(tint);
+    ou.uSky.value.setHex(SEA.HORIZON).multiplyScalar(tint);
+    ou.uZen.value.setHex(SEA.ZENITH).multiplyScalar(tint);
+    ou.uSunCol.value.setHex(SEA.SUN).multiplyScalar(Math.max(0.30, tint));
+    /* 雾色必须与 scene.fog（applyPhase 刚设过）逐位相同 ——
+       这里用同一份 _fogBase 与同一个 tint 算，天然一致 */
+    ou.uFogCol.value.setHex(_fogBase).multiplyScalar(tint);
+    ou.uFogDen.value = SEA.FOG;
+    _lastPhase = phaseOf(hourNow());
+  }
+
+  /* ---------- 海面场景装配 ---------- */
+  function buildSeaScene(cfg) {
+    seaView = true; cityView = false; frustumH = FRUSTUM_H;
+    if (propRoot) { scene.remove(propRoot); propRoot = null; }
+    nodeList = []; nearNode = null; waterMesh = null;
+    citySolids = []; cityBounds = null;
+    seaFloat = []; seaShips = []; seaRipple = []; seaRipT = 0; seaTime = 0;
+    propRoot = new THREE.Group();
+    scene.add(propRoot);
+
+    _skyBase = SEA.HORIZON; _fogBase = SEA.HORIZON;
+    scene.background = new THREE.Color(SEA.HORIZON);
+    scene.fog = new THREE.FogExp2(SEA.HORIZON, SEA.FOG);
+
+    /* 相机：透视 + 第三人称环绕。正交是"看棋盘"的镜头 ——
+       海面要的是"站在水里往外看"，地平线必须是一条真实的高度线。 */
+    if (!seaCam) seaCam = new THREE.PerspectiveCamera(52, 16 / 9, 0.1, 7000);
+    cam = seaCam;
+    seaYaw = 0; seaPitch = 0.26; seaDist = 12.5;
+    seaCam.position.set(0, 4.2, seaDist);
+
+    /* 天空穹顶：跟着人平移（不旋转，太阳方向才钉在世界里） */
+    seaSky = new THREE.Mesh(new THREE.SphereGeometry(4200, 32, 20), seaSkyMaterial());
+    seaSky.name = 'seaSky';
+    seaSky.renderOrder = -10;
+    seaSky.frustumCulled = false;
+    propRoot.add(seaSky);
+    seaSkyMat = seaSky.material;
+
+    /* 海面：一块 3 km 的网格，跟人一起平移 —— "无限海"的标准做法。
+       波浪按**世界坐标**算，所以平移是无缝的；按格对齐只是为了不让顶点在水面上游。 */
+    var og = new THREE.PlaneGeometry(SEA.SIZE, SEA.SIZE, SEA.SEG, SEA.SEG);
+    og.rotateX(-Math.PI / 2);
+    seaMat = seaOceanMaterial();
+    seaMesh = new THREE.Mesh(og, seaMat);
+    seaMesh.name = 'sea';
+    seaMesh.frustumCulled = false;
+    propRoot.add(seaMesh);
+
+    /* 太阳：放在**画面前方偏左** —— 视线正对时能看到一条太阳反光带（WoWS 的招牌画面） */
+    var sunDir = new THREE.Vector3(0.20, 0.34, -0.92).normalize();
+    seaMat.uniforms.uSunDir.value.copy(sunDir);
+    seaSkyMat.uniforms.uSunDir.value.copy(sunDir);
+    try {
+      LGT.sun.position.copy(sunDir).multiplyScalar(220);
+      LGT.sun.castShadow = false;    /* 海面没有地面接影，白跑一遍 shadow pass */
+    } catch (e0) { }
+
+    /* 远景军舰：三艘，1600 米内 —— 它们是"这片海有多大"的唯一参照 */
+    [{ k: 'cl', x: -300, z: -720, rot: 0.52, spd: 0.55 },
+      { k: 'dd', x: 430, z: -900, rot: -0.88, spd: 0.80 },
+      { k: 'bb', x: -760, z: -1250, rot: 0.14, spd: 0.38 }].forEach(function (sp) {
+      var g = seaShip(sp.k);
+      g.position.set(sp.x, 0, sp.z);
+      g.rotation.y = sp.rot;
+      propRoot.add(g);
+      seaShips.push({ g: g, rot: sp.rot, spd: sp.spd, ph: seaShips.length * 2.1 });
+    });
+
+    /* 浮在水上的布景（残骸/油桶/箱/芦苇/礁石）：随浪起伏 */
+    (cfg.props || []).forEach(function (p) {
+      var o = makeProp(p);
+      if (!o) return;
+      /* 水上不要"接地阴影圆片" —— 那是给陆地用的，漂在浪上像个黑洞 */
+      for (var i2 = o.children.length - 1; i2 >= 0; i2--) {
+        if (o.children[i2].name === 'cshadow') o.remove(o.children[i2]);
+      }
+      o.position.set(p.x || 0, 0, p.z || 0);
+      if (p.rot) o.rotation.y = p.rot;
+      propRoot.add(o);
+      seaFloat.push({ obj: o, x: p.x || 0, z: p.z || 0 });
+    });
+
+    /* 交互点：动作对齐这一格真实可做的（与陆上场景同一套规矩，一行不改） */
+    var _avail = (ctx && ctx.availableActs && ctx.availableActs.length) ? ctx.availableActs.slice() : null;
+    if (!_avail) {
+      _avail = (G.jianghuActsAt && ctx && ctx.ci != null)
+        ? (G.jianghuActsAt(ctx.ci) || []).map(function (a) { return a.id; }) : [];
+    }
+    var _entryAct = (ctx && ctx.actId) || cfg.act;
+    var _fallback = (_avail.indexOf(_entryAct) >= 0) ? _entryAct : (_avail[0] || null);
+    (cfg.nodes || []).forEach(function (nd, i) {
+      var _use = null;
+      if (_avail.indexOf(nd.act) >= 0) _use = nd.act;
+      else if (_fallback) _use = _fallback;
+      if (!_use) return;
+      var q = {}; for (var k in nd) q[k] = nd[k];
+      q.act = _use;
+      if (q.act !== nd.act) {
+        var _ad = (D && D.LING_ACT) ? D.LING_ACT[q.act] : null;
+        if (_ad) { q.label = _ad.name; q.hint = _ad.desc || q.hint; }
+      }
+      if (q.seed == null) q.seed = 100 + i;
+      var o = makeProp(q);
+      if (!o) return;
+      for (var i3 = o.children.length - 1; i3 >= 0; i3--) {
+        if (o.children[i3].name === 'cshadow') o.remove(o.children[i3]);
+      }
+      o.position.set(q.x || 0, 0, q.z || 0);
+      if (q.rot) o.rotation.y = q.rot;
+      var ring = gNodeRing(C.glow);
+      o.add(ring);
+      var _gs = glowSprite(C.glow, 2.6, 0.55);
+      _gs.position.set(0, 0.55, 0);
+      o.add(_gs);
+      var _wasDone = S.isDone(cfg.id, i);
+      o.userData.node = { idx: i, act: q.act, label: q.label, hint: q.hint, done: _wasDone, ring: ring };
+      if (_wasDone) { ring.visible = false; dimProp(o); }
+      propRoot.add(o);
+      nodeList.push(o);
+      seaFloat.push({ obj: o, x: q.x || 0, z: q.z || 0 });
+    });
+
+    /* 脚下的涟漪池：走在浪上要给"水被踩到了"的证据 */
+    var rg = new THREE.RingGeometry(0.46, 0.60, 22);
+    rg.rotateX(-Math.PI / 2);
+    for (var ri = 0; ri < 8; ri++) {
+      var rm = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({
+        color: 0xe2f1f8, transparent: true, opacity: 0, depthWrite: false
+      }));
+      rm.name = 'ripple';
+      rm.visible = false;
+      propRoot.add(rm);
+      seaRipple.push({ m: rm, t0: -1 });
+    }
+
+    /* 人 */
+    player = buildPlayer();
+    player.position.set(0, 0, 0);
+    /* 水面上不要"接地黑圆片"（那是陆地的读法），脚下交给涟漪 */
+    var _psh = player.getObjectByName('shadow');
+    if (_psh) _psh.visible = false;
+    propRoot.add(player);
+    targetPt = null;
+    _seaPrev.x = 0; _seaPrev.z = 0;
+
+    seaApplyLight();
+    seaCam.position.set(0, 4.2, seaDist);
+    seaCam.lookAt(0, 1.6, -6);
+    return true;
+  }
+
+  /* 海面每帧：时间、跟随、浪高、浮物、军舰、涟漪 */
+  function seaTick(dt) {
+    if (!seaView || !player) return;
+    seaTime += dt;
+    var t = seaTime;
+
+    if (seaMesh) {
+      /* 按格对齐平移：不对齐的话海水纹理会随相机"游"，像贴图在动 */
+      var stp = SEA.SIZE / SEA.SEG;
+      seaMesh.position.x = Math.round(player.position.x / stp) * stp;
+      seaMesh.position.z = Math.round(player.position.z / stp) * stp;
+      seaMat.uniforms.uTime.value = t;
+    }
+    if (seaSky) seaSky.position.set(player.position.x, 0, player.position.z);
+
+    /* 人站在浪上：与 GPU 同一函数（seaWaveY ←→ seaH），不会踩空。
+       +0.10 是"脚踩在水面上"而不是"脚陷进水里"—— 只给 0.02 时，
+       前一排浪比脚下的浪高，视觉上小腿一直是淹着的（截图确认）。 */
+    player.position.y = seaWaveY(player.position.x, player.position.z, t) + 0.10;
+
+    for (var i = 0; i < seaFloat.length; i++) {
+      var f = seaFloat[i], o = f.obj;
+      o.position.y = seaWaveY(f.x, f.z, t) * 0.9 + 0.04;
+      /* 顺着浪面倾斜（取两处高差当坡度）：浮物"浮着"和"立在水上"是两回事 */
+      o.rotation.z = (seaWaveY(f.x + 1.4, f.z, t) - seaWaveY(f.x - 1.4, f.z, t)) * 0.5;
+      o.rotation.x = (seaWaveY(f.x, f.z + 1.4, t) - seaWaveY(f.x, f.z - 1.4, t)) * -0.5;
+    }
+
+    for (var si = 0; si < seaShips.length; si++) {
+      var sp = seaShips[si];
+      sp.g.position.x += Math.cos(sp.rot) * sp.spd * dt;
+      sp.g.position.z -= Math.sin(sp.rot) * sp.spd * dt;
+      sp.g.position.y = seaWaveY(sp.g.position.x, sp.g.position.z, t) * 0.22;
+      sp.g.rotation.z = Math.sin(t * 0.31 + sp.ph) * 0.010;
+    }
+
+    /* 涟漪：走起来才生（0.26 s 一圈），2 秒内扩到 7 倍、淡出 */
+    var dx = player.position.x - _seaPrev.x, dz = player.position.z - _seaPrev.z;
+    var spd = Math.sqrt(dx * dx + dz * dz) / Math.max(dt, 1e-4);
+    _seaPrev.x = player.position.x; _seaPrev.z = player.position.z;
+    if (spd > 0.5) {
+      seaRipT -= dt;
+      if (seaRipT <= 0) {
+        seaRipT = 0.34;
+        for (var rj = 0; rj < seaRipple.length; rj++) {
+          if (seaRipple[rj].t0 < 0) {
+            var rq0 = seaRipple[rj];
+            rq0.t0 = t;
+            rq0.m.position.set(player.position.x,
+              seaWaveY(player.position.x, player.position.z, t) + 0.04, player.position.z);
+            rq0.m.visible = true;
+            break;
+          }
+        }
+      }
+    }
+    for (var rk = 0; rk < seaRipple.length; rk++) {
+      var rq = seaRipple[rk];
+      if (rq.t0 < 0) continue;
+      var k = (t - rq.t0) / 2.0;
+      if (k >= 1) { rq.t0 = -1; rq.m.visible = false; continue; }
+      /* 0.6→6.5 倍、0.42 不透明度：实机看着是"一圈圈泳圈"（截图确认）。
+         收到 3.6 倍 / 0.20 —— 涟漪只要"水被踩动"的暗示，不是特效。 */
+      var sc = 0.55 + k * 3.6;
+      rq.m.scale.set(sc, 1, sc);
+      rq.m.material.opacity = 0.20 * (1 - k) * (1 - k);
+    }
+  }
+
+  function updateSeaCamera(dt) {
+    if (!player) return;
+    var tx = player.position.x, ty = player.position.y + 1.15, tz = player.position.z;
+    var cp = Math.cos(seaPitch), sp = Math.sin(seaPitch);
+    var px = tx + Math.sin(seaYaw) * seaDist * cp;
+    var pz = tz + Math.cos(seaYaw) * seaDist * cp;
+    var py = ty + seaDist * sp;
+    /* 镜头不许沉到水下：贴水时它会"钻进浪里"，一帧全绿 */
+    var wl = seaWaveY(px, pz, seaTime) + 0.85;
+    if (py < wl) py = wl;
+    var k = Math.min(1, dt * 6.5);
+    cam.position.x += (px - cam.position.x) * k;
+    cam.position.y += (py - cam.position.y) * k;
+    cam.position.z += (pz - cam.position.z) * k;
+    /* 看向"人前方 6 米、略高"：人是下三分之一，地平线在上三分之一 ——
+       这就是舰游的取景（人小、世界大），也正好把远景军舰摆进画面。 */
+    cam.lookAt(tx - Math.sin(seaYaw) * 6, ty + 1.05, tz - Math.cos(seaYaw) * 6);
+  }
+
   /* ---------- 场景装配 ---------- */
   function buildScene(cfg) {
+    /* v157.87：从海面场景回来必须**三件事都复位** —— 换回正交相机、
+       恢复主光投影、把主光摆回野外那套位置（海面把它挪到了 220 米外）。 */
+    seaView = false;
+    cam = orthoCam || cam;
     cityView = false; frustumH = FRUSTUM_H;
+    try {
+      LGT.sun.castShadow = true;
+      LGT.sun.position.set(12, 9, 9);
+      LGT.rim.position.set(-9, 5, -11);
+    } catch (eSB) { }
     if (propRoot) { scene.remove(propRoot); propRoot = null; }
     nodeList = []; nearNode = null; waterMesh = null;
 
@@ -10212,6 +10940,9 @@
     var gm = new THREE.MeshStandardMaterial({
       map: gtex, color: 0xffffff, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.35,
       vertexColors: true,   /* v156.68d：大尺度明暗由顶点色给（贴图会重复，顶点色不会） */
+      /* v157.87：法线贴图 —— 地面从"一张平图"变成有凹凸的表面（成熟做法，零加面） */
+      normalMap: groundNormalTex(cfg.seed || 7),
+      normalScale: new THREE.Vector2(0.85, 0.85),
     });
     /* v156.67：**地面要有起伏**。
        旧版是 PlaneGeometry(40,40,1,1) —— 一张绝对平的板，法线全朝上，
@@ -10221,7 +10952,10 @@
          · computeVertexNormals 后，坡面会接光/背光 → 立刻有"地"的质感。
        ⚠️ PlaneGeometry 在 XY 平面，`rotation.x = -PI/2` 之后：
           局部 Z（法线方向）→ 世界 Y（高度），所以位移写在 setZ。 */
-    var gGeo = new THREE.PlaneGeometry(40, 40, 48, 48);
+    /* v157.87：48×48 → 96×96。顶点色承担"大尺度明暗"，格子越密，
+       这片地上"湿/干/踩实"的过渡越连续；48 格时大约 0.83 米一个顶点，
+       近景能看出插值的直线段。96 格 = 0.42 米，配合法线贴图就够了。 */
+    var gGeo = new THREE.PlaneGeometry(40, 40, 96, 96);
     (function () {
       var _pa = gGeo.attributes.position, _Rg = rng((cfg.seed || 7) + 3311);
       /* ============================================================
@@ -10242,6 +10976,10 @@
         var _x = _pa.getX(i), _y = _pa.getY(i);
         var _h = Math.sin(_x * 0.33 + 1.7) * 0.170
                + Math.cos(_y * 0.41 - 0.9) * 0.140
+               /* v157.87：叠一层 3 米级的微起伏。幅度 2 厘米 ——
+                  只够让法线贴图"有几何支撑"（贴图骗出来的凹凸遇到掠射光会穿帮），
+                  又远小于脚高与碰撞（碰撞是 2D 的，完全不受影响）。 */
+               + Math.sin(_x * 1.9 + _y * 2.6) * 0.020
                + (_Rg() - 0.5) * 0.060;
         _pa.setZ(i, _h);
         var _n1 = Math.sin(_x * 0.19 + 1.3) * Math.cos(_y * 0.15 - 0.7);
@@ -10319,23 +11057,44 @@
         pm.scale.z = 0.62 + R() * 0.5;
         propRoot.add(pm);
       }
-      var tuftMat = lam(cfg.id === 'field' ? C.wheat : 0x6f8a52);
-      var pebbleMat = lam(C.steel);
-      for (var k = 0; k < 34; k++) {
-        var x = (R() - 0.5) * 20, z = (R() - 0.5) * 20;
-        /* 湖里不长草：水面的那块（z 偏正）跳过 */
-        if (cfg.water && z < -1.2) continue;   /* 只跳过水面那一片（岸上照常长草） */
-        if (R() > 0.42) {
-          var t = new THREE.Mesh(new THREE.ConeGeometry(0.09 + R() * 0.07, 0.3 + R() * 0.26, 3), tuftMat);
-          t.position.set(x, 0.16, z);
-          t.rotation.y = R() * 3.14;
-          propRoot.add(t);
-        } else {
-          var pb = new THREE.Mesh(new THREE.DodecahedronGeometry(0.07 + R() * 0.07, 0), pebbleMat);
-          pb.position.set(x, 0.05, z);
-          propRoot.add(pb);
+      /* ============================================================
+       * v157.87（老板「地面更精细化」）：散落物 34 个 Mesh → 2 个 InstancedMesh
+       * ------------------------------------------------------------
+       * 34 个独立 Mesh = 34 次 draw call，密不起来（再密就是几百次）。
+       * InstancedMesh 是 three 的标准做法：同一个几何 + 同一个材质，
+       * 一次 draw 画 N 个 —— 于是**能从 34 个加到 370 个**，
+       * 反而比原来更省。近景的"地面有东西"全靠这一层。
+       * ============================================================ */
+      /* ⚠️ 碎石不能用 C.steel（亮蓝灰的钢）：在土色地面上是一地**蓝色纸屑**。
+         石头就该是石头色，比地面略冷、略深，靠明暗读出来。 */
+      var tuftMat = lam(cfg.id === 'field' ? C.wheat : 0x5f7048);
+      var pebbleMat = lam(0x6a6358, { roughness: 0.98 });
+      var _layers = [
+        { geo: new THREE.DodecahedronGeometry(0.075, 0), n: 190, mat: pebbleMat, y0: 0.02, y1: 0.06, s0: 0.55, s1: 1.35 },
+        { geo: new THREE.ConeGeometry(0.070, 0.28, 3), n: 150, mat: tuftMat, y0: 0.12, y1: 0.19, s0: 0.6, s1: 1.5 }
+      ];
+      _layers.forEach(function (Ly) {
+        bakeAO(Ly.geo);
+        var im = new THREE.InstancedMesh(Ly.geo, Ly.mat, Ly.n);
+        im.castShadow = false; im.receiveShadow = true;
+        var mtx = new THREE.Matrix4(), qt = new THREE.Quaternion();
+        var sc3 = new THREE.Vector3(), p3 = new THREE.Vector3(), eu = new THREE.Euler();
+        var put = 0;
+        for (var k = 0; k < Ly.n * 3 && put < Ly.n; k++) {
+          var x = (R() - 0.5) * 26, z = (R() - 0.5) * 26;
+          /* 水面上不长草（旧 lake 场景的规矩，留着不至于让草浮在湖里） */
+          if (cfg.water && z < -1.2 && Ly.mat === tuftMat) continue;
+          eu.set(0, R() * 6.283, 0); qt.setFromEuler(eu);
+          var sc = Ly.s0 + R() * (Ly.s1 - Ly.s0);
+          sc3.set(sc, sc * (0.78 + R() * 0.55), sc);
+          p3.set(x, Ly.y0 + R() * (Ly.y1 - Ly.y0), z);
+          mtx.compose(p3, qt, sc3);
+          im.setMatrixAt(put++, mtx);
         }
-      }
+        im.count = put;
+        im.instanceMatrix.needsUpdate = true;
+        propRoot.add(im);
+      });
     })();
 
     /* ============================================================
@@ -10468,20 +11227,134 @@
     resize();
   }
 
+
+  /* ============================================================
+   * v157.87 · 程序化人形（老板「创建一个人」）
+   * ------------------------------------------------------------
+   * ⛔ 为什么**不用** assets/actors/Soldier.glb：
+   *   它的蒙皮空间是坏的（网格 0.003 单位 / 骨骼 1.5 单位，差三个数量级）。
+   *   实测隔离截图（关掉海面与天空、灰底）：渲染出来是**几片碎三角形的残骸**，
+   *   不是人形；把 clip 停掉也一样。`js/duel3d.js` 早就因为同一原因把
+   *   `CLIP_ON` 长期关着。把「创建一个人」建立在渲染不出人形的资产上是不行的。
+   *
+   * 做法：基本体拼一副**分层骨架**（髋 → 躯干 → 头 / 肩 → 上臂 → 前臂 / 髋 → 腿 → 膝），
+   *   关节全是 THREE.Group，转关节就是摆姿势。无骨骼资产的标准替代，
+   *   也是低模游戏最常见的做法（成本 = 十几个盒子，一次 draw 一轮）。
+   * 尺寸按成年男性：总高 ≈1.78（腿 0.90 / 躯干 0.55 / 头 0.24）。
+   * ============================================================ */
+  var playerRig = null;
+  function buildPerson() {
+    var g = new THREE.Group();
+    g.name = 'person';
+    var skin = lam(0xc79a78);
+    var coat = lam(0x6d5b41);
+    var coat2 = lam(0x584a35);
+    var pants = lam(0x3c424c);
+    var boot = lam(0x2a2a2c, { roughness: 0.68 });
+    var packM = lam(0x4c4536);
+    var glowM = lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.9, noMap: true });
+
+    function box(w, h, d, mat, x, y, z) {
+      return mesh(new THREE.BoxGeometry(w, h, d), mat, x || 0, y || 0, z || 0);
+    }
+
+    var hip = new THREE.Group();
+    hip.position.set(0, 0.90, 0);
+    g.add(hip);
+
+    var torso = new THREE.Group();
+    hip.add(torso);
+    torso.add(box(0.40, 0.50, 0.24, coat, 0, 0.27, 0));       /* 胸腔 */
+    torso.add(box(0.34, 0.14, 0.22, coat2, 0, 0.02, 0));      /* 腰 */
+    torso.add(box(0.37, 0.09, 0.25, pants, 0, -0.06, 0));     /* 皮带 */
+    /* 胸口的辐能核心：一个会呼吸的小灯，远处也能认出"那是个人" */
+    var core = mesh(new THREE.SphereGeometry(0.045, 10, 8), glowM, 0.085, 0.37, 0.125);
+    core.name = 'core';
+    torso.add(core);
+    torso.add(box(0.30, 0.34, 0.16, packM, 0, 0.30, -0.19));  /* 背包 */
+    torso.add(box(0.10, 0.12, 0.06, coat2, 0, 0.44, -0.27));
+
+    torso.add(box(0.11, 0.09, 0.11, skin, 0, 0.555, 0));      /* 脖子 */
+    var head = new THREE.Group();
+    head.position.set(0, 0.60, 0);
+    torso.add(head);
+    head.add(mesh(new THREE.SphereGeometry(0.115, 14, 12), skin, 0, 0.10, 0));
+    head.add(box(0.25, 0.055, 0.24, coat2, 0, 0.19, 0));      /* 帽 */
+    head.add(box(0.22, 0.045, 0.03, glowM, 0, 0.125, 0.108)); /* 护目镜 */
+
+    function arm(side) {
+      var sh = new THREE.Group();
+      sh.position.set(side * 0.235, 0.46, 0);
+      torso.add(sh);
+      sh.add(box(0.115, 0.30, 0.125, coat, 0, -0.15, 0));
+      var el = new THREE.Group();
+      el.position.set(0, -0.30, 0);
+      sh.add(el);
+      el.add(box(0.10, 0.28, 0.105, coat2, 0, -0.14, 0));
+      el.add(box(0.10, 0.10, 0.11, skin, 0, -0.31, 0));
+      return { sh: sh, el: el };
+    }
+    var armL = arm(-1), armR = arm(1);
+
+    function leg(side) {
+      var hp = new THREE.Group();
+      hp.position.set(side * 0.105, 0, 0);
+      hip.add(hp);
+      hp.add(box(0.155, 0.44, 0.17, pants, 0, -0.22, 0));
+      var kn = new THREE.Group();
+      kn.position.set(0, -0.44, 0);
+      hp.add(kn);
+      kn.add(box(0.135, 0.40, 0.155, pants, 0, -0.20, 0));
+      kn.add(box(0.155, 0.10, 0.27, boot, 0, -0.43, 0.05));
+      return { hp: hp, kn: kn };
+    }
+    var legL = leg(-1), legR = leg(1);
+
+    playerRig = { g: g, hip: hip, torso: torso, head: head,
+      armL: armL, armR: armR, legL: legL, legR: legR, core: core };
+    return g;
+  }
+
+  /* 走/站两套姿态。moving=0/1；t 是秒。
+     三个细节是"像人在走"的关键：① 髋的上下起伏 ② 躯干前倾+扭转 ③ 手臂反相摆。 */
+  function personAnim(t, moving) {
+    var R = playerRig;
+    if (!R) return;
+    var w = t * (moving ? 7.4 : 1.5);
+    var amp = moving ? 0.62 : 0.03;
+    var sw = Math.sin(w);
+    R.legL.hp.rotation.x = sw * amp;
+    R.legR.hp.rotation.x = -sw * amp;
+    R.legL.kn.rotation.x = Math.max(0, -Math.sin(w - 0.5)) * amp * 2.1;
+    R.legR.kn.rotation.x = Math.max(0, Math.sin(w - 0.5)) * amp * 1.6;
+    R.armL.sh.rotation.x = -sw * amp * 0.85;
+    R.armR.sh.rotation.x = sw * amp * 0.85;
+    R.armL.sh.rotation.z = 0.10 + (moving ? 0.02 : 0.05);
+    R.armR.sh.rotation.z = -0.10 - (moving ? 0.02 : 0.05);
+    R.armL.el.rotation.x = -0.18 - (moving ? 0.28 : 0.06);
+    R.armR.el.rotation.x = -0.18 - (moving ? 0.28 : 0.06);
+    R.hip.position.y = 0.90 + (moving ? Math.abs(sw) * 0.035 : Math.sin(t * 1.6) * 0.008);
+    R.torso.rotation.x = moving ? 0.07 : 0.02;
+    R.torso.rotation.y = sw * 0.07;
+    R.head.rotation.y = -sw * 0.05;
+    if (R.core && R.core.material) R.core.material.emissiveIntensity = 0.7 + Math.sin(t * 2.2) * 0.25;
+  }
+
   function buildPlayer() {
     var g = new THREE.Group();
-    /* 程序化方块人：兜底用，加载到骨骼角色后整体隐藏（仍在树上，行为/计数不破） */
-    var fig = new THREE.Group(); fig.name = 'fig';
-    fig.add(mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x8ea6b8), 0, 0.5, 0));
-    fig.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), lam(0xd9c7a8), 0, 1.14, 0));
-    fig.add(mesh(new THREE.BoxGeometry(0.34, 0.42, 0.2), lam(0x6b533a), 0, 0.62, -0.26));
-    fig.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0 }), 0, 0.82, 0.24));
+    /* v157.87：**程序化人形**（1.78 米，带关节）—— 原先这里是"方块人 + 加载
+       Soldier.glb 后整体隐藏"。Soldier 的蒙皮坏了（渲染出来是碎片），
+       所以改成人形骨架 + 程序化步态，见 buildPerson 的注释。 */
+    var fig = buildPerson();
+    fig.name = 'fig';
     g.add(fig);
     /* 脚下影子（一个压扁的暗圆）：没有阴影贴图时，它仍是"站在地上"的关键提示 */
     var sh = mesh(new THREE.CircleGeometry(0.36, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 }), 0, 0.015, 0);
     sh.rotation.x = -Math.PI / 2; sh.name = 'shadow'; g.add(sh);
     /* 头顶指示三角（穿透遮挡，永远可见） */
-    var mk = mesh(new THREE.ConeGeometry(0.17, 0.30, 4), new THREE.MeshBasicMaterial({ color: C.glow }),
+    /* v157.87：0.17/0.30 的三角在第三人称近景里比头还大（截图很明显），
+       收到 0.10/0.20 —— 是"指一下"，不是"顶个牌子" */
+    var mk = mesh(new THREE.ConeGeometry(0.10, 0.20, 4), new THREE.MeshBasicMaterial({ color: C.glow }),
       0, 1.66, 0);
     mk.rotation.x = Math.PI;         /* 尖朝下 */
     mk.name = 'marker';
@@ -10490,20 +11363,12 @@
     mk.material.depthTest = false;
     mk.material.depthWrite = false;
     mk.renderOrder = 999;
-    /* 骨骼角色（Soldier）：加载成功→挂上真模型、藏方块人、标记降到头顶；失败→留方块人 */
+    /* ⛔ v157.87：原来这里会异步加载 Soldier.glb 并把方块人藏掉。
+       该资产的蒙皮空间是坏的（渲染结果是碎片，见 buildPerson 注释），
+       所以整条 gltf 分支删除 —— 玩家模型只有一个来源：程序化人形。
+       `playerActor` 保留为 null（step 里的 skill 分支据此走程序化步态那条）。 */
     playerActor = null;
-    if (GAME.gltf && GAME.gltf.Actor) {
-      var pa = new GAME.gltf.Actor({ name: 'Soldier' });
-      pa.load(function (a) {
-        if (!a || !a.root) return;
-        a.root.scale.setScalar(1.0);
-        g.add(a.root);
-        g.userData.actor = a;
-        playerActor = a;
-        fig.visible = false;          /* 真模型接管，藏兜底方块人 */
-        mk.position.y = 1.35;         /* 头顶标记降到模型头顶 */
-      });
-    }
+    mk.position.y = 1.86;             /* 人形头顶 1.72 + 一点余量 */
     return g;
   }
 
@@ -10513,6 +11378,8 @@
     var k = e.key;
     if (k === 'Escape') { e.preventDefault(); e.stopPropagation(); S.close(); return; }
     if (k === 'e' || k === 'E' || k === 'Enter') { e.preventDefault(); e.stopPropagation(); S.interact(); return; }
+    /* 海面尺度大，走起来要有"跑"（Shift）—— 只记状态，不抢默认行为 */
+    if (k === 'Shift') { keys['Shift'] = true; return; }
     if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(k) >= 0) {
       keys[k] = true;
       playerActing = false; clearDuelFoe();   /* 玩家一动，蹲下/斗将姿态即解除 */
@@ -10522,6 +11389,13 @@
 
   function onPointerDown(ev) {
     if (!openId) return;
+    /* 海面：按下不立刻判定"点地走" —— 先记下来。
+       拖动 = 转视角；没移动过就松手 = 点水面走过去。
+       （旧版直接 raycast，"想转镜头"会被当成"想跑过去"，人一拖就乱走。） */
+    if (seaView) {
+      seaDrag = { x: ev.clientX, y: ev.clientY, moved: 0 };
+      return;
+    }
     var r = cvs.getBoundingClientRect();
     var nx = ((ev.clientX - r.left) / r.width) * 2 - 1;
     var ny = -((ev.clientY - r.top) / r.height) * 2 + 1;
@@ -10547,6 +11421,45 @@
     }
   }
 
+  /* ---------- 海面：环绕镜头（拖） / 远近（滚轮） / 点水面走过去 ---------- */
+  function onPointerMove(ev) {
+    if (!seaView || !seaDrag) return;
+    var dx = ev.clientX - seaDrag.x, dy = ev.clientY - seaDrag.y;
+    seaDrag.x = ev.clientX; seaDrag.y = ev.clientY;
+    seaDrag.moved += Math.abs(dx) + Math.abs(dy);
+    if (seaDrag.moved <= 4) return;       /* 手抖不算拖 */
+    seaYaw -= dx * 0.0062;
+    /* 俯角夹住：0.02 是"几乎贴水面往前看"，1.20 是"俯视到自己头顶" ——
+       越过这两端，画面要么钻进水里、要么变成看地板。 */
+    seaPitch = Math.max(0.02, Math.min(1.20, seaPitch + dy * 0.0045));
+  }
+  function onPointerUp(ev) {
+    if (!seaView || !seaDrag) return;
+    var d = seaDrag; seaDrag = null;
+    if (d.moved > 6) return;              /* 拖过 = 转镜头，不当作点击 */
+    if (!player || !cam) return;
+    var r = cvs.getBoundingClientRect();
+    var nx = ((ev.clientX - r.left) / r.width) * 2 - 1;
+    var ny = -((ev.clientY - r.top) / r.height) * 2 + 1;
+    var ray = new THREE.Raycaster();
+    ray.setFromCamera({ x: nx, y: ny }, cam);
+    /* 水面按 y=0 的平面算（浪高 ±1.6 米，取平均面就够 —— 点哪儿走到哪儿） */
+    var plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    var pt = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(plane, pt)) return;   /* 点到天上：不动作 */
+    targetPt = {
+      x: Math.max(-SEA.BOUND, Math.min(SEA.BOUND, pt.x)),
+      z: Math.max(-SEA.BOUND, Math.min(SEA.BOUND, pt.z)),
+      node: null
+    };
+  }
+  function onWheel(ev) {
+    if (!seaView) return;
+    ev.preventDefault();
+    var step = Math.max(-3.5, Math.min(3.5, ev.deltaY * 0.012));
+    seaDist = Math.max(5, Math.min(45, seaDist + step));
+  }
+
   function dist2(ax, az, bx, bz) { var dx = ax - bx, dz = az - bz; return Math.sqrt(dx * dx + dz * dz); }
 
   /* ---------- 每帧 ---------- */
@@ -10565,11 +11478,24 @@
       if (keys['a'] || keys['A'] || keys['ArrowLeft']) vx -= 1;
       if (keys['d'] || keys['D'] || keys['ArrowRight']) vx += 1;
       var moving = false;
+      /* v157.87：海面速度更快（6.0 / 跑 13.5）—— 同一套按键，尺度不同 */
+      var _spd = seaView ? ((keys['Shift'] || keys['shift']) ? SEA.RUN : SEA.SPEED) : SPEED;
       if (vx || vz) {
         targetPt = null;                     /* 手动走动会取消点击寻路 */
         playerActing = false;                /* 走动即取消"蹲下采集" */
         var len = Math.sqrt(vx * vx + vz * vz);
-        movePlayer(vx / len * SPEED * dt, vz / len * SPEED * dt);
+        var _ux = vx / len, _uz = vz / len;
+        if (seaView) {
+          /* **相机相对移动**：环绕镜头下 W 必须永远是"往画面里走"。
+             直接沿用世界轴（W = -z）会变成"镜头转到哪，键位就错到哪"。 */
+          var _fx = -Math.sin(seaYaw), _fz = -Math.cos(seaYaw);
+          var _rx = Math.cos(seaYaw), _rz = -Math.sin(seaYaw);
+          var _mx = _rx * _ux + _fx * (-_uz);
+          var _mz = _rz * _ux + _fz * (-_uz);
+          var _ml = Math.sqrt(_mx * _mx + _mz * _mz) || 1;
+          _ux = _mx / _ml; _uz = _mz / _ml;
+        }
+        movePlayer(_ux * _spd * dt, _uz * _spd * dt);
         moving = true;
       } else if (targetPt) {
         var dx = targetPt.x - player.position.x, dz = targetPt.z - player.position.z;
@@ -10578,15 +11504,17 @@
           var nd0 = targetPt.node; targetPt = null;
           if (nd0) S.interact(nd0);
         } else {
-          var stp = Math.min(d, SPEED * dt);
+          var stp = Math.min(d, _spd * dt);
           movePlayer(dx / d * stp, dz / d * stp);
           moving = true;
         }
       } else if (!playerActor) {
-        /* 站住：身体回正（仅方块人兜底时需要；骨骼角色自有 idle 动画） */
+        /* 站住：身体回正。⚠️ 海面的 y 由浪高接管（seaTick），这里不能往下压 */
         player.rotation.z *= 0.85;
-        player.position.y += (0 - player.position.y) * 0.2;
+        if (!seaView) player.position.y += (0 - player.position.y) * 0.2;
       }
+      /* v157.87：程序化人形的姿态（走 / 站）—— 每帧一次，十几个关节的赋值 */
+      personAnim(now / 1000, moving ? 1 : 0);
       /* 骨骼角色：每帧推进 mixer + 按状态切动作（walk/idle/sit/attack） */
       if (playerActor) {
         if (moving) playerActor.skill('walk');
@@ -10594,12 +11522,12 @@
         else if (playerActing) playerActor.skill('sit');
         else playerActor.skill('idle');
         playerActor.update(dt);
-      } else if (moving) {
-        bobWalk(now);                        /* 兜底方块人的走路晃动 */
       }
       /* 敌方斗将：同步推进它的动作 */
       if (duelFoeActor) duelFoeActor.update(dt);
     }
+    /* 海面：时间/跟随/浪高/浮物/军舰/涟漪（必须在移动之后跑，人才踩在浪上） */
+    if (seaView) seaTick(dt);
 
     /* 走出城门 = 出城。
        为什么不只留"按 E 出城"：门就开在那儿，人走过去了还要回头按一下键，
@@ -10650,8 +11578,10 @@
       nx = Math.max(bd.x0, Math.min(bd.x1, nx));
       nz = Math.max(bd.z0, Math.min(bd.z1, nz));
     } else {
-      nx = Math.max(-BOUND, Math.min(BOUND, nx));
-      nz = Math.max(-BOUND, Math.min(BOUND, nz));
+      /* v157.87：海面可走 ±480 米（40 米见方的场子会让人觉得"这就是个池子"） */
+      var _bd2 = seaView ? SEA.BOUND : BOUND;
+      nx = Math.max(-_bd2, Math.min(_bd2, nx));
+      nz = Math.max(-_bd2, Math.min(_bd2, nz));
     }
     if (!hitsSolid(nx, player.position.z, CITY_R)) player.position.x = nx;
     if (!hitsSolid(player.position.x, nz, CITY_R)) player.position.z = nz;
@@ -10660,15 +11590,13 @@
     player.rotation.y += (ang - player.rotation.y) * 0.25;
   }
 
-  function bobWalk(now) {
-    /* 走的"重量感"：上下小幅 + 左右轻摆。没有骨骼，这是最便宜的读法。 */
-    player.position.y = Math.abs(Math.sin(now * 0.011)) * 0.06;
-    player.rotation.z = Math.sin(now * 0.0055) * 0.04;
-  }
+  /* ⛔ v157.87：`bobWalk`（方块人的上下晃动）删除 —— 姿态改由 `personAnim`
+     驱动关节，玩家身上再叠一层整体位移会打架。 */
 
   var cityView = false;
   function updateCamera(dt) {
     if (!player) return;
+    if (seaView) { updateSeaCamera(dt); return; }
     if (cityView) {
       /* 城内镜头 v142：**跟着人走**（v140 是钉死的俯瞰）。
          相机在玩家后方 12、高 20.6 → 52° 俯角；看向玩家**前方 3.5 米**。
@@ -10802,6 +11730,9 @@
         scene.fog.color.setHex(_fogBase).multiplyScalar(ph.tint);
       }
     } catch (e) { /* 观测层不许影响玩法 */ }
+    /* v157.87：海面的天空/海水/雾色是 shader uniform，要跟着时段一起走
+       （不然天一黑，陆上是夜、海上还是正午） */
+    if (seaView) seaApplyLight();
     _lastPhase = phaseOf(hourNow());
   }
 
@@ -10840,7 +11771,7 @@
       + U.escape(cfg.sub || '')
       /* 城内不报"几处已收拾"：那里的节点是 48 栋房子，不是可采集点，
          报个 0/48 会让人以为"什么都没做"。 */
-      + ((openId === 'city' || openId === 'pv') ? '' : ('　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾'))
+      + ((openId === 'city' || openId === 'pv' || nodesTotal === 0) ? '' : ('　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾'))
       /* v143：野地等级（难度/收益倍率都乘在它上 —— 与地块界面同一口径）。
          正式/序章两宿主都有；城市场景没有这个概念，不显示。 */
       + ((ctx && ctx.lv != null && openId !== 'city') ? ('　<b style="color:var(--gold-light);">野地 Lv' + ctx.lv + '</b>') : '')
@@ -10860,7 +11791,9 @@
         ? 'WASD / 方向键 逛街　·　点地面走过去　·　走出城门回野外'
         : (openId === 'pv'
           ? '这是预览（不占格、不扣费）·　Esc 返回建造面板'
-          : 'WASD / 方向键 走动　·　点地面走过去　·　点发光处自动靠近'))
+          : (seaView
+            ? 'WASD 走动（Shift 跑）　·　拖动鼠标看四周　·　滚轮远近　·　点水面走过去'
+            : 'WASD / 方向键 走动　·　点地面走过去　·　点发光处自动靠近')))
       + '</div>'
       + '<div style="position:absolute;right:14px;bottom:14px;pointer-events:auto;">'
       + '<button data-scene="close" style="padding:6px 14px;border-radius:5px;cursor:pointer;'
@@ -11817,6 +12750,48 @@
     };
   };
 
+  /* v157.87 海面场景的取证出口（探针与断言都走它，不去翻内部变量） */
+  S._sea = function () {
+    if (!seaView) return { on: false };
+    var samples = [];
+    for (var i = 0; i < 4; i++) samples.push(+seaWaveY(i * 37 - 40, i * -23 + 11, 1.7).toFixed(4));
+    return {
+      on: true,
+      persp: !!(cam && cam.isPerspectiveCamera),
+      cam: [+cam.position.x.toFixed(2), +cam.position.y.toFixed(2), +cam.position.z.toFixed(2)],
+      player: [+player.position.x.toFixed(2), +player.position.y.toFixed(3), +player.position.z.toFixed(2)],
+      waveAtPlayer: +seaWaveY(player.position.x, player.position.z, seaTime).toFixed(3),
+      waveSamples: samples,
+      ships: seaShips.length, floats: seaFloat.length, nodes: nodeList.length,
+      yaw: +seaYaw.toFixed(3), pitch: +seaPitch.toFixed(3), dist: +seaDist.toFixed(2),
+      time: +seaTime.toFixed(2),
+      fog: seaMat ? seaMat.uniforms.uFogDen.value : null,
+      oceanVerts: seaMesh ? seaMesh.geometry.attributes.position.count : 0,
+      /* 人到底有没有、多高 —— "创建一个人"这件事必须能读数验证，不能靠截图猜 */
+      body: (function () {
+        if (!player) return null;
+        var fig = null;
+        for (var i = 0; i < player.children.length; i++) {
+          if (player.children[i].name === 'fig') fig = player.children[i];
+        }
+        var box = new THREE.Box3().setFromObject(player);
+        return {
+          kids: player.children.length,
+          figVisible: fig ? !!fig.visible : null,
+          actor: !!(player.userData && player.userData.actor),
+          h: +(box.max.y - box.min.y).toFixed(2),
+          y0: +(box.min.y - player.position.y).toFixed(2)
+        };
+      })()
+    };
+  };
+  /* 场景对象出口：探针要能"关掉某一层看剩下的"（分层隔离是定位渲染问题的唯一手段） */
+  S._root = function () { return scene; };
+  S._waveY = seaWaveY;
+  S._waveGlsl = seaWaveGlsl;
+  S._SEA_W = SEA_W;
+  S._SEA = SEA;
+
   /* 动作 → 场景。地形决定"同样的采集，长什么样"：
        森林里砍树、草原上割麦、其余翻废墟 —— 这是"采集"三个不同场景的来源。 */
   S.pickFor = function (actId, terrain) {
@@ -11871,7 +12846,8 @@
        （实测 _state().canvas = {w:1,h:1}）。顺序反了就是白屏，而且不报错。 */
     layer.style.display = 'block';
     try { pruneDone(); } catch (e) {}
-    buildScene(cfg);
+    /* v157.87：海面是一个独立装配流程（透视相机 + 自带天空/海面） */
+    if (cfg.sea) buildSeaScene(cfg); else buildScene(cfg);
     resize();
     applyPhase();          /* v143：进场景就按当前时辰点亮（天会黑） */
     renderHud();
@@ -11913,13 +12889,16 @@
     var exitTo = (ctx && ctx.exitTo) || null;
     var exitCi = (ctx && ctx.ci != null) ? ctx.ci : null;
     openId = null;
+    /* v157.87：离开海面 —— 退出拖拽态、换回正交相机（否则下次进陆上场景
+       会拿透视相机去算 left/right，画面直接糊掉） */
+    seaView = false; seaDrag = null; cam = orthoCam || cam;
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (layer) { layer.style.display = 'none'; layer.innerHTML = ''; layer.appendChild(cvs); }
     /* canvas 被 innerHTML 清掉后要挂回来 */
     if (layer && cvs && cvs.parentNode !== layer) layer.appendChild(cvs);
     if (propRoot) { scene.remove(propRoot); propRoot = null; }
     nodeList = []; nearNode = null; keys = {};
-    clearDuelFoe(); playerActor = null; playerActing = false;
+    clearDuelFoe(); playerActor = null; playerRig = null; playerActing = false;
     /* v143.2：行人随 propRoot 清（数组同步空，_cityNpcs() 归零） */
     cityNpcs = [];
     npcMatSkin = null; npcMatTint = null; npcMatPants = null;
@@ -39533,7 +40512,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.86';
+  GAME.VERSION = 'v157.87';
   function boot() {
     fitAppSize();
     try {
