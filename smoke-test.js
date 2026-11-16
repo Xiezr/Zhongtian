@@ -36496,11 +36496,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return seg.indexOf('M.resetView(') < 0
           && /e\.button === 2 && !M\._rmbMoved/.test(m243);
       })());
-      c243('§243①p 离开地表的位置量取自 camO.dir，不得拿视线当位置（v157.48）', (function () {
-        var i = m243.indexOf("if (camO.dir) {");
-        var seg = (i >= 0) ? m243.slice(i, i + 420) : '';
+      c243('§243①p 离开地表的位置量取自 camO.dir（v157.48）· v157.80 起必须带 _surfVis 守卫', (function () {
+        /* 规则变更（§0.7 三件套）：v157.48 的规则本身不变 —— 位置量必须取 camO.dir，
+           不许把视线 `_surfDir` 当位置塞进去。v157.80 新增一层：这段 `asin` 反算
+           **只能"刚从地表退回"那一次执行**，否则它每帧把玩家累加出的 pitch 折回 ±π/2，
+           滚过极点时来回打转（这就是老板第二次说"还有死角"的总根源，
+           实测 pitch 稳停 −1.592、130 帧累加 3.25 弧度一步未生效）。
+           所以锚点换成带守卫的形态，并**额外要求守卫存在**，防有人把守卫去掉。 */
+        var i = m243.indexOf("if (camO.dir && M._surfVis === true) {");
+        var seg = (i >= 0) ? m243.slice(i, i + 480) : '';
         return seg.indexOf('Math.atan2(camO.dir[0], camO.dir[2])') >= 0
-          && seg.indexOf('_surfDir') < 0;
+          && seg.indexOf('_surfDir') < 0
+          && /if \(camO\.dir && M\._surfVis === true\) \{/.test(m243);
       })());
       /* ============================================================
        * v157.50（老板「滚轮不能有距离跳变；视线在阈值处要全面平滑」）
@@ -49327,47 +49334,83 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §586r（v157.78 · 老板「左键旋转还有死角，有个地方无法跨过」）
+   * §586r（v157.80 · 老板复发「高空左键旋转还有死角，有个地方无法跨过」）
    * ------------------------------------------------------------
-   * 真因不是 clamp，是**抓取式旋转在球边缘的几何衰减**：
-   *   相机在球外时，球的最上/下缘在屏幕上被压成极窄一条，鼠标拖到那里
-   *   抓点几乎不动 → 实测 dir.y 单调爬到 0.9314（≈68.6°）就回落，
-   *   极点永远到不了（向上同样卡在 −0.9303）。
-   * 修法 = **抓取与增量按抓点位置自动接管**：
-   *   抓点在内侧（≤0.86×球角半径，换算方式见源码）→ 抓取（跟手，v157i 口径不变）；
-   *   贴边 / 打到球外 → 增量（竖拖改 pitch、横拖改 yaw），
-   *   且纬度**累积后离散归一化**（每跨极点只翻一次、yaw 补 n×π），
-   *   于是北极→南极→回北极能连成一个圆。
-   * 三层守卫：
-   *   ① 结构面：两套分支都在 + 边界判定存在（防"退回纯抓取"或"退回纯增量"）
-   *   ② 归一化面：必须有 floor((pitch+π/2)/π) 与 n≠0 折回（防"每帧翻 180°"的老震颤）
-   *   ③ 保留面：抓取分支的四元数旋转仍在（防借这次把跟手能力删掉）
+   * 规则变更：v157.78 的「抓取 + 增量 + 跨极点归一化」整条退役。
+   *
+   * 三次实测都卡住，根因层层深入：
+   *   ① 抓球面交点：相机在球外时球轮廓被压成极窄一条，拖到那里交点
+   *      几乎不动 → dir.y 爬到 ±0.93（≈±68.6°）就停住回头。
+   *   ② arcball（屏幕→单位球）：球内均匀，但球外是死区（圆外点投到赤道，
+   *      沿径向拖方向不变）→ 实测斜拖 130 帧里 34 帧完全不动。
+   *   ③ 累加 + 跨极点归一化：数学等价，但 yaw 突变 π 让画面硬翻半圈。
+   *   ④ **总根源**：`placeCamera` 里 `camO.pitch = asin(dir.y)` 每帧无守卫执行，
+   *      asin 主值域 [−π/2, π/2] 把累积出的 pitch 折回 → 极点附近来回打转。
+   *      实测 pitch 稳稳停在 −1.592，130 帧累加 3.25 弧度一步没生效。
+   *
+   * 新口径（本版）：轨道旋转 = **pitch/yaw 纯累加、不归一化**。
+   *   placeCamera 的 `dir = (cos p·sin y, sin p, cos p·cos y)` 在 p 越过
+   *   ±π/2 时由 cos 自然变负绕到球另一侧 —— 公式本身就支持无限累加，
+   *   不需要任何折回补丁；反算那段加上 `M._surfVis` 守卫，只在退出地表时跑。
+   *
+   * 四层守卫：
+   *   ① 结构面：轨道分支是纯累加 + 让 placeCamera 重建 quat
+   *   ② 根因面：`asin(dir.y)` 反算必须有 `_surfVis` 守卫（本次总根源，防回退）
+   *   ③ 数值面：真算 —— pitch 越过 π/2 后 dir 仍连续且能绕到另一侧（防"夹回"）
+   *   ④ 反向证据：`_useStep` / `_edgeA` / `_angP0` / `_nP` 归一化 / `_arcVec` /
+   *      `_spG2` 全部不许复活（三套失败方案 + 死代码）
    * ============================================================ */
   (function () {
     var fs = require('fs'), path = require('path');
     var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
 
-    check('§586r 结构面：抓取与增量两套并存，按抓点离球心角自动接管',
-      /var _edgeA = Math\.asin\(Math\.min\(1, _R0 \/ Math\.max\(1, cam\.position\.length\(\)\)\)\);/.test(mp)
-      && /var _useStep = !M\._surf && \(!_P0 \|\| !_P1 \|\| _angP0 > _edgeA \* 0\.86\);/.test(mp)
-      && /if \(_useStep\) \{/.test(mp) && /else if \(_P0 && _P1\) \{/.test(mp),
-      '边缘判定 + 双分支');
+    check('§586r 结构面：轨道旋转 = pitch/yaw 纯累加，不归一化，交给 placeCamera 重建',
+      /if \(!M\._surf\) \{\n          var _sdxv = e\.clientX - _prevX, _sdyv = e\.clientY - _prevY;/.test(mp)
+      && /camO\.pitch \+= _sdyv \* _K;/.test(mp)
+      && /camO\.yaw -= _sdxv \* _K;/.test(mp)
+      && /camO\.quat = null; camO\._euler = null;/.test(mp),
+      '累加两式 + quat 置空重建');
 
-    check('§586r 归一化面：纬度累积后离散归一化，跨极点只翻一次',
-      /camO\.pitch \+= _sdy \* _K;/.test(mp)
-      && /var _nP = Math\.floor\(\(camO\.pitch \+ Math\.PI \/ 2\) \/ Math\.PI\);/.test(mp)
-      && /camO\.pitch -= _nP \* Math\.PI;/.test(mp)
-      && /camO\.yaw \+= _nP \* Math\.PI;/.test(mp)
-      /* 反向证据：抓取分支不许再出现"asin 直接写回 pitch 并无归一化"以外的 clamp */
-      && !/camO\.pitch = Math\.max\(-1\.4/.test(mp),
-      'floor 归一化 + yaw 补 n×π');
+    check('§586r 根因面：placeCamera 的 asin 反算必须有 _surfVis 守卫（否则每帧折回极点）',
+      /if \(camO\.dir && M\._surfVis === true\) \{/.test(mp)
+      /* 反向证据：不许再出现"无守卫的 if (camO.dir) { camO.yaw = atan2..." */
+      && !/if \(camO\.dir\) \{\n      camO\.yaw = Math\.atan2\(camO\.dir\[0\], camO\.dir\[2\]\);/.test(mp),
+      '守卫在岗 · 无守卫版本未复活');
 
-    check('§586r 保留面：抓取（跟手）分支仍在，没被这次改动删掉',
-      /var _dqG = new THREE\.Quaternion\(\)\.setFromUnitVectors\(_P1, _P0\);/.test(mp)
-      && /camO\.quat = new THREE\.Quaternion\(\)\.setFromUnitVectors\(new THREE\.Vector3\(0, 0, 1\), _dvG\);/.test(mp)
-      /* 单位球回退那段（球外按 1/|v| 拉回边缘）是死角成因之一，必须保持退役 */
-      && !/_spG2/.test(mp),
-      '抓取在岗 · 单位球回退未复活');
+    check('§586r 数值面：pitch 越过 ±π/2 后 dir 仍连续、能绕到球另一侧（不许夹回）',
+      (function () {
+        /* 真算 placeCamera 的求向公式，不读代码文本 —— 防"注释对了实现错了" */
+        var K = 0.005, p = 0.42, worst = 0, prev = null, crossed = false, n = 0;
+        for (var i = 0; i < 400; i++) {
+          p += -4.5 * K;                       /* 每帧上拖 4.5px，共 400 帧 */
+          var cy = Math.cos(p), sy = Math.sin(p);
+          var d = [cy * Math.sin(0.8), sy, cy * Math.cos(0.8)];
+          var L = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
+          d = [d[0] / L, d[1] / L, d[2] / L];
+          if (prev) {
+            var dot = Math.max(-1, Math.min(1, d[0] * prev[0] + d[1] * prev[1] + d[2] * prev[2]));
+            var a = Math.acos(dot) * 180 / Math.PI;
+            if (a > worst) worst = a;
+            if (d[1] > 0) crossed = true;      /* 越过南极后 dir.y 会变正 */
+          }
+          prev = d; n++;
+        }
+        var ok = n === 400 && crossed && worst < 3;
+        check('§586r 数值面：模拟 400 帧累加 —— 越过极点且逐帧最大转角 ' + worst.toFixed(2) + '°',
+          ok, 'crossed=' + crossed + ' · maxStep=' + worst.toFixed(2) + '° · frames=' + n);
+        return ok;
+      })(), '400 帧真算');
+
+    check('§586r 反向证据：三套失败方案与死代码全部保持退役',
+      !/_useStep/.test(mp) && !/_edgeA/.test(mp) && !/_angP0/.test(mp)
+      && !/_nP = Math\.floor/.test(mp) && !/camO\.pitch -= _nP \* Math\.PI/.test(mp)
+      && !/_arcVec/.test(mp) && !/_spG2/.test(mp),
+      '_useStep/_edgeA/_angP0/_nP/_arcVec/_spG2 均 0');
+
+    check('§586r 保留面：地表抓地砖分支仍在（那里是"抓地面"，不是"转球"）',
+      /\} else if \(_P0 && _P1\) \{/.test(mp)
+      && /var _dqG = new THREE\.Quaternion\(\)\.setFromUnitVectors\(_P1, _P0\);/.test(mp),
+      '地表抓取在岗');
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

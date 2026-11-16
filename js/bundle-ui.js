@@ -6265,7 +6265,15 @@
        正解：位置仍用径向 `camO.dir`（人还在原地，只是升高），
        视线偏移（lookYaw/lookPitch）清零 —— 拉远 = 退回太空看这颗球，看球心是自然的。
        原来那条"把视线折算成欧拉角"的注释本身没错，错在把位置量和朝向量混成了一个。 */
-    if (camO.dir) {
+    /* ⛔ v157.80（老板复发「旋转还有死角」的总根源就在这里）：
+       这段 `camO.pitch = asin(dir.y)` 原来**每帧都跑**。asin 的主值域是
+       [−π/2, π/2]，于是玩家累积出来的 pitch 一旦越过 ±π/2（也就是滚过极点），
+       下一帧就被折回 —— 表现为「拖到极点附近来回打转、怎么拖都过不去」。
+       实测：pitch 稳稳停在 −1.592，130 帧累加 3.25 弧度却一步没生效。
+       它的本意只是**从地表退回轨道那一次**把径向换算成欧拉角，
+       所以加上 `M._surfVis` 守卫 —— 轨道模式下 pitch/yaw 完全由输入维护，
+       不再有任何"反算覆盖"。 */
+    if (camO.dir && M._surfVis === true) {
       camO.yaw = Math.atan2(camO.dir[0], camO.dir[2]);
       camO.pitch = Math.asin(Math.max(-1, Math.min(1, camO.dir[1])));
       /* ⚠️ 这里**不能**把 quat 置 null：`_dirty` 判据在本帧更早处已经算过了，
@@ -6840,6 +6848,7 @@
     var lx0 = 0, ly0 = 0;        /* v156.59 arcball：上一帧的**画布内**坐标 */
     function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
     function touch() { M._lastAct = Date.now(); }            /* v90.81：无操作计时（自转）*/
+
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     /* 中键按下的默认行为是『自动滚动』，会吃掉拖拽 —— 一并挡掉 */
     canvas.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
@@ -7189,7 +7198,26 @@
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       var _rc = canvas.getBoundingClientRect();
       var _cxp = e.clientX - _rc.left, _cyp = e.clientY - _rc.top;
+      /* ============================================================
+       * v157.80（老板复发：「高空左键旋转还有死角，有个地方无法跨过」）
+       * ------------------------------------------------------------
+       * 真凶不是旋转，是**松手被误判成"点击"**。
+       * 旧判据 `|dx| + |dy| > 3` 只看**单帧**位移：慢拖（每帧 1~3px，
+       * 高空精细对位时的常态）永远不达标 → moved 恒 false →
+       * mouseup 里 `if (!wasDrag || moved) return;` 不 return，继续走点击逻辑
+       * → 点在野地上就弹出出征面板盖住地图中央 → 那片区域再也收不到 mousedown。
+       * 玩家的感受就是"转到某个地方卡住了 / 有个地方过不去"。
+       * 实测复现（v157.80 探针）：141 步 × 3px 连续上拖，moved 全程 false，
+       * 松手后 `document.elementFromPoint(画布中心)` 从 CANVAS 变成 DIV.exp-sec。
+       *
+       * 修法：**累计位移**也参与判定（>4px 即算拖动）。
+       * 单帧 >3 保留（快拖立即识别）；手抖 1~2px 的真点选仍按点击处理。
+       * ============================================================ */
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      if (!moved) {
+        var _acx = _cxp - lx0, _acy = _cyp - ly0;
+        if (_acx * _acx + _acy * _acy > 16) moved = true;
+      }
       /* ============================================================
        * v157.23（老板：「地面状态左键长按拖拽总是自动先调转一个方向，
        *          然后再移动，不能自由转动，画面抖动很厉害」）
@@ -7390,34 +7418,45 @@
           var _h1 = _rayG.intersectObject(_tgtG, false);
           if (_h1.length) _P1 = _h1[0].point.clone();
         }
-        var _R0 = (M.R || 300);
-        var _camD = cam.position.clone().normalize();
-        var _edgeA = Math.asin(Math.min(1, _R0 / Math.max(1, cam.position.length())));
-        var _angP0 = _P0
-          ? Math.acos(Math.max(-1, Math.min(1, _P0.clone().normalize().dot(_camD))))
-          : Math.PI;
-        var _useStep = !M._surf && (!_P0 || !_P1 || _angP0 > _edgeA * 0.86);
-        if (_useStep) {
-          var _sdx = e.clientX - _prevX, _sdy = e.clientY - _prevY;
-          /* ============================================================
-           * 增量口径：纬度**累积**、跨极点时**归一化一次**。
-           * v156.55 记过一版"反射折叠"每帧翻 180° 直接震颤 —— 那是因为
-           * 折完没有把累积量扣掉，下一帧又越界。这里用「离散步数」：
-           *   n = floor((pitch + π/2) / π)，一次把 pitch 扣回 (−π/2, π/2)，
-           *   yaw 补 n×π（等价姿态）。
-           * 于是跨一次极点只翻一次，之后必须再转半个 π 才会跨下一次，
-           * 不会在边界反复横跳 —— 北极 → 南极 → 回北极可以连成一个圆。
-           * ============================================================ */
-          var _K = 0.0018;
-          camO.pitch += _sdy * _K;
-          camO.yaw -= _sdx * _K;
-          var _nP = Math.floor((camO.pitch + Math.PI / 2) / Math.PI);
-          if (_nP !== 0) {
-            camO.pitch -= _nP * Math.PI;
-            camO.yaw += _nP * Math.PI;
-          }
+        /* ============================================================
+         * v157.80（老板复发：「高空左键旋转还有死角，有个地方无法跨过」·
+         *          「你就不能借鉴现有成熟的方案吗」）
+         * ------------------------------------------------------------
+         * 轨道旋转 = **球坐标双角度纯累加**（pitch / yaw），**不做归一化**。
+         *
+         * 为什么这样就没有死角 —— 关键在 placeCamera 的求向公式：
+         *     dir = ( cos(p)·sin(y),  sin(p),  cos(p)·cos(y) )
+         *   pitch 超过 ±π/2 时 cos(p) 自然变负，dir 平滑绕到球的另一侧。
+         *   也就是说这个公式**本来就支持 pitch 无限累加**，
+         *   越极点是连续的，不需要任何"翻转/折回"的补丁。
+         *
+         * 三次失败的真正原因（都已实测排除）：
+         *   ① **抓球面交点**（v157i~v157.78 主路径）：相机在球外时球的最上/下
+         *      轮廓在屏幕上被压成极窄一条，鼠标拖到那儿交点几乎不动 →
+         *      灵敏度衰减到 0。实测 dir.y 爬到 ±0.93（≈±68.6°）就停住回头。
+         *   ② **arcball（屏幕→单位球）**：球内均匀，但球外是死区 ——
+         *      圆外点按 1/|v| 投到赤道，沿径向拖时方向不变。
+         *      实测"从画布左下斜拖到右上"130 帧里 34 帧完全不动。
+         *   ③ **累加 + 跨极点归一化**（v157.78 那版）：数学等价，但
+         *      `yaw += nπ` 让视角突变半圈，与 asin 反算混用会震荡；
+         *      实测某一轮只走了 3.2°。
+         *
+         * 本版：**只保留累加，删掉归一化**。pitch 可以为 π/1.5、2π−0.3…
+         * 任何值，(cos p, sin p) 自己就把姿态映射回来；一次拖动转几圈都连续。
+         * 地表模式（`M._surf`）不参与，仍走抓地砖。
+         * ============================================================ */
+        if (!M._surf) {
+          var _sdxv = e.clientX - _prevX, _sdyv = e.clientY - _prevY;
+          var _K = 0.005;                       /* 弧度/像素：拖满一屏约 180° */
+          camO.pitch += _sdyv * _K;             /* 下拖 = 内容下移（相机北移） */
+          camO.yaw -= _sdxv * _K;               /* 右拖 = 内容左移 */
+          /* 浮点保险：转几十圈后把角度折回一个周期 —— 2π 是 dir 的周期，
+             折回**不改变姿态**，所以不会跳（这与"跨极点归一化"是两件事）。 */
+          if (camO.pitch > 1e4 || camO.pitch < -1e4) camO.pitch %= (Math.PI * 2);
+          if (camO.yaw > 1e4 || camO.yaw < -1e4) camO.yaw %= (Math.PI * 2);
           camO.quat = null; camO._euler = null;   /* 让 placeCamera 按 yaw/pitch 重建 */
         } else if (_P0 && _P1) {
+          /* 地表：抓地砖（射线与地砖交点），语义与轨道不同，保留原实现 */
           _P0.normalize(); _P1.normalize();
           var _dqG = new THREE.Quaternion().setFromUnitVectors(_P1, _P0);
           var _q0G = camO.quat || cam.quaternion;
@@ -39935,7 +39974,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.79';
+  GAME.VERSION = 'v157.80';
   function boot() {
     fitAppSize();
     try {
