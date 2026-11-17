@@ -103,7 +103,7 @@ const OUT = '.workbuddy/tmp/';
 
   console.log('页面异常 ' + errs.length + (errs.length ? ' :: ' + errs.slice(0, 3).join(' | ') : ''));
   const pass = boot.ok && s1.on && s1.persp && s1.oceanVerts > 10000 && s1.ships === 3
-    && Math.abs(posB.player[1] - posB.waveAtPlayer - 0.10) < 0.03
+    && Math.abs(posB.player[1] - posB.waveAtPlayer - 0.05) < 0.03
     && Math.hypot(dx, dz) > 3 && dot > 0.85
     && Math.abs(afterDrag.player[0] - before.player[0]) < 0.05
     && errs.length === 0;

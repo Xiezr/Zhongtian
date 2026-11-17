@@ -47254,7 +47254,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), '同源生成 + 真值对照');
 
     check('§586v 站立面：人站在浪上（seaTick 用 seaWaveY，不是拿常数 0 顶着）',
-      /player\.position\.y = seaWaveY\(player\.position\.x, player\.position\.z, t\) \+ 0\.10;/.test(scSrc)
+      /player\.position\.y = seaWaveY\(player\.position\.x, player\.position\.z, t\) \+ 0\.05;/.test(scSrc)
       && !/if \(player\) player\.position\.y = 0;/.test(scSrc),
       '浪高驱动站立高度');
 
@@ -47273,6 +47273,29 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /new THREE\.InstancedMesh\(Ly\.geo, Ly\.mat, Ly\.n\)/.test(scSrc)
       && /new THREE\.PlaneGeometry\(40, 40, 96, 96\)/.test(scSrc),
       '法线贴图 / 实例化 / 96 段在岗');
+
+    /* ============================================================
+     * §586w（v157.88 · 老板「水面穿模，似乎有个球体在下面」）
+     * ------------------------------------------------------------
+     * 真因是**两处**，都不是"模型穿模"：
+     *   ① 白沫里有一项 `smoothstep(0.74,0.97, vnoise(p*0.42…))`：阈值化的值噪声会生成
+     *      3~5 米、边缘圆滑的白斑 —— 近景就是"水下有颗白球"。
+     *      泡沫必须是"细碎纹理 × 浪尖"，不是一块块圆斑。
+     *   ② 海面材质是单面：相机被一排浪头盖住时整片海**消失**，直接露出天空穹顶内壁，
+     *      屏幕上就是"水面破了个洞、下面有个大球"。双面 + 相机离水面 1.5 米兜住它。
+     * ============================================================ */
+    check('§586w 泡沫面：白沫 = 细碎噪声 × 浪尖（双门槛），不是阈值化大斑',
+      /float foamC = smoothstep\(0\.90, 1\.0, crest\);/.test(scSrc)
+      && /float foam = foamC \* smoothstep\(0\.55, 0\.85, fn\)/.test(scSrc)
+      /* 反向证据：那条"圆斑"必须彻底消失（写成非代码形态也不许出现） */
+      && !/smoothstep\(0\.74, 0\.97, vnoise/.test(scSrc),
+      '双门槛泡沫在岗 · 圆斑项 0 处');
+
+    check('§586w 海面面：海水双面 + 相机离水面 1.5 米（浪头不许把镜头盖进"洞里"）',
+      /side: THREE\.DoubleSide,\n\s+uniforms: \{/.test(scSrc)
+      && /var wl = seaWaveY\(px, pz, seaTime\) \+ 1\.5;/.test(scSrc)
+      && /var ahead = 6\.0 \* Math\.max\(0, 1 - seaPitch \/ 0\.95\);/.test(scSrc),
+      '双面 / 余量 1.5 / 俯角联动取景在岗');
 
     check('§586j 台账面：v157.68 与老板原话在册（需求档案）', (function () {
       var arc = fs.readFileSync(path.join(__dirname, '需求档案.md'), 'utf8');

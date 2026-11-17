@@ -1717,10 +1717,18 @@
       /* 太阳镜面：窄项给"星点"，宽项只留一丝 —— 宽项 0.20 时水面上是一块
          像探照灯的白斑（第一版实测），WoWS 那种是一条细碎的金路。 */
       '  col += uSunCol * (pow(sh, 1400.0) * 1.45 + pow(sh, 110.0) * 0.07);',
-      /* 白沫：浪尖 + 稀疏泡沫斑（噪声很慢地漂） */
-      '  float foam = smoothstep(0.78, 1.0, crest) * 0.42;',
-      '  foam += smoothstep(0.74, 0.97, vnoise(p * 0.42 + vec2(uTime * 0.33, uTime * 0.21))) * 0.10 * crest;',
-      '  col = mix(col, vec3(0.86, 0.92, 0.95), clamp(foam, 0.0, 0.7));',
+      /* 白沫：**只长在浪尖上**，用高频噪声调制浓淡。
+         ⛔ 这里原来还有一项 `smoothstep(0.74,0.97, vnoise(p*0.42…))` —— 阈值化的
+            值噪声会生成 3~5 米大小、边缘圆滑的白斑；近景看就是"水下有个白球
+            透过水面"（老板实测：「水面穿模，似乎有个球体在下面」）。
+            泡沫必须是**细碎纹理 × 浪尖**，不是一块块圆斑。 */
+      /* 两重门槛：浪尖足够高 **且** 噪声足够高 → 零星斑点。
+         只用一个门槛时，浪尖的等值线本身就是一块大而圆的区域，
+         整片糊上去就像水下的白色球体（老板实测：「似乎有个球体在下面」）。 */
+      '  float foamC = smoothstep(0.90, 1.0, crest);',
+      '  float fn = vnoise(p * 2.4 + vec2(uTime * 0.45, -uTime * 0.35));',
+      '  float foam = foamC * smoothstep(0.55, 0.85, fn) * 0.9;',
+      '  col = mix(col, vec3(0.84, 0.91, 0.95), clamp(foam, 0.0, 0.40));',
       /* 雾：公式与 THREE.FogExp2 完全一致，否则水面和军舰会在同一距离上
          变成两种颜色，地平线附近会出现一条谁都不属于的带子 */
       '  float d = length(cameraPosition - vW);',
@@ -1733,6 +1741,11 @@
     ].join('\n');
     return new THREE.ShaderMaterial({
       fog: false,
+      /* ⛔ 必须双面。单面（默认 FrontSide）时，只要相机被一排浪头盖到水面之下
+         （低俯角贴着浪看很容易发生），整个海面会"消失"，直接露出天空穹顶的内壁 ——
+         屏幕上就是"水面穿模，下面有个大球"（老板实测）。双面兜住这个状态：
+         即使真的钻到水下，看到的仍是一层水，不是天空。 */
+      side: THREE.DoubleSide,
       uniforms: {
         uTime: { value: 0 },
         uSunDir: { value: new THREE.Vector3(0.20, 0.34, -0.92).normalize() },
@@ -2043,9 +2056,15 @@
     /* 人 */
     player = buildPlayer();
     player.position.set(0, 0, 0);
-    /* 水面上不要"接地黑圆片"（那是陆地的读法），脚下交给涟漪 */
+    /* 水面上不留"接地黑圆片"（那是陆地的读法），但也不能什么都不留 ——
+       人站在起伏的浪上，脚与水面的关系需要一个锚点。改成**淡白水花**：
+       颜色换成水色、透明度压到 0.18、放大一点，读起来就是"踩起的水纹"。 */
     var _psh = player.getObjectByName('shadow');
-    if (_psh) _psh.visible = false;
+    if (_psh) {
+      _psh.material.color.setHex(0xdfeef5);
+      _psh.material.opacity = 0.12;
+      _psh.scale.set(1.15, 1.15, 1.15);
+    }
     propRoot.add(player);
     targetPt = null;
     _seaPrev.x = 0; _seaPrev.z = 0;
@@ -2072,9 +2091,10 @@
     if (seaSky) seaSky.position.set(player.position.x, 0, player.position.z);
 
     /* 人站在浪上：与 GPU 同一函数（seaWaveY ←→ seaH），不会踩空。
-       +0.10 是"脚踩在水面上"而不是"脚陷进水里"—— 只给 0.02 时，
-       前一排浪比脚下的浪高，视觉上小腿一直是淹着的（截图确认）。 */
-    player.position.y = seaWaveY(player.position.x, player.position.z, t) + 0.10;
+       抬 0.05：0.10 时脚底与水面之间有一道缝（远看像悬着），0.02 时又像陷进水里。
+       剩下那一点点误差（GPU 12.5 米网格插值 vs CPU 精确值）由脚下的
+       淡白水花圆片兜住 —— 见 buildSeaScene 里对 'shadow' 的处理。 */
+    player.position.y = seaWaveY(player.position.x, player.position.z, t) + 0.05;
 
     for (var i = 0; i < seaFloat.length; i++) {
       var f = seaFloat[i], o = f.obj;
@@ -2132,16 +2152,20 @@
     var px = tx + Math.sin(seaYaw) * seaDist * cp;
     var pz = tz + Math.cos(seaYaw) * seaDist * cp;
     var py = ty + seaDist * sp;
-    /* 镜头不许沉到水下：贴水时它会"钻进浪里"，一帧全绿 */
-    var wl = seaWaveY(px, pz, seaTime) + 0.85;
+    /* 镜头不许沉到水下：贴水时它会"钻进浪里"，一帧全绿。
+       余量给到 1.5 米 —— 0.85 时浪尖（振幅 1.65）仍能盖过镜头。 */
+    var wl = seaWaveY(px, pz, seaTime) + 1.5;
     if (py < wl) py = wl;
     var k = Math.min(1, dt * 6.5);
     cam.position.x += (px - cam.position.x) * k;
     cam.position.y += (py - cam.position.y) * k;
     cam.position.z += (pz - cam.position.z) * k;
-    /* 看向"人前方 6 米、略高"：人是下三分之一，地平线在上三分之一 ——
-       这就是舰游的取景（人小、世界大），也正好把远景军舰摆进画面。 */
-    cam.lookAt(tx - Math.sin(seaYaw) * 6, ty + 1.05, tz - Math.cos(seaYaw) * 6);
+    /* 看向"人前方 N 米、略高"：人是下三分之一，地平线在上三分之一 ——
+       舰游的取景（人小、世界大），远景军舰正好落在画面上缘。
+       ⚠️ N 必须随俯角收：固定 6 米时，俯角拉到 1.2（近乎头顶），
+       视线会越过人落到他前方，**人自己从画面下缘掉出去**（实测）。 */
+    var ahead = 6.0 * Math.max(0, 1 - seaPitch / 0.95);
+    cam.lookAt(tx - Math.sin(seaYaw) * ahead, ty + 1.05, tz - Math.cos(seaYaw) * ahead);
   }
 
   /* ---------- 场景装配 ---------- */
