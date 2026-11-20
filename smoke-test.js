@@ -49088,13 +49088,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        修复三件：专用 512²（POT）生成器、互质格 6/15/37、域扭曲。
        这条钉死"别再回到复用 384 颜色图当高度场"那条老路。*/
     check('§589h 颗粒图必须是 512²（POT）+ 专用生成器（不许复用 384 颜色图当高度场）',
-      /function makeGrainTex\(\)/.test(mp)
+      /function makeGrainTex\(mode\)/.test(mp)
       && /M\.GRAIN_N = 512/.test(mp)
       && /var W = lattice\(5, 91\), L6 = lattice\(6, 71\), L15 = lattice\(15, 72\), L37 = lattice\(37, 73\)/.test(mp)
       && /M\._detailTexU\.value = makeGrainTex\(\)/.test(mp)
       /* 反向：不许回到"直接把颜色图当高度场"的老写法（catch 里的 dtex 降级是允许的）*/
       && (mp.match(/if \(M\._detailTexU\) M\._detailTexU\.value = dtex;/g) || []).length === 0,
       '512² + 互质格 + 域扭曲 + 不再复用颜色图');
+
+    /* ⑨ 同一病灶的第二处：**地表层**（老板「还是有规律斑纹」）。
+       地表原来用 makeDetailTex('surf') + repeat 28 —— 同一张 384² 的 8/16/32 规整格噪声，
+       贴地时同一团纹样按固定间距重复。现在地表也走颗粒图（颜色模式必须 0.74~1.0 区间）。*/
+    check('§589i 地表层同样用域扭曲颗粒图（颜色模式）· 不再用 makeDetailTex(surf)',
+      /makeGrainTex\('c'\)/.test(mp)
+      && /var c = Math\.round\(\(\(mode === 'c'\) \? \(0\.74 \+ n \* 0\.26\)/.test(mp)
+      && (mp.match(/makeDetailTex\('surf'\)/g) || []).length === 0,
+      '颜色模式 + 地表不再用 384 图');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）

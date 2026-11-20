@@ -2213,7 +2213,10 @@ import './gltf.js';
     var tmat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.FrontSide });
     try { applyTerminator(tmat); } catch (e) { }
     try {
-      var dt = makeDetailTex('surf'); dt.repeat.set(28, 28);
+      /* v157.89e：地表也用**域扭曲 + 互质格**的 512² 颗粒图。
+         原用 384² 的 8/16/32 规整格噪声 → 贴地视角看到同一团纹样按固定间距重复（老板「还是有规律斑纹」）。
+         颜色模式必须走 0.74~1.0 区间，否则地表整体变暗。*/
+      var dt = makeGrainTex('c'); dt.repeat.set(28, 28);
       tmat.map = dt; tmat.needsUpdate = true;
     } catch (e) { }
     var terr = new THREE.Mesh(tg, tmat);
@@ -3346,8 +3349,9 @@ import './gltf.js';
    * 修法：512²（POT）+ 互质格 6/15/37 + 域扭曲（低频场推移采样坐标）。
    * 这张图**只给法线用**，颜色仍用原来那张（不改变地形配色）。
    * ============================================================ */
-  function makeGrainTex() {
-    if (_dtCache.grain) return _dtCache.grain;
+  function makeGrainTex(mode) {
+    var _ck = (mode === 'c') ? 'grainC' : 'grainN';
+    if (_dtCache[_ck]) return _dtCache[_ck];
     var N = 512;
     function lattice(g, salt) {
       var a = new Float32Array(g * g);
@@ -3375,7 +3379,10 @@ import './gltf.js';
       var n = samp(L6, 6, u + wx, v + wy) * 0.50
             + samp(L15, 15, u + wx * 1.8, v + wy * 1.8) * 0.32
             + samp(L37, 37, u + wx * 2.6, v + wy * 2.6) * 0.18;
-      var c = Math.round((0.35 + n * 0.30) * 255);
+      /* 两种用途同一套噪声，只改亮度区间：
+         · 'n'（默认）= 高度场，0.35~0.65；
+         · 'c' = 当颜色乘子用，**必须**保持原细节图的 0.74~1.0，否则地表整体变暗。*/
+      var c = Math.round(((mode === 'c') ? (0.74 + n * 0.26) : (0.35 + n * 0.30)) * 255);
       var o = (yy * N + xx) * 4;
       img.data[o] = c; img.data[o + 1] = c; img.data[o + 2] = c; img.data[o + 3] = 255;
     }
@@ -3387,7 +3394,7 @@ import './gltf.js';
     t.magFilter = THREE.LinearFilter;
     t.anisotropy = 4;
     t._shared = true;
-    _dtCache.grain = t;
+    _dtCache[_ck] = t;
     return t;
   }
   M.GRAIN_N = 512;
