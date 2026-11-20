@@ -49083,6 +49083,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && !/normalMap\s*:/.test(mp),
       '自采样 + 独立闸门 + normalMap 0 处');
 
+    /* ⑧ 网点反面证据（v157.89d · 老板截图「有斑纹」）：
+       病灶是"384² 非二次幂贴图 + 高 repeat"→ 摩尔纹，以及规整格点被放大成点阵。
+       修复三件：专用 512²（POT）生成器、互质格 6/15/37、域扭曲。
+       这条钉死"别再回到复用 384 颜色图当高度场"那条老路。*/
+    check('§589h 颗粒图必须是 512²（POT）+ 专用生成器（不许复用 384 颜色图当高度场）',
+      /function makeGrainTex\(\)/.test(mp)
+      && /M\.GRAIN_N = 512/.test(mp)
+      && /var W = lattice\(5, 91\), L6 = lattice\(6, 71\), L15 = lattice\(15, 72\), L37 = lattice\(37, 73\)/.test(mp)
+      && /M\._detailTexU\.value = makeGrainTex\(\)/.test(mp)
+      /* 反向：不许回到"直接把颜色图当高度场"的老写法（catch 里的 dtex 降级是允许的）*/
+      && (mp.match(/if \(M\._detailTexU\) M\._detailTexU\.value = dtex;/g) || []).length === 0,
+      '512² + 互质格 + 域扭曲 + 不再复用颜色图');
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */
