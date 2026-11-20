@@ -3314,11 +3314,41 @@
   /* v157.89：地形起伏明暗的强度（0 = 关 · 1 = 默认）。老板觉得"不够立体"就往上给，
      觉得"太脏/太暗"就往回收 —— 一个数就能调，不必改着色器。*/
   M._reliefU = { value: 1.0 };
+  /* v157.89 P1：片元级细节法线（近看颗粒）。
+     ⚠️ 不能走 three 的 normalMap —— 球体是 MeshBasicMaterial，normalMap 对它无效（静默忽略）。
+        这里把细节灰度贴图当高度场，在片元里求梯度自己扰动法线。*/
+  M._detailTexU = { value: null };   /* 指向 makeDetailTex('globe')（与 map 共用同一张，免再生成）*/
+  M._detailU = { value: 1.0 };       /* 细节强度闸门（M.setDetail）*/
+  M.DETAIL_REPEAT = 96;              /* uv 放大倍数（编译期写进着色器；近景颗粒尺度由它定）*/
+  M.DETAIL_SLOPE = 18;               /* 高度差 → 法线倾角的放大系数*/
+  M._detailAmpU = { value: 0.22 };    /* 颗粒压暗幅度（扫参定档：0.30 会把整体压暗 12.6%，越过"不变暗"红线；0.22 ≈ 9%）*/
   /* v157.89：**强度基准**（M.setRelief 写它）。真正的 uniform = BASE × 高度淡出系数，
      见 placeCamera 的 `_reliefU` 更新 —— 淡出是为了近景不出现"刷痕"。*/
   M.RELIEF_BASE = 1.0;
   M.RELIEF_AGL_FULL = 520;      /* 海拔 ≥ 此值：起伏全量（看整球那一档）*/
   M.RELIEF_AGL_ZERO = 210;      /* 海拔 ≤ 此值：起伏归零（贴地那一档）*/
+  /* v157.89c：起伏明暗的**归一化枢轴**。
+     纯方向明暗只会压暗坡面（cos 是凹函数）→ 整幅必然变暗（实测 P90 掉 15%），
+     老板一眼就是"变暗了"。修法不是削斜率（那是削立体感），而是除以"平均曝光"：
+       系数 = (0.70 + 0.46·relV) / (0.70 + 0.46·pivot)
+     其中 pivot = 全球顶点 relV 的平均值。这样对比度一分不少，平均亮度回到 1.0。
+     太阳换方位时重算（applyLight 里调 _recalcRelPivot）。*/
+  M._relPivotU = { value: 0.5 };
+  M._globeNrmArr = null;
+  M._recalcRelPivot = function () {
+    var na = M._globeNrmArr, sd = M._sunDir;
+    if (!na || !sd) return null;
+    var sx = sd.x, sy = sd.y, sz = sd.z, sum = 0, cnt = 0;
+    var L = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1;
+    sx /= L; sy /= L; sz /= L;
+    for (var i = 0; i < na.length; i += 15) {       /* stride：9.9 万顶点抽 1/5，够稳且几乎不耗时 */
+      var d = na[i] * sx + na[i + 1] * sy + na[i + 2] * sz;
+      sum += (d < 0 ? 0 : (d > 1 ? 1 : d)); cnt++;
+    }
+    var pv = cnt ? (sum / cnt) : 0.5;
+    M._relPivotU.value = pv;
+    return +pv.toFixed(3);
+  };
   /* ============================================================
    * v92.243 · 给**不受光的球面**注入太阳明暗（昼夜线）
    * ------------------------------------------------------------
@@ -3345,15 +3375,18 @@
          现在条目持有同一个 Vector3 引用，`applyLight()` 里 `.set(...)` 仍然生效。 */
       sh.uniforms.uSunDir = { value: M._sunDir };
       sh.uniforms.uTerm = M._termU;
+      var _dRep = (+M.DETAIL_REPEAT || 16);
       var _vHead = 'varying vec3 vWn;\n'
-        + (REL ? 'attribute float aShade;\nvarying vec3 vNrm;\nvarying float vShade;\n' : '');
+        + (REL ? 'attribute float aShade;\nvarying vec3 vNrm;\nvarying float vShade;\nvarying vec2 vDUv;\n' : '');
       sh.vertexShader = _vHead + sh.vertexShader.replace(
         '#include <begin_vertex>',
         '#include <begin_vertex>\n  vWn = normalize(mat3(modelMatrix) * position);'
-        + (REL ? '\n  vNrm = normalize(mat3(modelMatrix) * normal);\n  vShade = aShade;' : '')
+        + (REL ? ('\n  vNrm = normalize(mat3(modelMatrix) * normal);\n  vShade = aShade;'
+                  + '\n  vDUv = uv * ' + _dRep.toFixed(1) + ';') : '')
       );
       var _fHead = 'uniform vec3 uSunDir; uniform float uTerm;'
-        + (REL ? ' uniform float uRelief; varying vec3 vNrm; varying float vShade;' : '')
+        + (REL ? (' uniform float uRelief; uniform float uPivot; varying vec3 vNrm; varying float vShade;'
+                  + ' uniform sampler2D uDetailTex; uniform float uDetail; uniform float uDetAmp; varying vec2 vDUv;') : '')
         + ' varying vec3 vWn;\n';
       var _body = '\n'
         + '  float _sunL = clamp(dot(normalize(vWn), normalize(uSunDir)), 0.0, 1.0);\n'
@@ -3363,10 +3396,36 @@
            · 只用一次乘，不叠第二套光照；日面仍以 1.0 为基准，不整体提亮。
            · 系数区间刻意不对称（压暗 30%、提亮 16%）：山体"抢眼"但不会把亮色顶爆。*/
         sh.uniforms.uRelief = M._reliefU;
+        sh.uniforms.uDetail = M._detailU;
+        sh.uniforms.uPivot = M._relPivotU;
+        sh.uniforms.uDetAmp = M._detailAmpU;
+        sh.uniforms.uDetailTex = M._detailTexU;
         _body += '\n'
-          + '  float _rel = clamp(dot(normalize(vNrm), normalize(uSunDir)), 0.0, 1.0);\n'
-          + '  gl_FragColor.rgb *= mix(1.0, 0.70 + 0.46 * _rel, uRelief);\n'
-          + '  gl_FragColor.rgb *= mix(1.0, vShade, uRelief);';
+          /* P1：细节法线。1.6 纹素步长求梯度（步长必须与 vDUv 的放大倍数同源，
+             否则颗粒尺度会随 DETAIL_REPEAT 变化而错位）。*/
+          + '  vec3 _N0 = normalize(vNrm);\n'
+          + '  vec3 _up = abs(_N0.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);\n'
+          + '  vec3 _T = normalize(cross(_up, _N0));\n'
+          + '  vec3 _B = cross(_N0, _T);\n'
+          + '  float _e = ' + (1.6 * _dRep / 384).toFixed(6) + ';\n'
+          + '  float _h0 = texture2D(uDetailTex, vDUv).r;\n'
+          + '  float _hx = texture2D(uDetailTex, vDUv + vec2(_e, 0.0)).r - _h0;\n'
+          + '  float _hy = texture2D(uDetailTex, vDUv + vec2(0.0, _e)).r - _h0;\n'
+          + '  vec3 _Nd = normalize(_N0 + (_T * (-_hx) + _B * (-_hy)) * (' + (+M.DETAIL_SLOPE || 18).toFixed(1) + ' * uDetail));\n'
+          /* ⚠️ v157.89 P1 首版踩的坑：这里原本只有一条 `_rel`，用的是**扰动后**的法线，
+             而它整体被 `uRelief` 闸门乘着 —— 于是近景浮雕淡出（uRelief=0）时，
+             细节颗粒**跟着一起失效**（实测 zoom0.13 增益 0.0%）。两层必须解耦：
+               · `_relV` 顶点法线 → 地形起伏，受 uRelief 管（远景）；
+               · 细节颗粒用 `_relV − _relD` 的**差值**，只受 uDetail 管（近景），
+                 且**只压暗不提亮** → 永不削顶；mipmap 把地形压平时差值为 0，
+                 远景既不脏也不整体变暗（这一条是"对称写法"做不到的）。*/
+          + '  vec3 _sunN = normalize(uSunDir);\n'
+          + '  float _relV = clamp(dot(_N0, _sunN), 0.0, 1.0);\n'
+          + '  float _relD = clamp(dot(_Nd, _sunN), 0.0, 1.0);\n'
+          + '  float _relN = (0.70 + 0.46 * _relV) / (0.70 + 0.46 * uPivot);\n'
+          + '  gl_FragColor.rgb *= mix(1.0, _relN, uRelief);\n'
+          + '  gl_FragColor.rgb *= mix(1.0, vShade, uRelief);\n'
+          + '  gl_FragColor.rgb *= 1.0 - uDetAmp * max(0.0, _relV - _relD) * uDetail;';
       }
       sh.fragmentShader = _fHead
         + sh.fragmentShader.replace('#include <dithering_fragment>',
@@ -3397,12 +3456,20 @@
     /* 昼夜强度：0 = 关闭（回到"写入即所见"），1 = 最强 */
     var _t = (L.term == null) ? 0 : Math.max(0, Math.min(1, +L.term || 0));
     if (M._termU) M._termU.value = (mode === 'ambient') ? 0 : _t;
+    if (M._recalcRelPivot) M._recalcRelPivot();     /* v157.89c：太阳方位变了，归一化枢轴跟着变 */
   };
   /* v157.89：地形起伏明暗强度（0 = 关 · 1 = 默认）。给老板一个"一个数调手感"的出口。*/
   M.setRelief = function (v) {
     var n = (v == null) ? 1 : (Math.max(0, Math.min(1, +v || 0)));
     M.RELIEF_BASE = n;
     M._reliefU.value = n;                    /* 本帧立即生效，不等下一帧 */
+    return n;
+  };
+  /* v157.89 P1：细节法线强度（0 = 关 · 1 = 默认）。与 setRelief 各管一层：
+     relief 管"地形起伏"（顶点级 · 远景），detail 管"表面颗粒"（像素级 · 近景）。*/
+  M.setDetail = function (v) {
+    var n = (v == null) ? 1 : (Math.max(0, Math.min(2, +v || 0)));
+    M._detailU.value = n;
     return n;
   };
   M.setLight = function (opt) {
@@ -3706,6 +3773,8 @@
         if (sh < shMin) shMin = sh; if (sh > shMax) shMax = sh;
       }
       M._globeShade = shade;             /* 由 buildGlobe 落成顶点属性 aShade */
+      M._globeNrmArr = nor;              /* v157.89c：给明暗归一化算枢轴用 */
+      if (M._recalcRelPivot) M._recalcRelPivot();
       /* 自检出口：改前 maxDeg/avgDeg 应恒 0；改后应显著 > 0（法线真随地形走）*/
       M._globeNrmStat = {
         verts: nv, welded: weldN, exag: EXAG,
@@ -3756,6 +3825,8 @@
     /* v90.67（方案B）：细节纹理**乘**到顶点色上（MeshBasicMaterial: color×vertexColor×map）——近看有颗粒。 */
     try {
       var dtex = makeDetailTex('globe'); dtex.repeat.set(7, 7);
+      /* v157.89 P1：同一张图也当细节法线的高度场（raw 采样不吃 Texture.repeat，互不干扰）*/
+      if (M._detailTexU) M._detailTexU.value = dtex;
       globe.material.map = dtex; globe.material.needsUpdate = true;
     } catch (e) { /* 纹理生成失败 → 退回纯顶点色 */ }
     M._globeMat = globe.material;

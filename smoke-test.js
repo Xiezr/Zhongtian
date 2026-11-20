@@ -49068,6 +49068,31 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })(),
       'ZERO/FULL 口径 + 曲线五档');
 
+    /* ⑥ 细节层（P1）：片元级法线扰动 —— 近景颗粒。
+       ⚠️ 不能走 three 的 normalMap：球体是 MeshBasicMaterial，normalMap 对它静默失效。
+          这条断言钉死"自己采样 + 自己扰动"的形态，防后人改回 normalMap 白做一轮。*/
+    check('§589f 细节层在岗：自采样高度场求梯度（不用 normalMap）· 闸门 uDetail 独立于 uRelief',
+      /uniform sampler2D uDetailTex/.test(mp)
+      && /texture2D\(uDetailTex, vDUv \+ vec2\(_e, 0\.0\)\)/.test(mp)
+      && /vec3 _Nd = normalize\(_N0 \+/.test(mp)
+      && /M\.setDetail = function/.test(mp)
+      /* ⚠️ 反向判据必须按**代码形态**，不能按裸字符串计数 ——
+         本文件的注释里就会写「不能走 three 的 normalMap」，按 count===0 判会自己把自己判红
+         （本轮首次跑门禁就是这么红的）。这里钉的是「没有任何材质属性真的用了 normalMap」。*/
+      && !/\.normalMap\s*=/.test(mp)
+      && !/normalMap\s*:/.test(mp),
+      '自采样 + 独立闸门 + normalMap 0 处');
+
+    /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
+       · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
+       · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */
+    check('§589g 不暗不脏：细节层只压暗（max(0,Δ)）· 起伏项按枢轴归一化（/ (0.70+0.46·uPivot)）',
+      /max\(0\.0, _relV - _relD\)/.test(mp)
+      && /\/ \(0\.70 \+ 0\.46 \* uPivot\)/.test(mp)
+      && /M\._recalcRelPivot = function/.test(mp)
+      && (mp.match(/1\.0 \+ uDetAmp/g) || []).length === 0,
+      '只压暗 + 枢轴归一化 + 对称提亮式 0 处');
+
     /* ⑤ 归因面：源码里写明"为什么不是换材质"——防后人把它改回 Lambert 白忙一轮 */
     check('§589e 归因面：注释写明"径向法线 → Lambert 也白做"（防回退到换材质方案）',
       /Lambert/.test(mp) && /径向法线/.test(mp)
