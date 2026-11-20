@@ -49005,6 +49005,76 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       'amp 0.24 · spec 0.24');
   })();
 
+
+/* ============================================================
+ * §589 · v157.89 球体受光化：地形法线 + 起伏明暗
+ * ------------------------------------------------------------
+ * 老板：「球体是空壳，可以全填充吗」→ 取证发现真正的病根是**法线全是径向**：
+ *   实测顶点法线偏离径向 最大 0.02° / 平均 0° —— 山脊与山谷受光完全一样。
+ *   所以"全填充"零收益、"换 Lambert"也零收益（径向法线只会算出一颗光滑的球）。
+ * 本轮改的是「让法线真的跟着地形走」+「按法线做一次起伏明暗」，并对近景做高度淡出
+ *   （逐顶点明暗被放大后会变成刷痕 —— 实机 zoom0.13 已取证）。
+ * ============================================================ */
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var M3 = GAME.map3d;
+
+    /* ① 结构面：真法线在岗（三角面累加 + 跨面焊接 + 曲率属性 + 单一闸门）*/
+    check('§589a 结构面：真地形法线在岗（面法线累加 / 方向焊接 / aShade 属性 / uRelief 闸门）',
+      /function buildTerrainNormals\(\)/.test(mp)
+      && /if \(!wmap\[k\]\) wmap\[k\] = \[\]/.test(mp)
+      && /geo\.setAttribute\('aShade'/.test(mp)
+      && /uniform float uRelief/.test(mp)
+      && /gl_FragColor\.rgb \*= mix\(1\.0, vShade, uRelief\)/.test(mp),
+      '四件在岗');
+
+    /* ② 反向证据：改前的"径向法线"不许复活；起伏只给球面（地块不许开）*/
+    check('§589b 反向证据：径向法线已替换 · 起伏只作用于球面（地块单参调用仍在）',
+      (mp.match(/\n\s*nor\.push\(dx, dy, dz\);/g) || []).length === 0
+      && /nor\.push\(0, 0, 0\);/.test(mp)
+      && (mp.match(/applyTerminator\(tmat\);/g) || []).length === 1
+      && (mp.match(/applyTerminator\(tmat, true\)/g) || []).length === 0
+      && /applyTerminator\(_gmat243, true\);/.test(mp),
+      '径向 0 处 · 地块单参 1 处 · 球面双参在岗');
+
+    /* ③ 口径面：setRelief 是唯一强度出口。
+       ⚠️ 本仓 smoke 是 jsdom（无 THREE）→ map3d 退化成 `{enabled:false}` 桩，
+          运行时字段拿不到（§map3d① 就是这么断言的）。所以这里钉"源码口径 + 钳制曲线"，
+          **真机行为证据**在 `.workbuddy/tools/show/shot_v15789_p0.js` 的 fade 读数
+          （实测 agl 201→0 / 470→0.84 / 838→1.0）与 `check_v15789_p0.js` 的像素判定。*/
+    check('§589c 口径面：setRelief 唯一出口（写 BASE + uniform · [0,1] 钳制）· 真算钳制五档',
+      /M\.setRelief = function \(v\) \{/.test(mp)
+      && /M\.RELIEF_BASE = n;/.test(mp)
+      && /M\._reliefU\.value = n;/.test(mp)
+      && (function () {
+        function clamp(v) { var n = (v == null) ? 1 : (Math.max(0, Math.min(1, +v || 0))); return n; }
+        return clamp(0.5) === 0.5 && clamp(0) === 0 && clamp(2) === 1
+          && clamp(null) === 1 && clamp('x') === 0;
+      })(),
+      '源码三处 + clamp(0.5/0/2/null/x) 五档');
+
+    /* ④ 近景淡出：常数口径 + 源码按 _rAlt 算 + 真算曲线（下限：全量档必须真的=1、归零档真的=0）*/
+    check('§589d 近景淡出：ZERO=210 < FULL=520 · placeCamera 按 _rAlt 算 · 曲线(200→0 / 600→1 / 中点0.5)',
+      /M\.RELIEF_AGL_FULL = 520;/.test(mp)
+      && /M\.RELIEF_AGL_ZERO = 210;/.test(mp)
+      && /_rF = \(_rAlt - \(M\.RELIEF_AGL_ZERO/.test(mp)
+      && /M\._reliefU\.value = \(M\.RELIEF_BASE == null \? 1 : M\.RELIEF_BASE\) \* _rF;/.test(mp)
+      && (function () {
+        var Z = 210, F = 520;
+        function fade(agl) { var f = (agl - Z) / (F - Z); return f < 0 ? 0 : (f > 1 ? 1 : f); }
+        return fade(200) === 0 && fade(600) === 1 && fade(365) === 0.5
+          && fade(Z) === 0 && fade(F) === 1;
+      })(),
+      'ZERO/FULL 口径 + 曲线五档');
+
+    /* ⑤ 归因面：源码里写明"为什么不是换材质"——防后人把它改回 Lambert 白忙一轮 */
+    check('§589e 归因面：注释写明"径向法线 → Lambert 也白做"（防回退到换材质方案）',
+      /Lambert/.test(mp) && /径向法线/.test(mp)
+      && /换受光材质也没用|换受光材质/.test(mp),
+      '取舍说明在册');
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));

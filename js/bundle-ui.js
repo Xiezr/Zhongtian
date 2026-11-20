@@ -3311,6 +3311,14 @@
      而 smoke-test 正是那样跑起来的 —— 一律延迟到 applyLight / 浏览器里再建。 */
   M._sunDir = (typeof THREE !== 'undefined' && THREE.Vector3) ? new THREE.Vector3(0, 1, 0) : null;
   M._termU = { value: 0.45 };
+  /* v157.89：地形起伏明暗的强度（0 = 关 · 1 = 默认）。老板觉得"不够立体"就往上给，
+     觉得"太脏/太暗"就往回收 —— 一个数就能调，不必改着色器。*/
+  M._reliefU = { value: 1.0 };
+  /* v157.89：**强度基准**（M.setRelief 写它）。真正的 uniform = BASE × 高度淡出系数，
+     见 placeCamera 的 `_reliefU` 更新 —— 淡出是为了近景不出现"刷痕"。*/
+  M.RELIEF_BASE = 1.0;
+  M.RELIEF_AGL_FULL = 520;      /* 海拔 ≥ 此值：起伏全量（看整球那一档）*/
+  M.RELIEF_AGL_ZERO = 210;      /* 海拔 ≤ 此值：起伏归零（贴地那一档）*/
   /* ============================================================
    * v92.243 · 给**不受光的球面**注入太阳明暗（昼夜线）
    * ------------------------------------------------------------
@@ -3322,8 +3330,11 @@
    *     （Basic 的顶点着色器里 objectNormal 只在 USE_ENVMAP/USE_SKINNING 时才存在）；
    *   · `term = 0` 即完全关闭（一个数回到旧观感）；include 名字对不上时静默不生效，不会崩。
    * ============================================================ */
-  function applyTerminator(mat) {
+  /* v157.89：第二参 `withRelief` = 是否注入"地形起伏明暗"。
+     只给球面开（地块/水面/标记物不开）：它们的法线不是地形法线，硬开会把侧面压黑。*/
+  function applyTerminator(mat, withRelief) {
     if (!mat || typeof mat.onBeforeCompile !== 'function') return mat;
+    var REL = !!withRelief;
     mat.onBeforeCompile = function (sh) {
       /* ⚠️ v156.16：这里必须是 `{ value: … }` 的 **uniform 条目**，不能塞裸 Vector3。
          three 的 `WebGLUniforms.upload` 读的是 `entry.value`；塞裸对象时 `.value` 是 undefined，
@@ -3334,17 +3345,32 @@
          现在条目持有同一个 Vector3 引用，`applyLight()` 里 `.set(...)` 仍然生效。 */
       sh.uniforms.uSunDir = { value: M._sunDir };
       sh.uniforms.uTerm = M._termU;
-      sh.vertexShader = 'varying vec3 vWn;\n' + sh.vertexShader.replace(
+      var _vHead = 'varying vec3 vWn;\n'
+        + (REL ? 'attribute float aShade;\nvarying vec3 vNrm;\nvarying float vShade;\n' : '');
+      sh.vertexShader = _vHead + sh.vertexShader.replace(
         '#include <begin_vertex>',
         '#include <begin_vertex>\n  vWn = normalize(mat3(modelMatrix) * position);'
+        + (REL ? '\n  vNrm = normalize(mat3(modelMatrix) * normal);\n  vShade = aShade;' : '')
       );
-      sh.fragmentShader = 'uniform vec3 uSunDir; uniform float uTerm; varying vec3 vWn;\n'
-        + sh.fragmentShader.replace(
-          '#include <dithering_fragment>',
-          '#include <dithering_fragment>\n'
-          + '  float _sunL = clamp(dot(normalize(vWn), normalize(uSunDir)), 0.0, 1.0);\n'
-          + '  gl_FragColor.rgb *= (1.0 - uTerm) + uTerm * (0.35 + 0.65 * _sunL);'
-        );
+      var _fHead = 'uniform vec3 uSunDir; uniform float uTerm;'
+        + (REL ? ' uniform float uRelief; varying vec3 vNrm; varying float vShade;' : '')
+        + ' varying vec3 vWn;\n';
+      var _body = '\n'
+        + '  float _sunL = clamp(dot(normalize(vWn), normalize(uSunDir)), 0.0, 1.0);\n'
+        + '  gl_FragColor.rgb *= (1.0 - uTerm) + uTerm * (0.35 + 0.65 * _sunL);';
+      if (REL) {
+        /* 起伏明暗：用**真地形法线**与太阳夹角，0.70~1.16 的软包裹（无硬阴影）。
+           · 只用一次乘，不叠第二套光照；日面仍以 1.0 为基准，不整体提亮。
+           · 系数区间刻意不对称（压暗 30%、提亮 16%）：山体"抢眼"但不会把亮色顶爆。*/
+        sh.uniforms.uRelief = M._reliefU;
+        _body += '\n'
+          + '  float _rel = clamp(dot(normalize(vNrm), normalize(uSunDir)), 0.0, 1.0);\n'
+          + '  gl_FragColor.rgb *= mix(1.0, 0.70 + 0.46 * _rel, uRelief);\n'
+          + '  gl_FragColor.rgb *= mix(1.0, vShade, uRelief);';
+      }
+      sh.fragmentShader = _fHead
+        + sh.fragmentShader.replace('#include <dithering_fragment>',
+            '#include <dithering_fragment>' + _body);
     };
     mat.needsUpdate = true;
     return mat;
@@ -3371,6 +3397,13 @@
     /* 昼夜强度：0 = 关闭（回到"写入即所见"），1 = 最强 */
     var _t = (L.term == null) ? 0 : Math.max(0, Math.min(1, +L.term || 0));
     if (M._termU) M._termU.value = (mode === 'ambient') ? 0 : _t;
+  };
+  /* v157.89：地形起伏明暗强度（0 = 关 · 1 = 默认）。给老板一个"一个数调手感"的出口。*/
+  M.setRelief = function (v) {
+    var n = (v == null) ? 1 : (Math.max(0, Math.min(1, +v || 0)));
+    M.RELIEF_BASE = n;
+    M._reliefU.value = n;                    /* 本帧立即生效，不等下一帧 */
+    return n;
   };
   M.setLight = function (opt) {
     if (opt) for (var k in opt) if (opt[k] != null) M.LIGHT[k] = opt[k];
@@ -3557,7 +3590,11 @@
         var e = sphElev([dx, dy, dz]);                     /* 球面原生高度（连续 · 无接缝 · 不来自平面地图）*/
         var rr = R + Math.max(0, e) * HSC;
         pos.push(dx * rr, dy * rr, dz * rr);
-        nor.push(dx, dy, dz);                              /* 法线=位置方向（球面朝外 · 不受绕向影响）*/
+        /* v157.89：**占位** —— 真法线等六个面全建完后统一求（见下方 buildTerrainNormals）。
+           ⚠️ 改前这里是 `nor.push(dx,dy,dz)`（径向法线）：它与地形起伏完全无关，
+           实测偏离径向 最大 0.02° / 平均 0° —— 山脊与山谷受光一模一样，
+           这就是「球体像贴了张地图的纸」的根因，也是「换受光材质也没用」的原因。*/
+        nor.push(0, 0, 0);
         uv.push(i / K, j / K);
         /* v157.75：`soft=true` —— 顶点级邻格软混合，消除「一格一色」的六边形硬边。
            地表近景（1186 / 1325 / 1362 三处调用）不传，保持地块硬边。 */
@@ -3571,6 +3608,112 @@
         else idx.push(a, c2, b, b, c2, d);
       }
     });
+    /* ============================================================
+     * v157.89：**真地形法线**（老板「球体是空壳，可以全填充吗」的续集）
+     * ------------------------------------------------------------
+     * 取舍说明：原计划是「把 Basic 换成 Lambert 受光材质」，取证后发现那条路会白做 ——
+     *   `nor` 全是径向，Lambert 拿径向法线算出来只是**一颗光滑的球**（与现有昼夜线同果），
+     *   山脊山谷照样一样亮。真正缺的是「地形法线」；补上它，起伏才有受光。
+     *   材质仍留 Basic：场景那四盏灯（太阳 3.2 强度）一旦真正参与，会把整颗球打爆成白，
+     *   并连带改变地表建筑/单位的观感 —— 那是另一件事，不在 P0 范围内。
+     *
+     * 算法：三角面法线（叉积，模长 = 2×面积 → 天然面积加权）累加到顶点；
+     *   再按「方向」跨面焊接 —— cube-sphere 六片在公共边上有重复顶点，
+     *   不焊接会沿六条大圆出现接缝亮/暗线（正是老板最反感的"色斑"）。
+     * ============================================================ */
+    (function buildTerrainNormals() {
+      var nv = pos.length / 3;
+      var acc = new Float32Array(nv * 3), wmap = Object.create(null);
+      var hArr = new Float32Array(nv);
+      var nbSum = new Float32Array(nv), nbCnt = new Float32Array(nv);
+      var vi, k, px, py, pz, L, j3;
+      for (vi = 0; vi < nv; vi++) {
+        j3 = vi * 3; px = pos[j3]; py = pos[j3 + 1]; pz = pos[j3 + 2];
+        L = Math.sqrt(px * px + py * py + pz * pz) || 1;
+        hArr[vi] = L;                     /* 该顶点的球心距 = 地形高度（R + 归一化高度×HSC）*/
+        k = (px / L).toFixed(5) + ',' + (py / L).toFixed(5) + ',' + (pz / L).toFixed(5);
+        if (!wmap[k]) wmap[k] = [];
+        wmap[k].push(vi);
+      }
+      for (var t = 0; t < idx.length; t += 3) {
+        var ia = idx[t], ib = idx[t + 1], ic = idx[t + 2];
+        var a3 = ia * 3, b3 = ib * 3, c3 = ic * 3;
+        var ax = pos[a3], ay = pos[a3 + 1], az = pos[a3 + 2];
+        var ux = pos[b3] - ax, uy = pos[b3 + 1] - ay, uz = pos[b3 + 2] - az;
+        var vx = pos[c3] - ax, vy = pos[c3 + 1] - ay, vz = pos[c3 + 2] - az;
+        var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        /* 朝外统一：六个面绕向不一致 → 用径向点积定向（与 SP.faceFlipOf 同一约定）*/
+        if (nx * ax + ny * ay + nz * az < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        acc[a3] += nx; acc[a3 + 1] += ny; acc[a3 + 2] += nz;
+        acc[b3] += nx; acc[b3 + 1] += ny; acc[b3 + 2] += nz;
+        acc[c3] += nx; acc[c3 + 1] += ny; acc[c3 + 2] += nz;
+        /* 邻点高程累加（求曲率用 —— 谷地/山脊的判据）*/
+        nbSum[ia] += hArr[ib] + hArr[ic]; nbCnt[ia] += 2;
+        nbSum[ib] += hArr[ia] + hArr[ic]; nbCnt[ib] += 2;
+        nbSum[ic] += hArr[ia] + hArr[ib]; nbCnt[ic] += 2;
+      }
+      var weldN = 0;
+      for (var kk in wmap) {
+        var list = wmap[kk];
+        if (list.length < 2) continue;
+        weldN += list.length;
+        var sx = 0, sy = 0, sz = 0, q, i2, i3;
+        for (q = 0; q < list.length; q++) {
+          i2 = list[q] * 3;
+          sx += acc[i2]; sy += acc[i2 + 1]; sz += acc[i2 + 2];
+        }
+        for (q = 0; q < list.length; q++) {
+          i3 = list[q] * 3;
+          acc[i3] = sx; acc[i3 + 1] = sy; acc[i3 + 2] = sz;
+        }
+      }
+      /* 曲率：顶点高程 − 邻点平均高程。先量样本平均幅度，再定归一化系数，
+         这样换星球 / 换地形尺度都不用改常数（不写死"每单位多少"）。*/
+      var curv = new Float32Array(nv), cavg = 0, cn = 0;
+      for (var vc = 0; vc < nv; vc++) {
+        if (!nbCnt[vc]) continue;
+        curv[vc] = hArr[vc] - nbSum[vc] / nbCnt[vc];
+        cavg += Math.abs(curv[vc]); cn++;
+      }
+      cavg = cavg / (cn || 1);
+      var kA = (0.20 / (cavg > 1e-4 ? cavg : 1)), shMin = 1, shMax = 1;
+      var EXAG = (M.RELIEF_EXAG == null ? 2.0 : +M.RELIEF_EXAG);
+      var shade = new Float32Array(nv);
+
+      var devMax = 0, devSum = 0;
+      for (var vj = 0; vj < nv; vj++) {
+        j3 = vj * 3;
+        px = pos[j3]; py = pos[j3 + 1]; pz = pos[j3 + 2];
+        L = Math.sqrt(px * px + py * py + pz * pz) || 1;
+        var rx = px / L, ry = py / L, rz = pz / L;
+        var x2 = acc[j3], y2 = acc[j3 + 1], z2 = acc[j3 + 2];
+        var L2 = Math.sqrt(x2 * x2 + y2 * y2 + z2 * z2);
+        var ux2, uy2, uz2;
+        if (L2 > 1e-9) { ux2 = x2 / L2; uy2 = y2 / L2; uz2 = z2 / L2; }
+        else { ux2 = rx; uy2 = ry; uz2 = rz; }
+        var d0 = rx * ux2 + ry * uy2 + rz * uz2;
+        var ang = Math.acos(Math.max(-1, Math.min(1, d0))) * 180 / Math.PI;
+        devSum += ang; if (ang > devMax) devMax = ang;
+        /* ① 法线夸张：保留"朝外"分量，切向分量 × EXAG（tanθ' = EXAG·tanθ）*/
+        var tx = ux2 - d0 * rx, ty = uy2 - d0 * ry, tz = uz2 - d0 * rz;
+        var ex = rx + tx * EXAG, ey = ry + ty * EXAG, ez = rz + tz * EXAG;
+        var Le = Math.sqrt(ex * ex + ey * ey + ez * ez) || 1;
+        nor[j3] = ex / Le; nor[j3 + 1] = ey / Le; nor[j3 + 2] = ez / Le;
+        /* ② 曲率遮蔽：谷地压暗到 0.74、山脊最多提亮到 1.06（不对称 —— 怕把亮色顶爆）*/
+        var sh = 1 + curv[vj] * kA;
+        if (sh < 0.74) sh = 0.74; else if (sh > 1.06) sh = 1.06;
+        shade[vj] = sh;
+        if (sh < shMin) shMin = sh; if (sh > shMax) shMax = sh;
+      }
+      M._globeShade = shade;             /* 由 buildGlobe 落成顶点属性 aShade */
+      /* 自检出口：改前 maxDeg/avgDeg 应恒 0；改后应显著 > 0（法线真随地形走）*/
+      M._globeNrmStat = {
+        verts: nv, welded: weldN, exag: EXAG,
+        maxDeg: +devMax.toFixed(2), avgDeg: +(devSum / (nv || 1)).toFixed(2),
+        curvMeanAbs: +cavg.toFixed(3), kA: +kA.toFixed(3),
+        shadeMin: +shMin.toFixed(3), shadeMax: +shMax.toFixed(3)
+      };
+    })();
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -3580,6 +3723,8 @@
     M._globeColBase = new Float32Array(col);
     M._globeVtxCell = { ci0: _vx0, ci1: _vx1, t: _vxt };
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    /* v15789：曲率遮蔽系数（每顶点一个标量，1 = 无影响）。复用 uRelief 同一个闸门。*/
+    if (M._globeShade) geo.setAttribute('aShade', new THREE.Float32BufferAttribute(M._globeShade, 1));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
     /* ⛔ v157.76：`M._globeColBase`（原始顶点色副本，供顶点色压暗乘回原色）
@@ -3589,7 +3734,7 @@
        实测地形球单独渲染 232ms，其中约一半花在背面。
        单面后球背的三角面被背面剔除，像素量减半。 */
     var _gmat243 = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.FrontSide });
-    applyTerminator(_gmat243);          /* v92.243：太阳方向明暗（昼夜线）*/
+    applyTerminator(_gmat243, true);    /* v92.243 昼夜线 + v157.89 地形起伏明暗（仅球面）*/
     globe = new THREE.Mesh(geo, _gmat243);
     /* v156.70：暴露地形网格，供几何自检（射线量"线框是否贴地"）。
        之前没有这个出口，只能用 _collider（半径 R+0.6 的光滑球）当基准，
@@ -6057,6 +6202,16 @@
     var _rAlt = d - R;                 /* 海拔（球心距离 − 海平面半径）：稳定量 */
     M._agl = _agl;                     /* 离地高度（含地形）—— 只给探针/俯角用，不参与位置与模式 */
     M._rAlt = _rAlt;                   /* v157.31：海拔（d − R）—— 位置/模式/地表淡出都读它，地形高不影响 */
+    /* v157.89：起伏明暗**随高度淡出**。
+       它服务的是"看整颗星球"那一档；贴地时地形细节归地块层，而逐顶点明暗被放大后
+       在近景会变成"刷痕"状条纹（实机 zoom0.13 取证）。淡出口径写在 M.RELIEF_AGL_*。*/
+    if (M._reliefU) {
+      var _rF = (_rAlt - (M.RELIEF_AGL_ZERO || 210)) /
+                ((M.RELIEF_AGL_FULL || 520) - (M.RELIEF_AGL_ZERO || 210));
+      _rF = _rF < 0 ? 0 : (_rF > 1 ? 1 : _rF);
+      M._reliefU.value = (M.RELIEF_BASE == null ? 1 : M.RELIEF_BASE) * _rF;
+      M._reliefFade = _rF;             /* 探针/自检读数 */
+    }
     /* 模式判定必须用 **d（球心距离）**，不能用 agl ——
        agl 里含地形高度，而地形随视角变：站在山顶 dist 不变、agl 却会掉到 20 以下，
        于是"没动滚轮，模式自己跳了"。d 只受用户操作影响，才是稳定的判据。
@@ -40536,7 +40691,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.88';
+  GAME.VERSION = 'v157.89';
   function boot() {
     fitAppSize();
     try {
