@@ -3328,6 +3328,10 @@
   M._colTex = null;         /* 烘好的图集（Texture）*/
   M._colTexU = { value: null };   /* 着色器采样器条目（编译后赋值也生效）*/
   M._colAtlasMs = 0;        /* 烘焙耗时（探针/断言）*/
+  M.RELIEF_TEX = true;      /* v157.94：明暗走**逐像素法线图集**（关掉则退回逐顶点 vNrm，保命/对照）*/
+  M._nrmTex = null;         /* 法线+曲率图集：RGB=法线(编码) A=曲率遮蔽 */
+  M._nrmTexU = { value: null };
+  M._nrmAtlasMs = 0;
   M._colAtlasKey = '';      /* 缓存键：种子+精度 —— globe 会被反复重建，不缓存就每次重烘 1.6 秒 */
   M._detailU = { value: 0 };        /* 法线扰动强度（**默认关**：老板两次报"规律斑纹"，先只留颜色细节；M.setDetail(1) 可开）*/
   M.DETAIL_REPEAT = 120;             /* uv 放大倍数（扫参定档：40/60/90 在贴地视角是大块迷彩斑，120 才是细颗粒）*/
@@ -3408,7 +3412,8 @@
       var _fHead = 'uniform vec3 uSunDir; uniform float uTerm;'
         + (REL ? (' uniform float uRelief; uniform float uPivot; varying vec3 vNrm; varying float vShade;'
                   + ' uniform sampler2D uDetailTex; uniform float uDetail; uniform float uDetAmp; uniform float uDetRep;'
-                  + ' uniform sampler2D uColTex; varying vec2 vDUv; varying vec2 vAUv;') : '')
+                  + ' uniform sampler2D uColTex; uniform sampler2D uNrmTex;'
+                  + ' uniform mat4 modelMatrix; varying vec2 vDUv; varying vec2 vAUv;') : '')
         + ' varying vec3 vWn;\n';
       var _body = '\n'
         + '  float _sunL = clamp(dot(normalize(vWn), normalize(uSunDir)), 0.0, 1.0);\n'
@@ -3419,6 +3424,7 @@
            · 系数区间刻意不对称（压暗 30%、提亮 16%）：山体"抢眼"但不会把亮色顶爆。*/
         sh.uniforms.uRelief = M._reliefU;
         sh.uniforms.uColTex = M._colTexU;
+        sh.uniforms.uNrmTex = M._nrmTexU;
         sh.uniforms.uDetail = M._detailU;
         sh.uniforms.uPivot = M._relPivotU;
         sh.uniforms.uDetAmp = M._detailAmpU;
@@ -3427,7 +3433,12 @@
         _body += '\n'
           /* P1：细节法线。1.6 纹素步长求梯度（步长必须与 vDUv 的放大倍数同源，
              否则颗粒尺度会随 DETAIL_REPEAT 变化而错位）。*/
-          + '  vec3 _N0 = normalize(vNrm);\n'
+          + (M.RELIEF_TEX
+              ? ('  vec4 _nt = texture2D(uNrmTex, vAUv);\n'
+                 + '  vec3 _N0 = normalize(mat3(modelMatrix) * normalize(_nt.xyz * 2.0 - 1.0));\n'
+                 + '  float _shadeV = 0.74 + _nt.a * 0.32;\n')
+              : ('  vec3 _N0 = normalize(vNrm);\n'
+                 + '  float _shadeV = vShade;\n'))
           + '  vec3 _up = abs(_N0.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);\n'
           + '  vec3 _T = normalize(cross(_up, _N0));\n'
           + '  vec3 _B = cross(_N0, _T);\n'
@@ -3450,7 +3461,7 @@
           + '  float _relD = clamp(dot(_Nd, _sunN), 0.0, 1.0);\n'
           + '  float _relN = (0.70 + 0.46 * _relV) / (0.70 + 0.46 * uPivot);\n'
           + '  gl_FragColor.rgb *= mix(1.0, _relN, uRelief);\n'
-          + '  gl_FragColor.rgb *= mix(1.0, vShade, uRelief);\n'
+          + '  gl_FragColor.rgb *= mix(1.0, _shadeV, uRelief);\n'
           + '  gl_FragColor.rgb *= 1.0 - uDetAmp * max(0.0, _relV - _relD) * uDetail;';
       }
       sh.fragmentShader = _fHead
@@ -3706,6 +3717,12 @@
     var cv = document.createElement('canvas'); cv.width = A; cv.height = A;
     var cx = cv.getContext('2d'); var img = cx.createImageData(A, A);
     var d = img.data;
+    /* v157.94：法线图集（与配色同布局）*/
+    var ncv = document.createElement('canvas'); ncv.width = A; ncv.height = A;
+    var ncx = ncv.getContext('2d'); var nimg = ncx.createImageData(A, A);
+    var nd = nimg.data;
+    /* 每面高度场（先存下来，法线用差分求；避免重复调 sphElev）*/
+    var hArr = new Float32Array(N * N);
     var seeded = seed3 ? seed3() : 0, P = (SP && SP.PLANET) ? SP.PLANET : {};
     for (var fi = 0; fi < 6; fi++) {
       var ox = (fi % 4) * N, oy = ((fi / 4) | 0) * N, fn = F[fi];
@@ -3720,6 +3737,57 @@
           var c = sphBiome(e, dy, [dx, dy, dz], true);
           var o = ((oy + y) * A + (ox + x)) * 4;
           d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+          hArr[y * N + x] = Math.max(0, e) * HSC;      /* 世界单位的相对高度 */
+        }
+      }
+      /* ---- 由 h 求物体空间法线（差分）与曲率遮蔽，写进法线图集 ---- */
+      var du = 2 / N;                                  /* 参数步长 */
+      for (var yy = 0; yy < N; yy++) {
+        for (var xx = 0; xx < N; xx++) {
+          /* ⚠️ v157.94 首版用"环绕"索引（%N）→ 面边缘把**地球另一侧**当邻居，
+             法线全错 → 六个面各一条细黑线。改成**边缘单边差分**（不环绕）。*/
+          var xm = xx > 0 ? xx - 1 : xx, xp = xx < N - 1 ? xx + 1 : xx;
+          var ym = yy > 0 ? yy - 1 : yy, yp = yy < N - 1 ? yy + 1 : yy;
+          var hC = hArr[yy * N + xx];
+          var dhdu = (hArr[yy * N + xp] - hArr[yy * N + xm]) / ((xp - xm) * du || du);
+          var dhdv = (hArr[yp * N + xx] - hArr[ym * N + xx]) / ((yp - ym) * du || du);
+          /* 该点方向与切向基（面函数解析求，纯算术）*/
+          var uu = -1 + 2 * (xx + 0.5) / N, vv = -1 + 2 * (yy + 0.5) / N;
+          var pC = fn(uu, vv);
+          var lC = Math.sqrt(pC[0] * pC[0] + pC[1] * pC[1] + pC[2] * pC[2]) || 1;
+          var rx = pC[0] / lC, ry = pC[1] / lC, rz = pC[2] / lC;
+          var eps = 1e-3;
+          var pU = fn(uu + eps, vv), pV = fn(uu, vv + eps);
+          var Tux = pU[0] / (Math.sqrt(pU[0] * pU[0] + pU[1] * pU[1] + pU[2] * pU[2]) || 1) - rx;
+          var Tuy = pU[1] / (Math.sqrt(pU[0] * pU[0] + pU[1] * pU[1] + pU[2] * pU[2]) || 1) - ry;
+          var Tuz = pU[2] / (Math.sqrt(pU[0] * pU[0] + pU[1] * pU[1] + pU[2] * pU[2]) || 1) - rz;
+          var Tvx = pV[0] / (Math.sqrt(pV[0] * pV[0] + pV[1] * pV[1] + pV[2] * pV[2]) || 1) - rx;
+          var Tvy = pV[1] / (Math.sqrt(pV[0] * pV[0] + pV[1] * pV[1] + pV[2] * pV[2]) || 1) - ry;
+          var Tvz = pV[2] / (Math.sqrt(pV[0] * pV[0] + pV[1] * pV[1] + pV[2] * pV[2]) || 1) - rz;
+          /* 曲面切向 ≈ R·T + r·(dh/du)：高度远小于半径，取一阶近似 */
+          var Pux = R * Tux + rx * dhdu, Puy = R * Tuy + ry * dhdu, Puz = R * Tuz + rz * dhdu;
+          var Pvx = R * Tvx + rx * dhdv, Pvy = R * Tvy + ry * dhdv, Pvz = R * Tvz + rz * dhdv;
+          var nx = Puy * Pvz - Puz * Pvy, ny = Puz * Pvx - Pux * Pvz, nz = Pux * Pvy - Puy * Pvx;
+          var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+          nx /= nl; ny /= nl; nz /= nl;
+          if (nx * rx + ny * ry + nz * rz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+          /* v157.94：**法线夸张搬到烘焙里** —— 与顶点版同一口径（切向 ×EXAG，tanθ'=EXAG·tanθ）。
+             不夸张时逐像素明暗比原来"弱"（真实平滑法线本来就比网格法线温和），立体感会退。*/
+          var _exg = (M.RELIEF_EXAG == null ? 2.0 : +M.RELIEF_EXAG);
+          var _dd = nx * rx + ny * ry + nz * rz;
+          var _tx = nx - _dd * rx, _ty = ny - _dd * ry, _tz = nz - _dd * rz;
+          var _ex = rx + _tx * _exg, _ey = ry + _ty * _exg, _ez = rz + _tz * _exg;
+          var _el = Math.sqrt(_ex * _ex + _ey * _ey + _ez * _ez) || 1;
+          nx = _ex / _el; ny = _ey / _el; nz = _ez / _el;
+          /* 曲率遮蔽：与顶点版同一口径（谷地暗、山脊微亮），只是这里逐纹素 */
+          var lap = hC - (hArr[yy * N + xp] + hArr[yy * N + xm] + hArr[yp * N + xx] + hArr[ym * N + xx]) / 4;
+          var sh = 1 + lap * (M.CURV_K == null ? 0.18 : M.CURV_K);
+          if (sh < 0.74) sh = 0.74; else if (sh > 1.06) sh = 1.06;
+          var no = ((oy + yy) * A + (ox + xx)) * 4;
+          nd[no] = Math.round((nx * 0.5 + 0.5) * 255);
+          nd[no + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+          nd[no + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+          nd[no + 3] = Math.round(((sh - 0.74) / 0.32) * 255);
         }
       }
     }
@@ -3732,6 +3800,18 @@
     tex.generateMipmaps = true;
     try { tex.anisotropy = 8; } catch (eA) { }
     tex._shared = true;
+    ncx.putImageData(nimg, 0, 0);
+    var ntex = new THREE.CanvasTexture(ncv);
+    ntex.flipY = false;
+    ntex.wrapS = ntex.wrapT = THREE.ClampToEdgeWrapping;
+    ntex.minFilter = THREE.LinearMipmapLinearFilter;
+    ntex.magFilter = THREE.LinearFilter;
+    ntex.generateMipmaps = true;
+    try { ntex.anisotropy = 8; } catch (eN2) { }
+    ntex._shared = true;
+    M._nrmTex = ntex;
+    if (M._nrmTexU) M._nrmTexU.value = ntex;
+    M._nrmAtlasMs = M._colAtlasMs;
     M._colAtlasErr = 'ok';
     M._colAtlasKey = _key;
     M._colAtlasMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0);
@@ -40910,7 +40990,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.90';
+  GAME.VERSION = 'v157.91';
   function boot() {
     fitAppSize();
     try {

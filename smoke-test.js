@@ -49026,7 +49026,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /if \(!wmap\[k\]\) wmap\[k\] = \[\]/.test(mp)
       && /geo\.setAttribute\('aShade'/.test(mp)
       && /uniform float uRelief/.test(mp)
-      && /gl_FragColor\.rgb \*= mix\(1\.0, vShade, uRelief\)/.test(mp),
+      /* v157.91：曲率遮蔽的乘数从 `vShade` 变成 `_shadeV`（图集模式取 alpha、回退模式取 vShade）*/
+      && /gl_FragColor\.rgb \*= mix\(1\.0, _shadeV, uRelief\)/.test(mp)
+      && /float _shadeV = vShade;/.test(mp),
       '四件在岗');
 
     /* ② 反向证据：改前的"径向法线"不许复活；起伏只给球面（地块不许开）*/
@@ -49129,6 +49131,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\._colAtlasKey = _key;/.test(mp)
       && /uv \* ' \+ _cScale\.toFixed\(8\)/.test(mp),
       '图集 + aFace + 系数 + 缓存 + 半纹素内缩');
+
+    /* ⑫ 明暗也逐像素（v157.94 · 老板「为什么之前没有这个问题」）
+       实测答案：把起伏明暗关掉，色块边界立刻变柔和 —— 所以锯齿是**逐顶点明暗**把每格切成
+       「一格一档」的亮度台阶，不是配色本身的问题。
+       改法：烘法线图集（RGB 法线 + A 曲率遮蔽），片元按像素算受光；法线夸张搬进烘焙。
+       反向证据：差分必须**边缘单边**（首版用 %N 环绕 → 把地球另一侧当邻居 → 六个面各一条黑线）。*/
+    check('§589l 明暗逐像素：法线图集在岗 · uNrmTex 采样 · 曲率进 alpha · 边缘单边差分（无环绕）',
+      /M\.RELIEF_TEX = true/.test(mp)
+      && /M\._nrmTex = ntex;/.test(mp)
+      && /texture2D\(uNrmTex, vAUv\)/.test(mp)
+      && /float _shadeV = 0\.74 \+ _nt\.a \* 0\.32;/.test(mp)
+      && /var xm = xx > 0 \? xx - 1 : xx/.test(mp)
+      && (mp.match(/\(xx - 1 \+ N\) % N/g) || []).length === 0,
+      '法线图集 + 曲率 alpha + 单边差分 + 无 %N 环绕');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
