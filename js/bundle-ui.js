@@ -3320,8 +3320,8 @@
   /* v157.89 P1：片元级细节法线（近看颗粒）。
      ⚠️ 不能走 three 的 normalMap —— 球体是 MeshBasicMaterial，normalMap 对它无效（静默忽略）。
         这里把细节灰度贴图当高度场，在片元里求梯度自己扰动法线。*/
-  M._detailTexU = { value: null };   /* 指向 makeDetailTex('globe')（与 map 共用同一张，免再生成）*/
-  M._detailU = { value: 1.0 };       /* 细节强度闸门（M.setDetail）*/
+  M._detailTexU = { value: null };   /* 指向 makeGrainTex('n') 高度场（颜色图走 'c'，两个缓存 key）*/
+  M._detailU = { value: 0 };        /* 法线扰动强度（**默认关**：老板两次报"规律斑纹"，先只留颜色细节；M.setDetail(1) 可开）*/
   M.DETAIL_REPEAT = 120;             /* uv 放大倍数（扫参定档：40/60/90 在贴地视角是大块迷彩斑，120 才是细颗粒）*/
   M._detRepU = { value: 120 };       /* 运行时出口：M.setGrainRep(v) */
   M.setGrainRep = function (v) {
@@ -3604,34 +3604,11 @@
    * ⚠️ 不能全共用一张 —— 两处 repeat 不同（地表 28、球面 7），
    *    同一个 Texture 对象被两边 set repeat 会互相踩。
    * ============================================================ */
+  /* ⛔ v157.90：旧生成器（384² 的 8/16/32 规整格噪声）**整条退役**，函数与调用一并删除。
+     它是「规律斑纹」的唯一来源：非二次幂 → mipmap 退化；规整格 → 放大后成点阵。
+     现在所有细节贴图（球面颜色 / 地表颜色 / 法线高度场）统一由 `makeGrainTex(mode)` 提供。
+     缓存表保留（两张颗粒图各占一个 key，共享复用，v157.13 的显存泄漏修复照旧生效）。*/
   var _dtCache = {};
-  function makeDetailTex(key) {
-    if (key && _dtCache[key]) return _dtCache[key];
-    var N = 384, L8 = null, L16 = null, L32 = null;
-    function lattice(g, salt) { var a = new Float32Array(g * g); for (var i = 0; i < g * g; i++) a[i] = h3(i % g, (i / g) | 0, salt, 13); return a; }
-    L8 = lattice(8, 11); L16 = lattice(16, 22); L32 = lattice(32, 33);
-    function samp(L, g, x, y) {
-      var gx = x * g, gy = y * g, x0 = Math.floor(gx), y0 = Math.floor(gy);
-      var fx = gx - x0, fy = gy - y0, x1 = (x0 + 1) % g, y1 = (y0 + 1) % g, x0m = ((x0 % g) + g) % g, y0m = ((y0 % g) + g) % g;
-      var v00 = L[y0m * g + x0m], v10 = L[y0m * g + x1], v01 = L[y1 * g + x0m], v11 = L[y1 * g + x1];
-      var u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
-      var t = v00 + (v10 - v00) * u, b = v01 + (v11 - v01) * u;
-      return t + (b - t) * v;
-    }
-    var cv = document.createElement('canvas'); cv.width = N; cv.height = N;
-    var cx = cv.getContext('2d'); var img = cx.createImageData(N, N);
-    for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) {
-      var x = xx / N, y = yy / N;
-      var n = samp(L8, 8, x, y) * 0.5 + samp(L16, 16, x, y) * 0.3 + samp(L32, 32, x, y) * 0.2;
-      var c = Math.round((0.74 + n * 0.26) * 255);
-      var o = (yy * N + xx) * 4; img.data[o] = c; img.data[o + 1] = c; img.data[o + 2] = c; img.data[o + 3] = 255;
-    }
-    cx.putImageData(img, 0, 0);
-    var t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t._shared = true;                     /* 共享资源：destroySurf 的 dispose 循环要跳过 */
-    if (key) _dtCache[key] = t;
-    return t;
-  }
 
   /* ============================================================
    * v157.89d：**颗粒高度场**（修 P1 的规则网点）
@@ -3892,14 +3869,20 @@
       M._worldSeed = (SP.seed3 ? SP.seed3() : null);
       M._worldVer = SP.worldVer || 0;
     } catch (eWV) { }
-    /* v90.67（方案B）：细节纹理**乘**到顶点色上（MeshBasicMaterial: color×vertexColor×map）——近看有颗粒。 */
-    try {
-      var dtex = makeDetailTex('globe'); dtex.repeat.set(7, 7);
-      /* v157.89 P1：同一张图也当细节法线的高度场（raw 采样不吃 Texture.repeat，互不干扰）*/
-      /* v157.89d：高度场换成 512² 颗粒图（原来复用颜色细节图 → 规则网点）*/
-      if (M._detailTexU) { try { M._detailTexU.value = makeGrainTex(); } catch (eG) { M._detailTexU.value = dtex; } }
-      globe.material.map = dtex; globe.material.needsUpdate = true;
-    } catch (e) { /* 纹理生成失败 → 退回纯顶点色 */ }
+    /* ============================================================
+     * v157.90b：球面**不再挂颜色细节贴图**（整段删除，不是关掉）
+     * ------------------------------------------------------------
+     * 取证链（老板两张近景截图 + 逐层隔离）：
+     *   · 只留球体网格（其余全部隐藏）→ 小记号仍在；
+     *   · 关掉顶点色、只留贴图 → 记号仍在；
+     *   · 关掉贴图 → 记号消失。
+     * ⇒ 记号来自**贴图**。任何"平铺的程序化噪声"在某个缩放/角度都会把格点露出来：
+     *   repeat 7 是大软块，repeat 48 是规则小记号 —— 调参数只是换一种花样（已试过 20/40/70/120）。
+     * 结论：球面用**纯顶点色 + 起伏明暗**。近景要有真质感只能上正式的高程/反照率贴图（素材活），
+     *       不是再调一次 repeat 能解决的。
+     * ⚠️ 只撤球面这一处；`_detailTexU`（法线高度场）保留给 `M.setDetail()`，默认关。
+     * ============================================================ */
+    if (M._detailTexU) { try { M._detailTexU.value = makeGrainTex(); } catch (eG) { } }
     M._globeMat = globe.material;
     scene.add(globe);
     /* ============================================================
