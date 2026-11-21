@@ -8409,14 +8409,51 @@
     var pc = GAME.currentCity && GAME.currentCity();
     if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
     var stc = (GAME.state && GAME.state._standCi);
-    if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xcfd6df, scale: sc * 0.95, key: 'stand' });
+    /* v157.96：玩家小人（传送目标）**放大 + 加光环/光柱** —— 老板说从没看见过，
+       根因是"只有当前城那一格有小人"，城在球背面就永远看不到。 */
+    if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xffd76a, scale: sc * 3.2, key: 'stand', beacon: true });
     who.forEach(function (w) {
       var g = makeFigure(w.color, w.scale, w.actor);
       if (!placeFigure(g, w.ci)) return;
+      if (w.beacon) {
+        /* 基座光环：俯视时一眼看到"人在这一格" */
+        try {
+          var ring = new THREE.Mesh(
+            new THREE.RingGeometry(0.78, 1.05, 32),
+            new THREE.MeshBasicMaterial({ color: 0x2fe0ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
+          );
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.y = 0.35;
+          ring.renderOrder = 3;
+          g.add(ring);
+          /* v157.96d：**不再加头顶标记** —— 实测正上方俯视时它正好把人盖住（老板要的是"看见人"）。
+             只留脚下光环：俯视 = 一圈金环锁定这一格；斜视 = 人站在环中央。
+             要更醒目就调 RingGeometry 与 scale，不要往上叠东西。 */
+          g.userData.beacon = { ring: ring };
+        } catch (eB) { }
+      }
       figCache[w.key] = { g: g, ci: w.ci };
       figRoot.add(g);
     });
   }
+  /* ============================================================
+   * v157.96：**传送到某格**（地块面板的「⤓ 传送」按钮调它）
+   * ------------------------------------------------------------
+   * 语义：把"玩家所在格"设为 ci —— 也就是银色/金色那个玩家小人站过去。
+   * 只动 `state._standCi` 一个字段；渲染侧靠 `_standVer` 变化重建（换格只挪不重建闪）。
+   * ============================================================ */
+  M.teleportTo = function (ci) {
+    ci = ci | 0;
+    if (!(_tileCells && _tileCells[ci])) return false;
+    if (!GAME.state) return false;
+    GAME.state._standCi = ci;
+    M._standVer = '';                    /* 强制下一帧重建到新格 */
+    return true;
+  };
+  M.playerCi = function () {
+    return (GAME.state && GAME.state._standCi != null) ? GAME.state._standCi : -1;
+  };
+
   /* ============================================================
    * v153b（老板：「可以在星球地表上逐格移动」）——
    * 走路时不是"瞬移一格"，而是**沿地表最短弧插值走过来**（~220ms），
@@ -30484,6 +30521,8 @@ ui.openDuel = function (fid, moveId) {
             : '') +
           '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="raid">🔥 掠夺</button>' +
           '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="occupy">🚩 占领</button>' +
+          '<button class="btn" data-action="cell-teleport" data-ci="' + ci +
+            '" title="把人物传送到这一格（并关闭此面板）">⤓ 传送</button>' +
           '<button class="btn" data-action="close-modal">关闭</button></div>'
       );
       return;
@@ -30627,7 +30666,10 @@ ui.openDuel = function (fid, moveId) {
       '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
       (GAME.jianghuWildMounted ? ui.jianghuHTML(ci) : '') +
       stat + gatherBox + ops +
-      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
+      /* v157.96：已占领地块也给「⤓ 传送」（老板要的是"地块"通用，不是只管未占领）*/
+      '<div class="modal-foot"><button class="btn" data-action="cell-teleport" data-ci="' + ci +
+        '" title="把人物传送到这一格（并关闭此面板）">⤓ 传送</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>',
       /* v89.135（老板 7）：逐秒刷新 —— 采集时间/驻军/开采状态实时 */
       { live: function () { ui.openLandModalCi(ci); } }
     );
@@ -38976,6 +39018,19 @@ ui.openDuel = function (fid, moveId) {
       case 'rep-filter': ui.setRepFilter(el.dataset.v); break;
       case 'rep-fav': ui.toggleRepFav(Number(el.dataset.rid)); break;      /* v89.120：身份 rid */
       case 'close-modal': if (ui._provokeTimer) { clearTimeout(ui._provokeTimer); ui._provokeTimer = null; } ui.closeModal(); break;
+      /* v157.96（老板：「为地块增加传送按钮，点击后弹窗自动关闭，人物出现在当前格」）*/
+      case 'cell-teleport': {
+        var _tci = Number(el.dataset.ci);
+        var _tok = (GAME.map3d && GAME.map3d.teleportTo) ? GAME.map3d.teleportTo(_tci) : false;
+        ui.closeModal();                       /* 先关弹窗，动作本身不受它影响 */
+        if (_tok) {
+          if (ui.toast) ui.toast('⤓ 已传送到这一格（脚下有金色光环）');
+          if (ui.renderMapCanvas) ui.renderMapCanvas();
+        } else if (ui.toast) {
+          ui.toast('这一格暂时去不了（不是地图格）');
+        }
+        break;
+      }
       /* v92.244（老板）：「开局提示做连续弹窗」—— 逐级推进 / 跳过 / 直接去办 */
       case 'tut-next': {
         var _ts = ui.tutorialSteps ? ui.tutorialSteps() : [];

@@ -574,6 +574,8 @@ import './ui.js';
             : '') +
           '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="raid">🔥 掠夺</button>' +
           '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="occupy">🚩 占领</button>' +
+          '<button class="btn" data-action="cell-teleport" data-ci="' + ci +
+            '" title="把人物传送到这一格（并关闭此面板）">⤓ 传送</button>' +
           '<button class="btn" data-action="close-modal">关闭</button></div>'
       );
       return;
@@ -717,7 +719,10 @@ import './ui.js';
       '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
       (GAME.jianghuWildMounted ? ui.jianghuHTML(ci) : '') +
       stat + gatherBox + ops +
-      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
+      /* v157.96：已占领地块也给「⤓ 传送」（老板要的是"地块"通用，不是只管未占领）*/
+      '<div class="modal-foot"><button class="btn" data-action="cell-teleport" data-ci="' + ci +
+        '" title="把人物传送到这一格（并关闭此面板）">⤓ 传送</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>',
       /* v89.135（老板 7）：逐秒刷新 —— 采集时间/驻军/开采状态实时 */
       { live: function () { ui.openLandModalCi(ci); } }
     );

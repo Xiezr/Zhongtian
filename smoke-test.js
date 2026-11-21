@@ -49158,6 +49158,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /wg = new THREE\.SphereGeometry\(1\.0, 160, 120\)/.test(mp),
       '整球 + 高程裁剪 + 旧拼法退役');
 
+    /* ⑭ 地块传送 + 小人可见（v157.96 · 老板「说好有个小人可以在地图上走，我从来没看见过」）
+       根因：小人只画在"当前城那一格"，城在球背面就永远看不到；`_standCi` 那条路没有任何 UI 写入。
+       做法：teleportTo 写入玩家格 + 面板「⤓ 传送」按钮（点完自动关弹窗）+ 玩家小人放大并加光环。*/
+    check('§589n 地块传送：teleportTo / playerCi 在岗 · 面板有 cell-teleport · 玩家小人带光环',
+      /M\.teleportTo = function/.test(mp)
+      && /M\.playerCi = function/.test(mp)
+      && /RingGeometry\(0\.78, 1\.05, 32\)/.test(mp)
+      && /key: 'stand', beacon: true/.test(mp)
+      && (function () {
+        try {
+          var fs2 = require('fs'), p2 = require('path');
+          var um = fs2.readFileSync(p2.join(__dirname, 'js', 'ui-mapui.js'), 'utf8');
+          var mn = fs2.readFileSync(p2.join(__dirname, 'js', 'main.js'), 'utf8');
+          return /data-action="cell-teleport"/.test(um) && /case 'cell-teleport'/.test(mn);
+        } catch (e) { return false; }
+      })(),
+      '传送接口 + 面板按钮 + 动作 + 光环');
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */

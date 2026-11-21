@@ -2031,6 +2031,19 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       case 'rep-filter': ui.setRepFilter(el.dataset.v); break;
       case 'rep-fav': ui.toggleRepFav(Number(el.dataset.rid)); break;      /* v89.120：身份 rid */
       case 'close-modal': if (ui._provokeTimer) { clearTimeout(ui._provokeTimer); ui._provokeTimer = null; } ui.closeModal(); break;
+      /* v157.96（老板：「为地块增加传送按钮，点击后弹窗自动关闭，人物出现在当前格」）*/
+      case 'cell-teleport': {
+        var _tci = Number(el.dataset.ci);
+        var _tok = (GAME.map3d && GAME.map3d.teleportTo) ? GAME.map3d.teleportTo(_tci) : false;
+        ui.closeModal();                       /* 先关弹窗，动作本身不受它影响 */
+        if (_tok) {
+          if (ui.toast) ui.toast('⤓ 已传送到这一格（脚下有金色光环）');
+          if (ui.renderMapCanvas) ui.renderMapCanvas();
+        } else if (ui.toast) {
+          ui.toast('这一格暂时去不了（不是地图格）');
+        }
+        break;
+      }
       /* v92.244（老板）：「开局提示做连续弹窗」—— 逐级推进 / 跳过 / 直接去办 */
       case 'tut-next': {
         var _ts = ui.tutorialSteps ? ui.tutorialSteps() : [];
