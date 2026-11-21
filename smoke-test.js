@@ -49115,6 +49115,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\._detailTexU\.value = makeGrainTex\(\)/.test(mp),
       '球面无 map · 旧生成器 0 处 · 法线高度场保留');
 
+    /* ⑪ 逐像素地貌配色（v157.93 · 老板「不同地形边缘间涂色呈锯齿状」）
+       病根：K=128 时每格只有约 2 个顶点，色块边界最多 1~2 个顶点过渡 → 六边形台阶。
+       改法：烘 4N×4N 图集（4×4 格用 6 格）逐纹素求色，片元按面号偏移采样；顶点色退化成明暗系数。
+       下限：图集必须二次幂（4N）+ 必须缓存（globe 会被反复重建）+ 必须有回退开关。*/
+    check('§589k 逐像素配色：图集烘焙（4N 二次幂）· aFace 偏移采样 · 顶点色退化为系数 · 有缓存与回退',
+      /M\.useColorAtlas = true/.test(mp)
+      && /function bakeColorAtlas\(N\)/.test(mp)
+      && /var A = 4 \* N;/.test(mp)
+      && /attribute float aFace;/.test(mp)
+      && /texture2D\(uColTex, vAUv\)/.test(mp)
+      && /if \(M\.useColorAtlas && M\._colTex\) \{/.test(mp)
+      && /M\._colAtlasKey = _key;/.test(mp)
+      && /uv \* ' \+ _cScale\.toFixed\(8\)/.test(mp),
+      '图集 + aFace + 系数 + 缓存 + 半纹素内缩');
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */

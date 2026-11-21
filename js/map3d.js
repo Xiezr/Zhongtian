@@ -3027,6 +3027,14 @@ import './gltf.js';
      ⚠️ 不能走 three 的 normalMap —— 球体是 MeshBasicMaterial，normalMap 对它无效（静默忽略）。
         这里把细节灰度贴图当高度场，在片元里求梯度自己扰动法线。*/
   M._detailTexU = { value: null };   /* 指向 makeGrainTex('n') 高度场（颜色图走 'c'，两个缓存 key）*/
+  /* v157.93：**逐像素地貌配色**（B 方案）—— 颜色改由图集采样，不再吃顶点密度。
+     每面 N² 个纹素：N=256 → 纹素 1.84 单位（顶点是 3.7，即 2 倍精度）；N=512 → 0.92 单位（4 倍）。*/
+  M.COLOR_ATLAS_N = 256;
+  M.useColorAtlas = true;
+  M._colTex = null;         /* 烘好的图集（Texture）*/
+  M._colTexU = { value: null };   /* 着色器采样器条目（编译后赋值也生效）*/
+  M._colAtlasMs = 0;        /* 烘焙耗时（探针/断言）*/
+  M._colAtlasKey = '';      /* 缓存键：种子+精度 —— globe 会被反复重建，不缓存就每次重烘 1.6 秒 */
   M._detailU = { value: 0 };        /* 法线扰动强度（**默认关**：老板两次报"规律斑纹"，先只留颜色细节；M.setDetail(1) 可开）*/
   M.DETAIL_REPEAT = 120;             /* uv 放大倍数（扫参定档：40/60/90 在贴地视角是大块迷彩斑，120 才是细颗粒）*/
   M._detRepU = { value: 120 };       /* 运行时出口：M.setGrainRep(v) */
@@ -3091,17 +3099,22 @@ import './gltf.js';
       sh.uniforms.uSunDir = { value: M._sunDir };
       sh.uniforms.uTerm = M._termU;
       var _dRep = (+M.DETAIL_REPEAT || 16);
+      /* v157.93：图集**半纹素内缩** —— 面边界 uv 到 1.0 时会采到隔壁格的纹素，
+         实测表现为立方体面之间的细黑线（六个面各一条）。内缩半纹素即可。*/
+      var _cN = (+M.COLOR_ATLAS_N || 256);
+      var _cScale = 1 - 1 / _cN, _cInset = 0.5 / _cN;
       var _vHead = 'varying vec3 vWn;\n'
-        + (REL ? 'attribute float aShade;\nuniform float uDetRep;\nvarying vec3 vNrm;\nvarying float vShade;\nvarying vec2 vDUv;\n' : '');
+        + (REL ? 'attribute float aShade;\nattribute float aFace;\nuniform float uDetRep;\nvarying vec3 vNrm;\nvarying float vShade;\nvarying vec2 vDUv;\nvarying vec2 vAUv;\n' : '');
       sh.vertexShader = _vHead + sh.vertexShader.replace(
         '#include <begin_vertex>',
         '#include <begin_vertex>\n  vWn = normalize(mat3(modelMatrix) * position);'
-        + (REL ? ('\n  vNrm = normalize(mat3(modelMatrix) * normal);\n  vShade = aShade;'
+        + (REL ? ('\n  vNrm = normalize(mat3(modelMatrix) * normal);\n  vShade = aShade;\n  vAUv = (uv * ' + _cScale.toFixed(8) + ' + ' + _cInset.toFixed(8) + ' + vec2(mod(aFace, 4.0), floor(aFace / 4.0))) * 0.25;'
                   + '\n  vDUv = uv * uDetRep;') : '')
       );
       var _fHead = 'uniform vec3 uSunDir; uniform float uTerm;'
         + (REL ? (' uniform float uRelief; uniform float uPivot; varying vec3 vNrm; varying float vShade;'
-                  + ' uniform sampler2D uDetailTex; uniform float uDetail; uniform float uDetAmp; uniform float uDetRep; varying vec2 vDUv;') : '')
+                  + ' uniform sampler2D uDetailTex; uniform float uDetail; uniform float uDetAmp; uniform float uDetRep;'
+                  + ' uniform sampler2D uColTex; varying vec2 vDUv; varying vec2 vAUv;') : '')
         + ' varying vec3 vWn;\n';
       var _body = '\n'
         + '  float _sunL = clamp(dot(normalize(vWn), normalize(uSunDir)), 0.0, 1.0);\n'
@@ -3111,6 +3124,7 @@ import './gltf.js';
            · 只用一次乘，不叠第二套光照；日面仍以 1.0 为基准，不整体提亮。
            · 系数区间刻意不对称（压暗 30%、提亮 16%）：山体"抢眼"但不会把亮色顶爆。*/
         sh.uniforms.uRelief = M._reliefU;
+        sh.uniforms.uColTex = M._colTexU;
         sh.uniforms.uDetail = M._detailU;
         sh.uniforms.uPivot = M._relPivotU;
         sh.uniforms.uDetAmp = M._detailAmpU;
@@ -3135,6 +3149,8 @@ import './gltf.js';
                · 细节颗粒用 `_relV − _relD` 的**差值**，只受 uDetail 管（近景），
                  且**只压暗不提亮** → 永不削顶；mipmap 把地形压平时差值为 0，
                  远景既不脏也不整体变暗（这一条是"对称写法"做不到的）。*/
+          + '  vec3 _ct = texture2D(uColTex, vAUv).rgb;\n'
+          + '  gl_FragColor.rgb *= _ct;\n'
           + '  vec3 _sunN = normalize(uSunDir);\n'
           + '  float _relV = clamp(dot(_N0, _sunN), 0.0, 1.0);\n'
           + '  float _relD = clamp(dot(_Nd, _sunN), 0.0, 1.0);\n'
@@ -3376,6 +3392,58 @@ import './gltf.js';
   }
   M.GRAIN_N = 512;
 
+  /* ============================================================
+   * v157.93：烘焙地貌配色图集（B 方案）
+   * ------------------------------------------------------------
+   * 逐纹素调用 `sphBiome(e, dy, dir, true)` —— 与顶点用的是**同一条出口**，
+   * 所以色带、湖泊深度、高频细节全都在，不存在"两套配色"漂移。
+   * 图集：4×4 格（只填前 6 格），整张 4N×4N 是二次幂（N=256→1024，N=512→2048），
+   * mipmap 正常，不会再踩 v157.89d 那个 NPOT 的坑。
+   * ============================================================ */
+  function bakeColorAtlas(N) {
+    /* v157.93：**必须按 种子+精度 缓存**。globe 每次 renderMapCanvas 都可能重建
+       （v157.86 踩过：提亮被静默抹掉就是因为每次重建），不缓存等于每次首屏多等 1.6 秒。*/
+    var _key = (SP && SP.seed3 ? SP.seed3() : 'x') + '|' + N + '|' + (M._planetVer || 0);
+    if (M._colTex && M._colAtlasKey === _key) { M._colAtlasErr = 'cached'; return M._colTex; }
+    var t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    var F = (SP && SP.CUBE_FACES) ? SP.CUBE_FACES : null;
+    if (!F || F.length < 6) { M._colAtlasErr = 'no-faces:' + (F ? F.length : 'null'); return null; }
+    var A = 4 * N;
+    var cv = document.createElement('canvas'); cv.width = A; cv.height = A;
+    var cx = cv.getContext('2d'); var img = cx.createImageData(A, A);
+    var d = img.data;
+    var seeded = seed3 ? seed3() : 0, P = (SP && SP.PLANET) ? SP.PLANET : {};
+    for (var fi = 0; fi < 6; fi++) {
+      var ox = (fi % 4) * N, oy = ((fi / 4) | 0) * N, fn = F[fi];
+      for (var y = 0; y < N; y++) {
+        var v = -1 + 2 * (y + 0.5) / N;
+        for (var x = 0; x < N; x++) {
+          var u = -1 + 2 * (x + 0.5) / N;
+          var p = fn(u, v);
+          var L = Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]) || 1;
+          var dx = p[0] / L, dy = p[1] / L, dz = p[2] / L;
+          var e = sphElev([dx, dy, dz]);
+          var c = sphBiome(e, dy, [dx, dy, dz], true);
+          var o = ((oy + y) * A + (ox + x)) * 4;
+          d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+        }
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    var tex = new THREE.CanvasTexture(cv);
+    tex.flipY = false;                        /* 关键：按行序烘 → 不许再翻 */
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
+    try { tex.anisotropy = 8; } catch (eA) { }
+    tex._shared = true;
+    M._colAtlasErr = 'ok';
+    M._colAtlasKey = _key;
+    M._colAtlasMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0);
+    return tex;
+  }
+
   /* cube-sphere 地形（**球面原生噪声 · 连续无缝**）：顶点全球均匀，地形直接在球面生成。*/
   function buildGlobe() {
     /* v90.78：重建安全 —— 换星球时先移除旧的星球网格与海面（否则会**叠加**多颗球）。 */
@@ -3387,9 +3455,9 @@ import './gltf.js';
       function (u, v) { return [u, 1, -v]; }, function (u, v) { return [u, -1, v]; },
       function (u, v) { return [u, v, 1]; }, function (u, v) { return [-u, v, -1]; }
     ];
-    var pos = [], col = [], nor = [], idx = [], uv = [];
+    var pos = [], col = [], nor = [], idx = [], uv = [], facA = [];
     var _vx0 = [], _vx1 = [], _vxt = [];      /* v157.86：每顶点的 c0/c1/混合权重 */
-    FACES.forEach(function (fn) {
+    FACES.forEach(function (fn, fi) {   /* v157.93：要的是面号（顶点 aFace 用它偏移图集）*/
       var base = pos.length / 3;
       /* ============================================================
        * v155k（老板：「球体上有明显的直线分界」）
@@ -3419,7 +3487,10 @@ import './gltf.js';
         /* v157.75：`soft=true` —— 顶点级邻格软混合，消除「一格一色」的六边形硬边。
            地表近景（1186 / 1325 / 1362 三处调用）不传，保持地块硬边。 */
         var c = sphBiome(e, dy, [dx, dy, dz], true);
-        col.push(c[0] / 255, c[1] / 255, c[2] / 255);
+        /* v157.93：走图集时顶点色只存**明暗系数**（默认 1），颜色由片元采样图集；
+           图集不可用（烘焙失败/被关）则退回原样存基色。 */
+        if (M.useColorAtlas) { col.push(1, 1, 1); facA.push(fi); }
+        else { col.push(c[0] / 255, c[1] / 255, c[2] / 255); facA.push(0); }
         _vx0.push(_lastSoft.ci0); _vx1.push(_lastSoft.ci1); _vxt.push(_lastSoft.t);
       }
       for (var z = 0; z < K; z++) for (var x = 0; x < K; x++) {
@@ -3545,6 +3616,8 @@ import './gltf.js';
     M._globeColBase = new Float32Array(col);
     M._globeVtxCell = { ci0: _vx0, ci1: _vx1, t: _vxt };
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    /* v157.93：立方体面号（片元按它偏移到图集对应格）*/
+    geo.setAttribute('aFace', new THREE.Float32BufferAttribute(facA, 1));
     /* v15789：曲率遮蔽系数（每顶点一个标量，1 = 无影响）。复用 uRelief 同一个闸门。*/
     if (M._globeShade) geo.setAttribute('aShade', new THREE.Float32BufferAttribute(M._globeShade, 1));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
@@ -3589,6 +3662,13 @@ import './gltf.js';
      * ⚠️ 只撤球面这一处；`_detailTexU`（法线高度场）保留给 `M.setDetail()`，默认关。
      * ============================================================ */
     if (M._detailTexU) { try { M._detailTexU.value = makeGrainTex(); } catch (eG) { } }
+    /* v157.93：烘地貌配色图集（一次性；耗时写进 M._colAtlasMs 供探针）*/
+    if (M.useColorAtlas) {
+      try {
+        var _ct = bakeColorAtlas(+M.COLOR_ATLAS_N || 256);
+        if (_ct) { M._colTex = _ct; if (M._colTexU) M._colTexU.value = _ct; }
+      } catch (eCT) { M._colTex = null; M._colAtlasErr = String(eCT && (eCT.message || eCT)); }
+    }
     M._globeMat = globe.material;
     scene.add(globe);
     /* ============================================================
@@ -4130,7 +4210,10 @@ import './gltf.js';
       if (k0 > 1) lit++;
       var k = k0 + (k1 - k0) * t;
       var i3 = i * 3;
-      if (k === 1) {
+      if (M.useColorAtlas && M._colTex) {
+        /* v157.93：颜色由图集提供 → 顶点色只承载**系数**（1.15 提亮 / 0.90 压暗）*/
+        arr[i3] = k; arr[i3 + 1] = k; arr[i3 + 2] = k;
+      } else if (k === 1) {
         arr[i3] = base[i3]; arr[i3 + 1] = base[i3 + 1]; arr[i3 + 2] = base[i3 + 2];
       } else {
         arr[i3] = Math.min(1, base[i3] * k);
