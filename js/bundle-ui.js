@@ -3736,7 +3736,10 @@
       var cy0 = Math.cos(lat), sy0 = Math.sin(lat);
       for (var x = 0; x < W; x++) {
         var lon = ((x + 0.5) / W - 0.5) * 2 * PI;
-        var dx = cy0 * Math.sin(lon), dy = sy0, dz = cy0 * Math.cos(lon);
+        /* ⚠️ v157.97：**经度约定必须与片元一致**。
+           片元用 `atan2(z, x)` ⇒ x 对应 cos、z 对应 sin。
+           原来写反（x=sin, z=cos）→ 整张高程图旋转 90°，水面裁剪全错位（老板「一大块斑」）。*/
+        var dx = cy0 * Math.cos(lon), dy = sy0, dz = cy0 * Math.sin(lon);
         var e = sphElev([dx, dy, dz]);
         var v = (e + 0.15) / 0.30;
         v = v < 0 ? 0 : (v > 1 ? 1 : v);
@@ -4434,7 +4437,8 @@
          * 海岸线由像素决定 ⇒ 没有多边形台阶、没有格缝、也不可能"露底"。
          * ============================================================ */
         '  vec3 _sd = normalize(vW);',
-        '  vec2 _euv = vec2(atan(_sd.z, _sd.x) / 6.283185307 + 0.5, asin(clamp(_sd.y, -1.0, 1.0)) / 3.141592653 + 0.5);',
+        /* 纬度：烘焙 `lat=(0.5-(y+0.5)/H)*π` + flipY=false ⇒ 第 0 行 = 北极 */
+        '  vec2 _euv = vec2(atan(_sd.z, _sd.x) / 6.283185307 + 0.5, 0.5 - asin(clamp(_sd.y, -1.0, 1.0)) / 3.141592653);',
         '  float _eh = texture2D(uElevTex, _euv).r * 0.30 - 0.15;',
         '  if (_eh > uWaterLevel) discard;',
         '  vec3 N = normalize(vN);',
