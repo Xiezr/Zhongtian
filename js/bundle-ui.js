@@ -8387,6 +8387,7 @@
           g.userData.beacon = { ring: ring };
         } catch (eB) { }
       }
+      g.userData.ci = w.ci;                 /* v157.99：拾取时据此反查所在格 */
       figCache[w.key] = { g: g, ci: w.ci };
       figRoot.add(g);
     });
@@ -8877,6 +8878,44 @@
         }
       }
     }
+    /* ============================================================
+     * v157.99：**人物与放置物**先判（老板「为什么人物不可选中，地图上的 3D 资产不可选中」）
+     * ------------------------------------------------------------
+     * 病根：`pickAt` 的射线只打「奇观 → 陨石 → 地标 → 碰撞球」，
+     *   小人和放置物**根本不在射线集合里** —— 射线一穿而过，落在它们脚下的格子上，
+     *   于是"点了小人却选中了地"，看起来就是"不可选"。
+     * 修法：它们站在地面上，就该比地面**优先被命中**。
+     * ============================================================ */
+    if (figRoot && figRoot.children.length) {
+      var _fh = rc.intersectObject(figRoot, true);
+      if (_fh && _fh.length) {
+        var _fci = null;
+        for (var _pp = _fh[0].object; _pp; _pp = _pp.parent) {
+          if (_pp.userData && _pp.userData.ci != null) { _fci = _pp.userData.ci; break; }
+        }
+        if (_fci != null) {
+          M._lastPickKind = 'figure';
+          M._cell = _fci;
+          try { _openCellPanel(_fci); } catch (eF1) { }
+          if (GAME.ui && GAME.ui.toast) GAME.ui.toast('👤 选中了人物（所在格已打开）');
+          return;
+        }
+      }
+    }
+    if (plRoot && plRoot.children.length) {
+      var _plh = rc.intersectObject(plRoot, true);
+      if (_plh && _plh.length) {
+        M._lastPickKind = 'prop';
+        var _pci = pickCiByRay(rc, _plh[0].point);
+        if (_pci >= 0) {
+          M._cell = _pci;
+          try { _openCellPanel(_pci); } catch (eP1) { }
+          if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🧱 选中了放置物（所在格已打开）');
+          return;
+        }
+      }
+    }
+    M._lastPickKind = 'cell';
     var hit = rc.intersectObject(M._collider, false);
     /* v157w：地表模式不能拿"命中 _collider"当前置条件 —— 贴地平视时射线
        从球面掠过、根本不相交（见 hover 处注释）。真正的地面是地砖。 */

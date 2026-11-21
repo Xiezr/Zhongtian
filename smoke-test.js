@@ -49181,6 +49181,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })(),
       '传送接口 + 面板按钮 + 动作 + 光环');
 
+    /* ⑮ 人物/放置物可选中（v157.99 · 老板「为什么人物不可选中，地图上的 3D 资产不可选中」）
+       病根：`pickAt` 的射线只打「奇观 → 陨石 → 地标 → 碰撞球」，小人与放置物**不在射线集合里**，
+       射线一穿而过落在脚下格 → 看起来就是"不可选"。
+       修法：两者站在地面上，必须比地面**优先**被命中（顺序断言：分支要在碰撞球之前）。*/
+    check('§589o 拾取链：人物/放置物分支在岗且**先于**碰撞球（不许退回"只能点格子"）',
+      /g\.userData\.ci = w\.ci;/.test(mp)
+      && /M\._lastPickKind = 'figure'/.test(mp)
+      && /M\._lastPickKind = 'prop'/.test(mp)
+      && /rc\.intersectObject\(figRoot, true\)/.test(mp)
+      && /rc\.intersectObject\(plRoot, true\)/.test(mp)
+      /* 顺序：人物分支必须早于 pickAt 里那一行（`var hit = ...`）。
+         ⚠️ 不能直接比 `rc.intersectObject(M._collider` —— pickCiByRay 里也有一处同样的写法，
+         会误判成"人物排在后面"（首轮就是这么红的）。*/
+      && mp.indexOf("M._lastPickKind = 'figure'") < mp.indexOf('var hit = rc.intersectObject(M._collider, false);'),
+      'figure/prop 分支在岗 · 且在碰撞球之前');
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */
