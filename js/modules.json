@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "8cdfc3f226781d10",
+ "sourceHash": "2f56bf5251ce6041",
  "layout": {
   "order": [
    "core",
@@ -1467,7 +1467,7 @@
   {
    "name": "ui-config",
    "file": "js/ui-config.js",
-   "lines": 1587,
+   "lines": 1598,
    "bundle": "ui",
    "duty": "ui-config.js　设置与自动化 · 存档 / 自动出征 / 自动采购 / 奇观 / 战力评估",
    "deps": [

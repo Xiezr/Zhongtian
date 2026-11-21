@@ -20616,6 +20616,17 @@ import './ui.js';
       '<div class="set-card" style="margin-bottom:0;">' +
         '<div class="res-line"><span class="lbl">🧩 运行版本</span><span class="val">' +
           U.escape(GAME.VERSION || '未知') + '</span></div>' +
+        /* v157.91：**包 hash**（index.html 里 script 标签的 ?v=）。
+           为什么加：老板连报三次"还有斑纹"，而我这边同版复现不出 —— 需要一条能证明
+           "你屏幕上是哪一个包"的硬凭据。hash 与实际加载的 bundle 同源，不吃缓存就是新值。*/
+        '<div class="res-line"><span class="lbl">📦 包 hash</span><span class="val" data-build-hash>' +
+          U.escape((function () {
+            try {
+              var st = document.querySelector('script[src*="bundle-ui.js"]');
+              var m = st && /[?&]v=([0-9a-f]{8})/.exec(st.src);
+              return m ? m[1] : '未知';
+            } catch (e) { return '未知'; }
+          })()) + '</span></div>' +
         '<div class="ui-sub" style="margin-top:6px;">若与最新交付不一致：按 <b>Ctrl + F5</b> 强制刷新后即加载新代码' +
           ui.help('页面运行的是"打开那一刻"的代码；本行为运行时版本（GAME.VERSION）。') + '</div>' +
         '<div class="ui-sub" style="margin-top:6px;">键盘：<b>1-9</b> 切页 · <b>Shift+1-3</b> 续号（公文 / 自动 / 设置）· <b>Esc</b> 关弹窗 · 弹窗内 <b>Tab / Enter</b> 导航</div>' +
