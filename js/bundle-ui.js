@@ -3338,6 +3338,12 @@
   M._nrmTex = null;         /* 法线+曲率图集：RGB=法线(编码) A=曲率遮蔽 */
   M._nrmTexU = { value: null };
   M._nrmAtlasMs = 0;
+  /* v157.95：水球方案 —— 水面 = 整球，海岸线由片元按高程图裁 */
+  M.WATER_SPHERE = true;
+  M._elevTex = null;
+  M._elevTexU = { value: null };
+  M._elevBakeMs = 0;
+  M.WATERLEVEL = 0.038;      /* 与水面半径 R+1.0 对应的高程（1.0 / HSC）*/
   M._colAtlasKey = '';      /* 缓存键：种子+精度 —— globe 会被反复重建，不缓存就每次重烘 1.6 秒 */
   M._detailU = { value: 0 };        /* 法线扰动强度（**默认关**：老板两次报"规律斑纹"，先只留颜色细节；M.setDetail(1) 可开）*/
   M.DETAIL_REPEAT = 120;             /* uv 放大倍数（扫参定档：40/60/90 在贴地视角是大块迷彩斑，120 才是细颗粒）*/
@@ -3711,6 +3717,47 @@
    * 图集：4×4 格（只填前 6 格），整张 4N×4N 是二次幂（N=256→1024，N=512→2048），
    * mipmap 正常，不会再踩 v157.89d 那个 NPOT 的坑。
    * ============================================================ */
+  /* ============================================================
+   * v157.95：**等距柱状高程图**（给水面的逐像素裁剪用）
+   * ------------------------------------------------------------
+   * 为什么不用立方体图集：得在片元里自己算"哪个面 + 面内 uv"，
+   * 六个面的参数化各不相同（有两个是镜像的），写错一个面就多一条接缝 ——
+   * 今晚已经在接缝上栽过两次，不再赌这个。
+   * 等距柱状只要 atan2/asin 两行，没有面、没有镜像。
+   * 编码：v = (e + 0.15) / 0.30，8 位 → 分辨率 ≈ 0.0012 高程 ≈ 0.03 世界单位。
+   * ============================================================ */
+  function bakeElevTex(W, H) {
+    var t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var cx = cv.getContext('2d'); var img = cx.createImageData(W, H); var d = img.data;
+    var PI = Math.PI;
+    for (var y = 0; y < H; y++) {
+      var lat = (0.5 - (y + 0.5) / H) * PI;          /* +π/2 → -π/2（与 uv.y=1 在上一致，配 flipY=false）*/
+      var cy0 = Math.cos(lat), sy0 = Math.sin(lat);
+      for (var x = 0; x < W; x++) {
+        var lon = ((x + 0.5) / W - 0.5) * 2 * PI;
+        var dx = cy0 * Math.sin(lon), dy = sy0, dz = cy0 * Math.cos(lon);
+        var e = sphElev([dx, dy, dz]);
+        var v = (e + 0.15) / 0.30;
+        v = v < 0 ? 0 : (v > 1 ? 1 : v);
+        var o = (y * W + x) * 4;
+        var c = Math.round(v * 255);
+        d[o] = c; d[o + 1] = c; d[o + 2] = c; d[o + 3] = 255;
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    var tex = new THREE.CanvasTexture(cv);
+    tex.flipY = false;                       /* 上面按"行 = 纬度"算的，不许再翻 */
+    tex.wrapS = THREE.RepeatWrapping;        /* 经度环绕 */
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex._shared = true;
+    M._elevBakeMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0);
+    return tex;
+  }
+
   function bakeColorAtlas(N) {
     /* v157.93：**必须按 种子+精度 缓存**。globe 每次 renderMapCanvas 都可能重建
        （v157.86 踩过：提亮被静默抹掉就是因为每次重建），不缓存等于每次首屏多等 1.6 秒。*/
@@ -4055,6 +4102,14 @@
     if (M._detailTexU) { try { M._detailTexU.value = makeGrainTex(); } catch (eG) { } }
     /* v157.93：烘地貌配色图集（一次性；耗时写进 M._colAtlasMs 供探针）*/
     if (M.useColorAtlas) {
+      /* v157.95：高程图（水面裁剪用）。1024×512 足够：赤道处一格 1.84 世界单位 */
+      try {
+        if (!M._elevTex || M._elevPlanetKey !== (SP.seed3 ? SP.seed3() : 0)) {
+          M._elevTex = bakeElevTex(1024, 512);
+          M._elevPlanetKey = (SP.seed3 ? SP.seed3() : 0);
+          if (M._elevTexU) M._elevTexU.value = M._elevTex;
+        }
+      } catch (eET) { M._elevErr = String(eET && (eET.message || eET)); }
       try {
         var _ct = bakeColorAtlas(+M.COLOR_ATLAS_N || 256);
         if (_ct) { M._colTex = _ct; if (M._colTexU) M._colTexU.value = _ct; }
@@ -4203,7 +4258,28 @@
      * 两套几何都在切换点重建，避免每帧重建。
      * ============================================================ */
     var wg;
-    if (wcnt) wg = new THREE.BufferGeometry();
+    /* ============================================================
+     * v157.95：**水球**（老板「海面没有厚度，导致持续空洞」的终止方案）
+     * ------------------------------------------------------------
+     * 不用水格多边形了：一颗完整球，海岸线交给片元按高程图 discard。
+     * 顶点半径无所谓 —— 顶点着色器本来就用 `normalize(position)` 重算表面。
+     * uCoast 仍按顶点方向的水深给（岸边平浪、深海满浪），与旧口径一致。
+     * ============================================================ */
+    if (M.WATER_SPHERE) {
+      wg = new THREE.SphereGeometry(1.0, 160, 120);
+      var _nvS = wg.attributes.position.count;
+      var _posS = wg.attributes.position.array;
+      var _cs = new Float32Array(_nvS);
+      for (var _iS = 0; _iS < _nvS; _iS++) {
+        var _ax = _posS[_iS * 3], _ay = _posS[_iS * 3 + 1], _az = _posS[_iS * 3 + 2];
+        var _al = Math.sqrt(_ax * _ax + _ay * _ay + _az * _az) || 1;
+        var _dep = -sphElev([_ax / _al, _ay / _al, _az / _al]);
+        var _tt = _dep / 0.05;
+        _cs[_iS] = _tt < 0 ? 0 : (_tt > 1 ? 1 : _tt);
+      }
+      wg.setAttribute('uCoast', new THREE.Float32BufferAttribute(_cs, 1));
+      wcnt = 1;
+    } else if (wcnt) wg = new THREE.BufferGeometry();
     else {
       wg = new THREE.SphereGeometry(R + 0.4, 96, 64);
       /* v155i：兜底整球没有"离岸距离场" → 补一个全 1（否则 attribute 缺省 0，浪全平） */
@@ -4211,7 +4287,7 @@
       for (var _i0 = 0; _i0 < _nv0; _i0++) _c1[_i0] = 1;
       wg.setAttribute('uCoast', new THREE.Float32BufferAttribute(_c1, 1));
     }
-    if (wcnt) {
+    if (wcnt && !M.WATER_SPHERE) {
       wg.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3));
       if (wcoast.length) wg.setAttribute('uCoast', new THREE.Float32BufferAttribute(wcoast, 1));
       if (M._waterIdx && M._waterIdx.length) wg.setIndex(M._waterIdx);
@@ -4323,6 +4399,9 @@
       var marineFS = [
         'uniform vec3 uColor;',
         'uniform float uTime;',
+        /* v157.95：水球裁剪用 —— 高程图 + 水面线 */
+        'uniform sampler2D uElevTex;',
+        'uniform float uWaterLevel;',
         'varying vec3 vN; varying vec3 vView; varying vec3 vW; varying float vFar;',
         '',
         '/* 与顶点着色器同一套哈希噪声（GLSL 不能 include，只能各写一份） */',
@@ -4349,6 +4428,15 @@
         '}',
         '',
         'void main(){',
+        /* ============================================================
+         * v157.95：**整球水面 + 逐像素裁剪**
+         * 查等距柱状高程图，高程高于水面线就 discard。
+         * 海岸线由像素决定 ⇒ 没有多边形台阶、没有格缝、也不可能"露底"。
+         * ============================================================ */
+        '  vec3 _sd = normalize(vW);',
+        '  vec2 _euv = vec2(atan(_sd.z, _sd.x) / 6.283185307 + 0.5, asin(clamp(_sd.y, -1.0, 1.0)) / 3.141592653 + 0.5);',
+        '  float _eh = texture2D(uElevTex, _euv).r * 0.30 - 0.15;',
+        '  if (_eh > uWaterLevel) discard;',
         '  vec3 N = normalize(vN);',
         '  vec3 V = normalize(-vView);',
         '  /* 切平面基：在球面上 perturN 必须沿切向做，否则会被当成"法线歪了" */',
@@ -4395,7 +4483,9 @@
           uR: { value: R + 1.0 },
           uColor: { value: new THREE.Color(0x4a7fa0) },  /* 旧方案的颜色，不改 */
           /* v156.22：远景衰减系数（1 = 满浪 · 0 = 平）。由 render 按 camO.dist 更新 */
-          uFar: { value: 1 }
+          uFar: { value: 1 },
+          uElevTex: M._elevTexU,
+          uWaterLevel: { value: M.WATERLEVEL }
         },
         vertexShader: marineVS, fragmentShader: marineFS,
         side: THREE.FrontSide,

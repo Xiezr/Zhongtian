@@ -49146,6 +49146,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && (mp.match(/\(xx - 1 \+ N\) % N/g) || []).length === 0,
       '法线图集 + 曲率 alpha + 单边差分 + 无 %N 环绕');
 
+    /* ⑬ 海面 = 整球 + 逐像素裁剪（v157.95 · 老板「海面没有厚度，持续空洞」）
+       旧做法是"每格一个六边形扇面"：格间不共享顶点 → 格边必现、漏画一格就是洞。
+       今晚在参数上改了 4 次都没根治，最后换拼法：一颗完整球 + 片元按高程图 discard。
+       这条钉死"水面不许再按格子拼"。*/
+    check('§589m 海面整球 + 逐像素 discard：高程图在岗 · uWaterLevel 裁剪 · 水格多边形退役',
+      /M\.WATER_SPHERE = true/.test(mp)
+      && /function bakeElevTex\(W, H\)/.test(mp)
+      && /if \(_eh > uWaterLevel\) discard;/.test(mp)
+      && /float _eh = texture2D\(uElevTex, _euv\)\.r \* 0\.30 - 0\.15;/.test(mp)
+      && /wg = new THREE\.SphereGeometry\(1\.0, 160, 120\)/.test(mp),
+      '整球 + 高程裁剪 + 旧拼法退役');
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */
