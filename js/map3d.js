@@ -70,15 +70,8 @@ import './gltf.js';
        * 这里把颜色含义说清楚，但**仍然不透露是什么** —— 守住 v92.6 的口径：
        * 「知道有东西、不知是什么」是设计，不是缺陷。
        * ============================================================ */
-      var _tkH = null;
-      try { _tkH = (GAME.map3d && GAME.map3d._tintKind) ? GAME.map3d._tintKind[ci] : null; } catch (e5) { _tkH = null; }
-      if (_tkH === 'trace') {
-        out.facts.push('地面泛着暖褐色：这一带似乎有动静（不知是什么）');
-        out.tasks.push('派一队过去探明 —— 抵达后才知道是什么');
-      } else {
-        out.facts.push('这一带还没有记载');
-        out.tasks.push('派一队过去（点它 = 派队），抵达后周围显现');
-      }
+      out.facts.push('这一带还没有记载');
+      out.tasks.push('派一队过去（点它 = 派队），抵达后周围显现');
       return out;
     }
     /* v157.77：补上 `lord` —— 地图上亮黄那格是「君主所在」，
@@ -130,7 +123,10 @@ import './gltf.js';
     /* ============================================================
      * v157.77：色块说明兜底
      * ------------------------------------------------------------
-     * 整格涂色有 6 类来源（痕迹 / 营地 / 村社 / 遗迹 / 我方占领 / 阵亡纪念）。
+     * 整格涂色有 5 类来源（营地 / 村社 / 遗迹 / 我方占领 / 阵亡纪念）。
+     * ⚠️ v157.98：「迷雾边缘的动静痕迹」已整条退役（老板指令）—— 它是前传
+     *    （v92.6 构想 A2）的遗留，前传下线后既没有玩法承接，又让地图多出一批
+     *    "说不清是什么的色块"。别再把它加回来。
      * 上面各分支已经覆盖了绝大多数情况，但**任何一格只要上了色，就应当说得出它是什么** ——
      * 玩家不该对着色块猜。这里按"来源表"补一行，并用 indexOf 去重，
      * 避免与上面已经写明的"营地 / 村社 / 遗迹"重复。
@@ -138,7 +134,6 @@ import './gltf.js';
     var _tkK = null;
     try { _tkK = (GAME.map3d && GAME.map3d._tintKind) ? GAME.map3d._tintKind[ci] : null; } catch (e6) { _tkK = null; }
     var TK_DESC = {
-      trace: '迷雾边缘的动静痕迹',
       camp: '幸存者营地',
       village: '村社',
       ruin: '旧世界遗迹',
@@ -166,20 +161,6 @@ import './gltf.js';
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
     var reg = M.regionAt ? M.regionAt(ci) : null;
     var ref = M.cellRef && M.cellRef[ci];
-    /* ============================================================
-     * v157.77（老板：「要么悬停显示，要么点击显示」）
-     * ------------------------------------------------------------
-     * 未探明 + 有动静痕迹的格子，点击后给一句说明再照常开面板：
-     * 不改变任何流程（该派队还是派队），只回答"这块褐色是什么"。
-     * 仍然不说"是什么"——v92.6 的半信息口径。
-     * ============================================================ */
-    try {
-      var _hidC = !!(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0);
-      var _tkC = (M._tintKind) ? M._tintKind[ci] : null;
-      if (_hidC && _tkC === 'trace' && ui.toast) {
-        ui.toast('这一带似乎有动静（未探明）—— 派一队过去才知道是什么');
-      }
-    } catch (e7) { /* 提示失败不挡面板 */ }
     if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
     else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
@@ -5659,7 +5640,7 @@ import './gltf.js';
        `_tint` 只存颜色，**没存"为什么上色"** —— 于是悬停简报只能说"未探明"，
        玩家对着一片褐色/金色/青色块无从判断。这里同一处写入时顺手记下来源，
        悬停与面板都读它（同源，不会出现"颜色和说明不一致"）。
-       取值：trace（迷雾边缘的动静痕迹）/ camp / village / ruin / own / memorial */
+       取值：camp / village / ruin / own / memorial（v157.98：trace 已退役）*/
     var _tk = {}, _tkOwn = {};
     /* v157s（老板：「被占领地块，全地块用一个特征色显示，加上小旗子」）——
        旗子**只画了一个 sprite**，地上什么都没有。于是：
@@ -5719,38 +5700,8 @@ import './gltf.js';
       });
     }
     /* v156：整格涂色层在**本函数末尾**构建（营地/村社/遗迹都在后面才写入 _tint） */
-    /* ============================================================
-     * v92.6（构想 A2：半信息痕迹）—— 迷雾边缘的"有东西"暗示
-     * ------------------------------------------------------------
-     * 文档原话：「未点亮区能看到烟柱、脚印、无线电杂音，知道『有东西』
-     * 但不知是什么」。
-     *
-     * 这是纯视觉，不带任何情报：不给地形、不给等级、点不开、不进 info 条。
-     * 它只回答"往哪走"这个方向问题 —— 全黑的球玩家不知道往哪推。
-     * 位置由哈希决定（确定性），玩家可以记住"那根烟一直在那边"。
-     * ============================================================ */
-    if (GAME.fog && GAME.DATA && GAME.DATA.FOG && GAME.DATA.FOG.traceChance) {
-      var _tc = GAME.DATA.FOG.traceChance;
-      var _tn = _tileCells.length;
-      for (var _ti = 0; _ti < _tn; _ti++) {
-        if (GAME.fog.get(_ti) !== 0) continue;          /* 只看未探明格 */
-        var _tc0 = _tileCells[_ti];
-        if (!_tc0 || !_tc0.pos || !_tc0.nt) continue;
-        /* 必须紧贴已探明区（更远的地方，玩家连"那边有东西"都没理由知道） */
-        var _near = false;
-        for (var _adj = 0; _adj < _tc0.nt; _adj++) {
-          var _nb = SP.adj[_ti] && SP.adj[_ti][_adj];
-          if (_nb != null && _nb >= 0 && GAME.fog.get(_nb) > 0) { _near = true; break; }
-        }
-        if (!_near) continue;
-        /* 确定性：同一格永远有/没有这根烟 */
-        var _hx = (_ti * 2654435761 + (_tileSub + 7) * 40503) >>> 0;
-        _hx ^= _hx >>> 13; _hx = (_hx * 1274126177) >>> 0; _hx ^= _hx >>> 16;
-        if ((_hx >>> 0) / 4294967296 >= _tc) continue;
-        /* v156：不再悬空小球 → 这块地**整格**泛一点暖色（"那边有动静"）。 */
-        _tint[_ti] = [150, 112, 70]; _tk[_ti] = 'trace';
-      }
-    }
+    /* ⛔ v157.98：「迷雾边缘的动静痕迹」涂色已退役（见 §586q 相关注释）——
+       它属于已下线的前传（v92.6 构想 A2），删除后未探明区只剩「干净未探明」一种长相。 */
     /* v92.4：已发现的幸存者营地 —— 金珠（待交涉）/ 绿珠（已招募）/ 暗红珠（已洗劫）。
        只在已探明处显示：探明度掉了（换星球/重置）就不画，不泄露位置。 */
     if (GAME.camp && GAME.camp.found) {
