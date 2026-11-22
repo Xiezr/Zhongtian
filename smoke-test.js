@@ -36507,8 +36507,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
            ② 全文件 camO.pitch = Math.asin 只允许 2 处；③ 那段带守卫的代码不许复活
            （按代码形态判 —— 墓碑注释里会提到它的名字）。 */
         var _asinN = (m243.match(/camO\.pitch = Math\.asin/g) || []).length;
+        /* **规则变更（v157.101）**：轨迹球相机新增两处 `pitch = asin(dir.y)`（拖拽 / 自转各一），
+           它们同样是"从**位置量** dir 反算俯角"，与本条规则的立意一致，不是违规写点。
+           判据由 2 处改为 4 处，并逐条点名这两处必须是 `_dvT.y` / `_dvS.y`（dir 的分量）。*/
         return /M\.lookAtDir = function \(d\) \{/.test(m243)
-          && _asinN === 2
+          && _asinN === 4
+          && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvT\.y\)\)\)/.test(m243)
+          && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvS\.y\)\)\)/.test(m243)
           && !/if \(camO\.dir && M\._surfVis === true\) \{\s*\n\s*camO\.yaw = Math\.atan2/.test(m243);
       })());
       /* ============================================================
@@ -48747,12 +48752,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        留着那段唯一的作用，就是把 asin 反算留在链路里 —— 还有复活的机会。
        ⚠️ 判据必须看「代码形态」：墓碑注释里提到了被删代码的名字，
           用裸正则会把「已删」误判成「还在」。 */
-    check('§586r 根因面：placeCamera 内零 asin 反算；全文件仅 2 处合法写点',
+    /* **规则变更（v157.101）**：轨迹球把"从 dir 反算俯角"变成常规操作（拖拽/自转各一处），
+       合法写点 2 → 4。仍守同一条底线：placeCamera 内不许有 asin 反算，
+       且那两处新写点必须取 `_dvT.y` / `_dvS.y`（位置量 dir 的分量），不许取视线。*/
+    check('§586r 根因面：placeCamera 内零 asin 反算；全文件 4 处合法写点（轨迹球 +2）',
       !/if \(camO\.dir && M\._surfVis === true\) \{\s*\n\s*camO\.yaw = Math\.atan2/.test(mp)
-      && (mp.match(/camO\.pitch = Math\.asin/g) || []).length === 2
+      && (mp.match(/camO\.pitch = Math\.asin/g) || []).length === 4
+      && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvT\.y\)\)\)/.test(mp)
+      && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvS\.y\)\)\)/.test(mp)
       && /M\.lookAtDir = function \(d\) \{/.test(mp)
       && /M\.panStepOf\(dx, dy, _B54\)/.test(mp),
-      'asin 写点 ' + (mp.match(/camO\.pitch = Math\.asin/g) || []).length + ' 处（应 2）');
+      'asin 写点 ' + (mp.match(/camO\.pitch = Math\.asin/g) || []).length + ' 处（应 4）');
 
     check('§586r 数值面：pitch 越过 ±π/2 后 dir 仍连续、能绕到球另一侧（不许夹回）',
       (function () {
@@ -48907,11 +48917,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* 自转面：旧写法 premultiply 只改 quat 不同步 yaw → 一拖动就跳回自转前角度。
        新口径：yaw 累加（数学上 premultiply(Ry(θ)) ≡ yaw += θ），quat 置空重建。 */
-    check('§586s 自转面：_spinTick 走 yaw 累加 + quat 置空（不许只转 quat 不同步 yaw）',
+    /* **规则变更（v157.101）**：轨迹球模式下 `yaw += ; quat = null` 会把 roll 和"越过极点"
+       一起抹掉（placeCamera 不再按 yaw 重建），所以自转必须**乘到 quat 上**。
+       两条路径都必须在岗、按 `M.CAM_TRACKBALL` 分流；旧的"只转 quat 不同步 yaw"那种半套写法仍不许出现。*/
+    check('§586s 自转面（v157.101 按轨迹球重写）：转台走 yaw 累加 · 轨迹球走 quat premultiply',
       /camO\.yaw \+= _spinAng;/.test(mp)
-      && /camO\.quat = null; camO\._euler = null;      \/\* 交给 placeCamera 按新 yaw 重建 \*\//.test(mp)
-      && !/camO\.quat = \(camO\.quat \|\| new THREE\.Quaternion\(\)\)\.premultiply/.test(mp),
-      'yaw 累加在岗 · premultiply 旧写法 0 处');
+      && /camO\.quat = null; camO\._euler = null;/.test(mp)
+      && /if \(M\.CAM_TRACKBALL && camO\.quat\) \{/.test(mp)
+      && /camO\.quat\.premultiply\(_qyS\)/.test(mp),
+      '两条路径按开关分流 · premultiply 在轨迹球分支内');
 
     /* 默认静止：老板 v157.34「位置与朝向都只由玩家改」—— 自转默认开会自己漂。
        按钮仍在（setSpin），一键可开。 */
@@ -49196,6 +49210,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          会误判成"人物排在后面"（首轮就是这么红的）。*/
       && mp.indexOf("M._lastPickKind = 'figure'") < mp.indexOf('var hit = rc.intersectObject(M._collider, false);'),
       'figure/prop 分支在岗 · 且在碰撞球之前');
+
+    /* ⑯ 轨迹球相机（v157.101 · 老板「球体转动过不了轴线」→「我能接受（倾斜）」）
+       旧法=转台：dir.y = sin(pitch) 恒 ≥0，极点即奇点，永远进不了南半球。
+       新法=四元数累积（TrackballControls 语义）：水平拖绕世界 Y、竖直拖绕相机右轴。
+       三条必须同时在岗：① 开关 ② 拖拽累积 quat ③ placeCamera 不许拿 yaw/pitch 重建
+       （重建会把 roll 与"越过极点"一起抹掉 → 退回转台）。自转同理要乘到 quat 上。*/
+    check('§589p 轨迹球相机：quat 累积 · placeCamera 不重建 · 自转走 premultiply',
+      /M\.CAM_TRACKBALL = true/.test(mp)
+      && /setFromAxisAngle\(_rightT, -_sdyv \* _K\)/.test(mp)
+      && /var _dirty = M\.CAM_TRACKBALL \? !camO\.quat/.test(mp)
+      && /camO\.quat\.premultiply\(_qyS\)/.test(mp)
+      /* 反向：拖拽分支里不许再出现"只加 pitch"的老写法作为唯一路径 */
+      && /if \(M\.CAM_TRACKBALL\) \{\s*\/\* =+\s*\* v157\.101/.test(mp),
+      'quat 累积 + 不重建 + 自转乘 quat');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）

@@ -837,6 +837,9 @@ import './gltf.js';
    * 关掉就是真的不动 —— 不再有"静止 10 秒它自己又转起来"那种猜不透的行为。
    * 地表模式下**永远不转**（见 _spinTick）：人站在地上，星球转 = 画面转。
    * ============================================================ */
+  /* v157.101（老板 2026-11-22「我能接受。请实现我的意图」）——
+     **轨迹球相机**：允许翻过极点、允许 roll。关掉即回到转台（yaw/pitch）老行为。*/
+  M.CAM_TRACKBALL = true;
   M.spinOn = false;
   M.setSpin = function (on) {
     M.spinOn = !!on;
@@ -6246,8 +6249,11 @@ import './gltf.js';
       camO.dist = R + Math.max(0.6, nAgl);
     })();
     var _yaw = camO.yaw, _pitch = camO.pitch;
-    var _dirty = (!camO.quat || !camO._euler ||
-      Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
+    /* v157.101：轨迹球模式下 quat 是**真值**，不许从 yaw/pitch 重建
+       （重建会把 roll 与"越过极点"的信息一起抹掉 —— 那就退回转台了）。*/
+    var _dirty = M.CAM_TRACKBALL ? !camO.quat
+      : (!camO.quat || !camO._euler ||
+        Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
     if (_dirty) {
       /* v157.83：turntable 姿态（Ry·Rx·Rz），**不再用 setFromUnitVectors**。
          理由见 `_camRollOf` 上方注释 —— 最短弧会把俯角转成画面 roll。
@@ -7159,8 +7165,20 @@ import './gltf.js';
        * 所以直接累加 yaw 与旧写法逐位等价，但不会再丢角度。
        * ============================================================ */
       var _spinAng = (2 * Math.PI / _spin) * (_dt / 1000);
-      camO.yaw += _spinAng;
-      camO.quat = null; camO._euler = null;      /* 交给 placeCamera 按新 yaw 重建 */
+      /* v157.101：轨迹球模式下自转必须**乘到 quat 上**（绕世界 Y）。
+         原来 `yaw += …; quat = null` 会让 placeCamera 按 yaw 重建 → roll 与过极点信息全丢。*/
+      if (M.CAM_TRACKBALL && camO.quat) {
+        var _qyS = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), _spinAng);
+        camO.quat.premultiply(_qyS).normalize();
+        var _dvS = new THREE.Vector3(0, 0, 1).applyQuaternion(camO.quat);
+        camO.dir = [_dvS.x, _dvS.y, _dvS.z];
+        camO.yaw = Math.atan2(_dvS.x, _dvS.z);
+        camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dvS.y)));
+        camO._euler = null;
+      } else {
+        camO.yaw += _spinAng;
+        camO.quat = null; camO._euler = null;    /* 交给 placeCamera 按新 yaw 重建 */
+      }
       wonderStep();                                          /* v91.30：奇观轨行 + 出场/离场动画 */
       if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }
@@ -7743,8 +7761,34 @@ import './gltf.js';
         if (!M._surf) {
           var _sdxv = e.clientX - _prevX, _sdyv = e.clientY - _prevY;
           var _K = 0.005;                       /* 弧度/像素：拖满一屏约 180° */
-          camO.pitch += _sdyv * _K;             /* 下拖 = 内容下移（相机北移） */
-          camO.yaw -= _sdxv * _K;               /* 右拖 = 内容左移 */
+          if (M.CAM_TRACKBALL) {
+            /* ============================================================
+             * v157.101：**轨迹球**（老板「球体转动过不了轴线」的最终解）
+             * ------------------------------------------------------------
+             * 旧法 = 转台：pitch 只能 ±90°，dir.y = sin(pitch) 恒 ≥ 0 —— 极点就是奇点，
+             *   拖过去只会沿原经线折回赤道，永远进不了南半球（探针实测 dir.y 从不为负）。
+             * 新法 = 把拖动量直接累积成四元数（TrackballControls 语义）：
+             *   水平拖 → 绕**世界 Y**；竖直拖 → 绕**相机当前的右轴**。
+             *   于是可以自然翻过任意极点；代价是 roll 会随之产生 —— 老板已明确接受。
+             * ============================================================ */
+            if (!camO.quat) {
+              camO.quat = new THREE.Quaternion().setFromEuler(
+                new THREE.Euler(-camO.pitch, camO.yaw, 0, 'YXZ'));
+            }
+            var _upT = new THREE.Vector3(0, 1, 0);
+            var _rightT = new THREE.Vector3(1, 0, 0).applyQuaternion(camO.quat);
+            var _dqY = new THREE.Quaternion().setFromAxisAngle(_upT, -_sdxv * _K);
+            var _dqP = new THREE.Quaternion().setFromAxisAngle(_rightT, -_sdyv * _K);
+            camO.quat = _dqP.multiply(_dqY).multiply(camO.quat).normalize();
+            var _dvT = new THREE.Vector3(0, 0, 1).applyQuaternion(camO.quat);
+            camO.dir = [_dvT.x, _dvT.y, _dvT.z];
+            camO.yaw = Math.atan2(_dvT.x, _dvT.z);
+            camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dvT.y)));
+            camO._euler = null;                 /* 交给 placeCamera；轨迹球模式它不会重建 */
+          } else {
+            camO.pitch += _sdyv * _K;           /* 下拖 = 内容下移（相机北移） */
+            camO.yaw -= _sdxv * _K;             /* 右拖 = 内容左移 */
+          }
           /* 浮点保险：转几十圈后把角度折回一个周期 —— 2π 是 dir 的周期，
              折回**不改变姿态**，所以不会跳（这与"跨极点归一化"是两件事）。 */
           if (camO.pitch > 1e4 || camO.pitch < -1e4) camO.pitch %= (Math.PI * 2);
