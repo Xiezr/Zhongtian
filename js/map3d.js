@@ -4067,8 +4067,8 @@ import './gltf.js';
         '  float mid  = vn(Q * 2.40 + vec3(0.0, 0.0, t * 0.120)) - 0.5;',
         '  return (base + mid * 0.45) * 2.0;',
         '}',
-        'vec3 surfF(vec3 d, float c, float t){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + hf(P, t) * uAmp * k * uFar); }',
-        'vec3 surf(vec3 d, float c){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + h(P, uTime) * uAmp * k * uFar); }',
+        'vec3 surfF(vec3 d, float c, float t){ vec3 P = d * uR; float k = smoothstep(0.30, 0.75, c); return d * (uR + hf(P, t) * uAmp * k * uFar); }',
+        'vec3 surf(vec3 d, float c){ vec3 P = d * uR; float k = smoothstep(0.30, 0.75, c); return d * (uR + h(P, uTime) * uAmp * k * uFar); }',
 
         'void main(){',
         '  vec3 d = normalize(position);',
@@ -4095,6 +4095,7 @@ import './gltf.js';
         /* v157.95：水球裁剪用 —— 高程图 + 水面线 */
         'uniform sampler2D uElevTex;',
         'uniform float uWaterLevel;',
+        'uniform float uDebugMask;',
         'varying vec3 vN; varying vec3 vView; varying vec3 vW; varying float vFar;',
         '',
         '/* 与顶点着色器同一套哈希噪声（GLSL 不能 include，只能各写一份） */',
@@ -4130,6 +4131,7 @@ import './gltf.js';
         /* 纬度：烘焙 `lat=(0.5-(y+0.5)/H)*π` + flipY=false ⇒ 第 0 行 = 北极 */
         '  vec2 _euv = vec2(atan(_sd.z, _sd.x) / 6.283185307 + 0.5, 0.5 - asin(clamp(_sd.y, -1.0, 1.0)) / 3.141592653);',
         '  float _eh = texture2D(uElevTex, _euv).r * 0.30 - 0.15;',
+        '  if (uDebugMask > 0.5) { gl_FragColor = vec4(vec3(clamp((_eh + 0.1) * 6.0, 0.0, 1.0)), 1.0); return; }',
         '  if (_eh > uWaterLevel) discard;',
         '  vec3 N = normalize(vN);',
         '  vec3 V = normalize(-vView);',
@@ -4170,7 +4172,7 @@ import './gltf.js';
       var wmat = new THREE.ShaderMaterial({
         uniforms: {
           uTime: { value: 0 },
-          uAmp: { value: 1.5 },                     /* 世界单位：约 0.44 格宽（浪高看得出来，又不穿地块） */
+          uAmp: { value: 1.1 },                     /* 世界单位：约 0.44 格宽（浪高看得出来，又不穿地块） */
           /* v155j（修正 v155i 的符号错误）：湖底地形面在 R+0.6（PLATEAU），
              水面必须**略高于它**（+0.62）才看得见；之前的 R-0.8 直接把水压到海底下面，
              于是海洋显示成深蓝的"湖底色"（就是那半边发黑）。 */
@@ -4179,7 +4181,8 @@ import './gltf.js';
           /* v156.22：远景衰减系数（1 = 满浪 · 0 = 平）。由 render 按 camO.dist 更新 */
           uFar: { value: 1 },
           uElevTex: M._elevTexU,
-          uWaterLevel: { value: M.WATERLEVEL }
+          uWaterLevel: { value: M.WATERLEVEL },
+          uDebugMask: { value: 0 }
         },
         vertexShader: marineVS, fragmentShader: marineFS,
         side: THREE.FrontSide,
