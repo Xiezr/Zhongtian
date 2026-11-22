@@ -4186,9 +4186,13 @@ import './gltf.js';
         },
         vertexShader: marineVS, fragmentShader: marineFS,
         side: THREE.FrontSide,
-        /* v155l（老板：「六边形内有三角形」）：水面与海床只差 0.02 → 深度打架，
-           碎片随机"透出"成三角斑。抬高 0.4 之外，再用 polygonOffset 把水面往镜头拉一点。 */
-        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4
+        /* ⛔ v157.103（老板「蓝色大山峰，挺好笑的」）：
+           这里原来有 `polygonOffset: true, factor:-2, units:-4` —— 那是 v155l 为了压
+           "水面与海床只差 0.02 的深度打架"加的。但 polygonOffset 的偏移量**随表面斜率放大**：
+           山坡越陡，水面被往镜头拉的越多，最后**水画在山的前面** → 出现"蓝色大山峰"。
+           现在海床已经压低成真实海盆（差好几个单位），不再需要它；
+           去掉后由深度测试自然决定遮挡：山高过水面就挡住水。*/
+        polygonOffset: false
       });
       water = new THREE.Mesh(wg, wmat);
       M._waterMat = wmat;

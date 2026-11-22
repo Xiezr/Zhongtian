@@ -49238,6 +49238,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && (mp.match(/smoothstep\(0\.0, 0\.55, c\)/g) || []).length === 0,
       'surf/surfF 同曲线 · uAmp=1.1');
 
+    /* ⑱ 水面不许用 polygonOffset（v157.103 · 老板「蓝色大山峰」）
+       病灶：v155l 为压"水面与海床差 0.02"的深度打架加了 polygonOffset(factor −2)，
+             而它的偏移量**随表面斜率放大** —— 山坡越陡，水面被拉得越靠前，
+             最后水画在山的前面 → 蓝色山脊。
+       现在海底已压低成真实海盆，不需要它；由深度测试自然遮挡。
+       判据：polygonOffset 必须是 false，且 factor/units 的参数 0 处。*/
+    check('§589r 水面不吃 polygonOffset：山高过水面就挡住水（不许再出现"蓝色山峰"）',
+      (function () {
+        /* 只查**水面材质那一段**：标记/网格叠加层用 polygonOffset 是正当的
+           （它们是贴在球面上的平面叠加），不能一刀切。首版就是全局判，误红。*/
+        var i0 = mp.indexOf('var wmat = new THREE.ShaderMaterial({');
+        if (i0 < 0) return false;
+        var seg = mp.slice(i0, i0 + 1800);
+        return /polygonOffset: false/.test(seg)
+          && !/polygonOffsetFactor:/.test(seg)
+          && !/polygonOffsetUnits:/.test(seg);
+      })(),
+      '水面材质 polygonOffset=false · 无 factor/units');
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */
