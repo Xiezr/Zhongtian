@@ -683,6 +683,26 @@
     Math.round(rawStr.length / 1024) + ' KB');
   check('存档内不含 map.grid', !raw.map || !raw.map.grid);
   check('野地状态仍在档内', Array.isArray(raw.wilds));
+  /* ============================================================
+   * §589s（v157.104 · 老板「梳理存档数据，确认按新代码框架实现」）
+   * ------------------------------------------------------------
+   * 存档机制 = **整份 state 序列化，只剔派生数据**。所以：
+   *   · 新框架新增的字段（星球 id、探明度、迁移标记）**自动入档**，不需要改结构；
+   *   · 已下线系统（前传 / 痕迹）**不许在档里留键** —— 它们已无读者，留着就是脏数据；
+   *   · 派生缓存（_sub153LL 那可 1.5MB 的经纬表）不许入档。
+   * 三条一起验，防止"框架改了、存档还背着旧世界"。
+   * ============================================================ */
+  check('§589s 存档符合新框架：含 seed/星球/迁明度 · 下线系统 0 残留 · 派生缓存不入档',
+    !!raw.map && typeof raw.map.seed === 'number'
+    && raw.mapPlanetId != null
+    && raw.popGrace190 != null
+    && !!raw.fog && raw.fog.v === 2 && typeof raw.fog.data === 'string'   /* 打包态：{v,sig,n,data} */
+    && raw._sub153LL === undefined
+    && raw.prologue === undefined
+    && rawStr.indexOf('"traceChance"') < 0
+    && rawStr.indexOf('"trace"') < 0,
+    'seed=' + (raw.map && raw.map.seed) + ' · planet=' + raw.mapPlanetId
+    + ' · fog=v' + (raw.fog && raw.fog.v) + ' · 旧系统键 0 处');
   localStorage.setItem('sanguo_save_v2', '{"version":2,"ruler":{}}');
   var loaded = G.loadGame();
   check('旧档(v2)被作废', loaded !== null && loaded.version === 3, '旧档已清除');
