@@ -3967,6 +3967,23 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       if (_tn207 === 'INPUT' || _tn207 === 'TEXTAREA' || _tn207 === 'SELECT') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (ui.modalVisible && ui.modalVisible()) return;
+      /* v158.0（P0 大世界）：Tab 进出第三人称跟随；WASD 只在跟随态生效。
+         键位判定用 e.code（布局无关），状态放 GAME._keys（不入档、不污染 state）。 */
+      var _mkAv = GAME.map3d;
+      if (_mkAv && _mkAv.PLAYER_AVATAR && ui.view === 'map') {
+        var _avCode = e.code || '';
+        if (_avCode === 'Tab') {
+          _mkAv.setFollow(!_mkAv.FOLLOW);
+          e.preventDefault();
+          return;
+        }
+        if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
+          if (!GAME._keys) GAME._keys = {};
+          GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
+          e.preventDefault();
+          return;
+        }
+      }
       /* v89.210（规划一 · 老板「按建议执行」）：Shift+1~3 → 第 10~12 个页签
          （公文 / 自动 / 设置）—— 1-9 不动，纯续号、零记忆成本。
          v89.218：史册 / 故事集退役，续号由 5 收窄为 3。
@@ -3996,6 +4013,12 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         e.preventDefault();
       }
     });
+    /* v158.0：松键/失焦清移动状态 —— 否则切窗口回来人会一直往前走。 */
+    document.addEventListener('keyup', function (e) {
+      var _c = e.code || '';
+      if (/^Key[WASD]$/.test(_c) && GAME._keys) GAME._keys[_c.charAt(3).toLowerCase()] = 0;
+    });
+    window.addEventListener('blur', function () { GAME._keys = {}; });
   }
 
   var AUTO_SAVE_MS = 5 * 60 * 1000;   // 自动存档间隔：5 分钟
@@ -4220,7 +4243,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v157.91';
+  GAME.VERSION = 'v158.0';
   function boot() {
     fitAppSize();
     try {

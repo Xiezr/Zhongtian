@@ -233,6 +233,22 @@ import './gltf.js';
     var south = _cross(east, n);
     return { up: n, east: east, south: south };
   }
+  /* v158.0（P0）：行走用的**连续**切平面基。
+     ⚠️ 不能直接复用 surfaceFrame：它的 north 在极点用 [1,0,0] 兜底，而
+        dir=[ε,1,0] 时连续极限是 [−1,0,0] —— 跨极点那一格 east/south 会瞬间反向，
+        表现为"角色在极点来回抖、相机瞬间贴脸"。surfaceQuad 是 shortest-arc
+        四元数，除南极外处处连续，这里把局部 +X/+Z 旋到切平面当 east/south。 */
+  function avatarBasis(dir) {
+    var q = surfaceQuad(dir, 0);
+    function rot(v) {
+      var u0 = q[0], u1 = q[1], u2 = q[2], w = q[3];
+      var cx = u1 * v[2] - u2 * v[1], cy = u2 * v[0] - u0 * v[2], cz = u0 * v[1] - u1 * v[0];
+      var dx = u1 * cz - u2 * cy, dy = u2 * cx - u0 * cz, dz = u0 * cy - u1 * cx;
+      return [v[0] + 2 * (w * cx + dx), v[1] + 2 * (w * cy + dy), v[2] + 2 * (w * cz + dz)];
+    }
+    var L = _hyp(dir[0], dir[1], dir[2]) || 1;
+    return { up: [dir[0] / L, dir[1] / L, dir[2] / L], east: rot([1, 0, 0]), south: rot([0, 0, 1]) };
+  }
 
   /* 把纯数组四元数灌进一个 THREE.Quaternion（浏览器路径专用；函数体里才碰 THREE） */
   function applyQuad(qt, dir, yawDeg) {
@@ -840,6 +856,13 @@ import './gltf.js';
   /* v157.101（老板 2026-11-22「我能接受。请实现我的意图」）——
      **轨迹球相机**：允许翻过极点、允许 roll。关掉即回到转台（yaw/pitch）老行为。*/
   M.CAM_TRACKBALL = true;
+  /* v158.0（P0 大世界）：玩家化身 + 第三人称跟随。
+     PLAYER_AVATAR 是总开关（关掉即回到 v157 点格传送 + 轨道相机）；
+     FOLLOW 是当前是否处在跟随态（Tab 进出），不写 camO 任何字段 ——
+     这样退出跟随时轨迹球姿态逐位还原，零跳变。 */
+  M.PLAYER_AVATAR = true;
+  M.FOLLOW = false;
+  M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
     M.spinOn = !!on;
@@ -2725,6 +2748,19 @@ import './gltf.js';
      单点采样，不做 2 环平均：平均会被山脊拉动，正是"跨山脊地表变虚"的老原因。 */
   M._groundAt = function () {
     try { return +(groundHAt(camO.dir || [0, 1, 0]) * HSC).toFixed(2); } catch (e) { return 0; }
+  };
+
+  /* v158.0（P0）：**地形高度采样唯一出口**（dir 或 ci → 世界单位）。
+     只读 groundHAt（地表层的既有口径，含整平台面），绝不另算 heightAt；
+     ⛔ 不许把它搬进 placeCamera 函数体 —— §243①e 锁死那里不许读地形。 */
+  M._groundAtUnit = function (dirOrCi) {
+    var d = null;
+    if (Array.isArray(dirOrCi)) d = dirOrCi;
+    else if (dirOrCi != null && _tileCells && _tileCells[dirOrCi | 0]) {
+      d = _tileCells[dirOrCi | 0].dir;
+    } else if (dirOrCi == null) d = camO.dir || [0, 1, 0];
+    if (!d || d.length < 3) return 0;
+    try { return +(groundHAt(d) * HSC).toFixed(3); } catch (e) { return 0; }
   };
 
   M.camFloorAt = function (dir) {
@@ -6705,6 +6741,19 @@ import './gltf.js';
     M._focus = null;                                      /* 兼容壳：任何残留都清掉 */
     _updateWind();                                        /* v157l：风场时间轴/阵风/风向 */
     placeCamera();
+    /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
+       （让地表 patch 跟着人走），绝不碰 quat/dist/lookPitch —— 退出跟随零跳变。 */
+    if (M.FOLLOW && M.PLAYER_AVATAR) {
+      var _avNow = Date.now();
+      var _avDt = Math.min(0.05, (_avNow - (M._avatarClock || _avNow)) / 1000) || 0.016;
+      M._avatarClock = _avNow;
+      try {
+        M.stepAvatar(_avDt, (GAME && GAME._keys) || null);
+        M.followAvatar(_avDt);
+        var _pp = M.playerPose();
+        if (_pp && Array.isArray(_pp.dir)) camO.dir = _pp.dir.slice();
+      } catch (eAv) { }
+    }
     /* v157.15：整平拖刷的**节流重建**。
        整层重建 ~180ms，拖拽时每格重建会把手感拖死 → 150ms 一次；
        松手由 M.terraceFlush() 立刻补一帧，保证最终画面与数据一致。
@@ -8127,6 +8176,20 @@ import './gltf.js';
     g.userData.baseQ = g.quaternion.clone();
     return true;
   }
+  /* v158.0（P0）：placeFigure 的**连续 dir 版兄弟**。
+     ⚠️ 不能每帧调 teleportTo / buildFigures —— 那会整组 dispose+重建小人；
+     这里只挪不重建，姿态仍走 applyQuad（+Y 对齐格法线），与旧落座口径逐位一致。 */
+  function placeFigureAtDir(g, d, yawDeg) {
+    if (!g || !Array.isArray(d) || d.length < 3) return false;
+    var L = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
+    var u = [d[0] / L, d[1] / L, d[2] / L];
+    var rr = R + Math.max(0, sphElev(u)) * HSC + 0.55;
+    g.position.set(u[0] * rr, u[1] * rr, u[2] * rr);
+    applyQuad(g.quaternion, u, yawDeg || 0);
+    if (g.userData.baseQ) g.userData.baseQ.copy(g.quaternion);
+    else g.userData.baseQ = g.quaternion.clone();
+    return true;
+  }
   function buildFigures() {
     if (figRoot) { scene.remove(figRoot); figRoot = null; }
     figCache = {};
@@ -8179,12 +8242,204 @@ import './gltf.js';
     ci = ci | 0;
     if (!(_tileCells && _tileCells[ci])) return false;
     if (!GAME.state) return false;
-    GAME.state._standCi = ci;
+    var d = _tileCells[ci].dir;
+    /* v158.0：格锚传送必须同步连续位姿 —— 否则"传送过去人没动"。 */
+    M.setPlayerPose({ dir: [d[0], d[1], d[2]], h: M._groundAtUnit(d), yaw: 0, v: [0, 0, 0], ci: ci });
     M._standVer = '';                    /* 强制下一帧重建到新格 */
     return true;
   };
   M.playerCi = function () {
     return (GAME.state && GAME.state._standCi != null) ? GAME.state._standCi : -1;
+  };
+
+  /* ============================================================
+   * v158.0（P0 大世界）：位姿唯一出口
+   * ------------------------------------------------------------
+   * 读：M.playerPose()  —— 永远返回**深拷贝**（外部改它不许污染存档）
+   * 写：M.setPlayerPose —— 唯一写入口，顺带同步 _standCi 格锚
+   * 走：M.stepAvatar    —— kinematic 胶囊：球面方向 + 高度场采样，非物理引擎
+   * 相机：M.followAvatar —— 第三人称 rig，只读位姿、不写 camO
+   * ============================================================ */
+  M.playerPose = function () {
+    var st = GAME.state;
+    if (!st) return null;
+    if (!st._avatar && GAME.migrateAvatar158) GAME.migrateAvatar158(st);
+    var a = st._avatar;
+    if (!a) return null;
+    return { dir: a.dir.slice(), h: a.h, yaw: a.yaw, v: a.v.slice() };
+  };
+
+  M.setPlayerPose = function (p) {
+    var st = GAME.state;
+    if (!st || !p) return false;
+    if (!st._avatar && GAME.migrateAvatar158) GAME.migrateAvatar158(st);
+    var a = st._avatar;
+    if (!a) return false;
+    if (Array.isArray(p.dir) && p.dir.length === 3
+      && isFinite(p.dir[0]) && isFinite(p.dir[1]) && isFinite(p.dir[2])) {
+      var L = Math.sqrt(p.dir[0] * p.dir[0] + p.dir[1] * p.dir[1] + p.dir[2] * p.dir[2]) || 1;
+      a.dir = [p.dir[0] / L, p.dir[1] / L, p.dir[2] / L];
+    }
+    if (isFinite(p.h)) a.h = p.h;
+    if (isFinite(p.yaw)) a.yaw = p.yaw;
+    if (Array.isArray(p.v) && p.v.length === 3) a.v = [p.v[0] | 0, p.v[1] | 0, p.v[2] | 0];
+    /* 格锚由 dir 派生；teleportTo 给的精确 ci 优先（避免球面最近格取整差一格）。 */
+    if (p.ci != null) st._standCi = p.ci | 0;
+    else if (p.dir && GAME.mapSphere && GAME.mapSphere.nearestCell) {
+      /* nearestCell 是 O(nv)（4 万顶点），每帧跑会吃掉整帧预算。
+         还在同一格（夹角 < 半格）就跳过；跨格才真正反算。 */
+      var curCell = (st._standCi != null && GAME.mapSphere.cells[st._standCi])
+        ? GAME.mapSphere.cells[st._standCi].dir : null;
+      var dotSame = curCell ? (a.dir[0] * curCell[0] + a.dir[1] * curCell[1] + a.dir[2] * curCell[2]) : -1;
+      if (dotSame <= 0.9999) {
+        var ci = GAME.mapSphere.nearestCell(a.dir);
+        if (ci >= 0) st._standCi = ci;
+      }
+    }
+    return true;
+  };
+
+  /* 胶囊半径（世界单位）：皮肤宽度 0.03 = 半径的 10%，照 Unity CharacterController 口径。 */
+  M.CAPSULE_R = 0.3;
+  M.WALK_SPEED = 4.5;
+  M.SLIDE_SPEED = 3.0;
+  M.SLOPE_LIMIT = 40;
+
+  /* 一步走：输入 → 切平面位移 → 坡度判定 → 贴高。
+     keys 形如 {w:1,a:0,s:0,d:0}；返回诊断量给探针/断言读，不返回位姿本身。 */
+  M.stepAvatar = function (dt, keys) {
+    var p = M.playerPose();
+    if (!p) return null;
+    dt = Math.max(0, Math.min(0.05, dt || 0.016));
+    var fr = avatarBasis(p.dir);                  // 连续基：surfaceFrame 在极点会反向
+    var yaw = p.yaw || 0;
+    var fwd = [
+      fr.east[0] * Math.sin(yaw) - fr.south[0] * Math.cos(yaw),
+      fr.east[1] * Math.sin(yaw) - fr.south[1] * Math.cos(yaw),
+      fr.east[2] * Math.sin(yaw) - fr.south[2] * Math.cos(yaw)
+    ];
+    var turn = ((keys && keys.d) ? 1 : 0) - ((keys && keys.a) ? 1 : 0);
+    var move = ((keys && keys.w) ? 1 : 0) - ((keys && keys.s) ? 1 : 0);
+    var out = { moved: 0, slide: 0, slope: 0, blocked: 0, ground: 0, gap: 0 };
+    if (turn) yaw += turn * 1.8 * dt;             // 转向 103°/s，不靠 body 平移
+    var step = move * M.WALK_SPEED * dt;
+    if (Math.abs(step) > 1e-9) {
+      var nd = [
+        p.dir[0] + fwd[0] * step / R,
+        p.dir[1] + fwd[1] * step / R,
+        p.dir[2] + fwd[2] * step / R
+      ];
+      var nL = Math.sqrt(nd[0] * nd[0] + nd[1] * nd[1] + nd[2] * nd[2]) || 1;
+      nd = [nd[0] / nL, nd[1] / nL, nd[2] / nL];
+      var g0 = M._groundAtUnit(p.dir), g1 = M._groundAtUnit(nd);
+      var slope = Math.atan2(g1 - g0, Math.max(0.01, Math.abs(step))) * 180 / Math.PI;
+      out.slope = +slope.toFixed(2);
+      if (slope > M.SLOPE_LIMIT && g1 > g0) {
+        /* 陡坡上行被挡 + 反向滑落（>40° 是老板原话；5° 滞回防抖）。 */
+        var sd = [
+          p.dir[0] - fwd[0] * M.SLIDE_SPEED * dt / R,
+          p.dir[1] - fwd[1] * M.SLIDE_SPEED * dt / R,
+          p.dir[2] - fwd[2] * M.SLIDE_SPEED * dt / R
+        ];
+        var sL = Math.sqrt(sd[0] * sd[0] + sd[1] * sd[1] + sd[2] * sd[2]) || 1;
+        p.dir = [sd[0] / sL, sd[1] / sL, sd[2] / sL];
+        p.h = M._groundAtUnit(p.dir);
+        out.slide = 1; out.blocked = 1;
+      } else {
+        p.dir = nd; p.h = g1; out.moved = 1;
+      }
+      out.ground = p.h;
+    } else {
+      /* 站着也逐帧贴高：地形被建造/整平改动时脚不会陷进去或飘起来。 */
+      p.h = M._groundAtUnit(p.dir);
+      out.ground = p.h;
+    }
+    p.yaw = yaw;
+    p.v = [0, 0, 0];                             // kinematic：不保留瞬时动量
+    M.setPlayerPose(p);
+    var chk = M.playerPose();
+    out.gap = +Math.abs(chk.h - M._groundAtUnit(chk.dir)).toFixed(4);
+    return out;
+  };
+
+  /* ============================================================
+   * v158.0（P0）：第三人称跟随相机 —— Cinemachine Third Person Follow 的
+   * 极简骨架：Origin(角色) → Hand(眼高) → Camera(身后 6m / 俯角 15°)。
+   * ⛔ 不写 camO 任何字段：轨迹球真值是 camO.quat，碰它就会让退出跟随
+   *    那一帧画面跳回；也不写 M._rAlt/_agl/_zoomTarget（那属于 placeCamera）。
+   * ============================================================ */
+  M.FOLLOW_DIST = 6.0;
+  M.FOLLOW_PITCH = 15;
+  M.FOLLOW_DAMP = 0.15;
+  M._followPos = null;
+
+  M.followAvatar = function (dt) {
+    var p = M.playerPose();
+    if (!p) return null;
+    dt = Math.max(0, Math.min(0.05, dt || 0.016));
+    var fr = avatarBasis(p.dir);
+    var yaw = p.yaw || 0;
+    var fwd = [
+      fr.east[0] * Math.sin(yaw) - fr.south[0] * Math.cos(yaw),
+      fr.east[1] * Math.sin(yaw) - fr.south[1] * Math.cos(yaw),
+      fr.east[2] * Math.sin(yaw) - fr.south[2] * Math.cos(yaw)
+    ];
+    var eyeY = R + p.h + 1.7;                      // 1.7m 眼高（不可谈判的人体常量）
+    var P = [p.dir[0] * eyeY, p.dir[1] * eyeY, p.dir[2] * eyeY];
+    var rise = M.FOLLOW_DIST * Math.tan(M.FOLLOW_PITCH * Math.PI / 180);
+    var target = [
+      P[0] - fwd[0] * M.FOLLOW_DIST + fr.up[0] * rise,
+      P[1] - fwd[1] * M.FOLLOW_DIST + fr.up[1] * rise,
+      P[2] - fwd[2] * M.FOLLOW_DIST + fr.up[2] * rise
+    ];
+    function liftOutOfGround(v) {
+      var L = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) || 1;
+      var d = [v[0] / L, v[1] / L, v[2] / L];
+      var floor = R + M._groundAtUnit(d) + 0.5;
+      var r = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+      if (r < floor) return [d[0] * floor, d[1] * floor, d[2] * floor];
+      return v;
+    }
+    target = liftOutOfGround(target);
+    if (!M._followPos) M._followPos = target.slice();
+    var k = 1 - Math.exp(-dt / M.FOLLOW_DAMP);      // 帧率无关的指数阻尼
+    for (var i = 0; i < 3; i++) M._followPos[i] += (target[i] - M._followPos[i]) * k;
+    M._followPos = liftOutOfGround(M._followPos);
+    cam.position.set(M._followPos[0], M._followPos[1], M._followPos[2]);
+    cam.up.set(fr.up[0], fr.up[1], fr.up[2]);
+    cam.lookAt(P[0], P[1], P[2]);
+    cam.updateMatrixWorld();
+    /* 小人只挪不重建（buildFigures 每帧可能整组重建，必须在它之后驱动）。 */
+    var fg = (figCache && figCache['stand']) ? figCache['stand'].g : null;
+    if (fg) placeFigureAtDir(fg, p.dir, yaw * 180 / Math.PI);
+    var dx = M._followPos[0] - P[0], dy = M._followPos[1] - P[1], dz = M._followPos[2] - P[2];
+    var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    var horiz = Math.sqrt(dx * dx + dz * dz);
+    var fL = Math.sqrt(M._followPos[0] * M._followPos[0] + M._followPos[1] * M._followPos[1]
+      + M._followPos[2] * M._followPos[2]) || 1;
+    var fdir = [M._followPos[0] / fL, M._followPos[1] / fL, M._followPos[2] / fL];
+    return {
+      dist: +dist.toFixed(3),
+      pitch: +(Math.atan2(dy, Math.max(0.01, horiz)) * 180 / Math.PI).toFixed(3),
+      groundGap: +(fL - R - M._groundAtUnit(fdir)).toFixed(3)
+    };
+  };
+
+  /* 进入/退出跟随态。进入时把角色放到相机当前看的方向，避免"一按 Tab 人瞬移"。 */
+  M.setFollow = function (on) {
+    on = !!on;
+    if (!M.PLAYER_AVATAR) on = false;
+    if (on) {
+      var d = camO.dir || [0, 1, 0];
+      if (!GAME.state || !GAME.state._avatar) {
+        M.setPlayerPose({ dir: [d[0], d[1], d[2]], h: M._groundAtUnit(d), yaw: 0, v: [0, 0, 0] });
+      }
+      M.surfaceMode(true);
+      M._followPos = null;
+    }
+    M.FOLLOW = on;
+    if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+    return M.FOLLOW;
   };
 
   /* ============================================================

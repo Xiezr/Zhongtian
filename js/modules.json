@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "3240185cf48e3a95",
+ "sourceHash": "4ad36a52e06b4eac",
  "layout": {
   "order": [
    "core",
@@ -825,7 +825,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4268,
+   "lines": 4291,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -836,8 +836,8 @@
     "ui-modal",
     "ui-view",
     "ui-craft",
-    "ui-exped",
     "map3d",
+    "ui-exped",
     "ui-space",
     "ui-planet",
     "systems",
@@ -901,7 +901,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9151,
+   "lines": 9406,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -909,8 +909,8 @@
     "map",
     "ui",
     "domain",
-    "gltf",
     "ui-space",
+    "gltf",
     "state",
     "fog",
     "ui-fx",
@@ -1172,7 +1172,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6454,
+   "lines": 6496,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [

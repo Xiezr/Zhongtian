@@ -631,6 +631,10 @@ import './data.js';
       : Math.floor(Math.random() * 4294967296);
     GAME.state = {
       version: SAVE_VERSION,
+      /* v158.0（P0 大世界）：玩家连续位姿。新建时为 null，首次由
+         M.playerPose() → GAME.migrateAvatar158() 按当前格锚惰性补齐 ——
+         这里不能提前取 city.ci：v139 已记过 ci 在建城时全为 -1 的坑。 */
+      _avatar: null,
       /* v89.190（v89.189 遗留「幸存者口径老档宽限」）：幸存者安置标记 ——
          新局建档即带（fresh），老档（无此字段）首载时由 adoptState 一次性安置。 */
       popGrace190: { at: U.now(), fresh: true },
@@ -2368,6 +2372,38 @@ import './data.js';
   };
 
   /* ============================================================
+   * v158.0（P0 大世界）：玩家连续位姿 `_avatar` 的**唯一迁移出口**。
+   * ------------------------------------------------------------
+   * 老档 / 新档（_avatar:null）都按 `_standCi` → 首城 ci 的优先级补一份；
+   * 已存在则幂等，只把瞬时速度 v 归零（v 是派生量，不入档）。
+   * ⚠️ 只用 `mapSphere.cells[ci].dir`（普通数组），**不碰 map3d 渲染态** ——
+   *    迁移链里 `M.rebuild()` 刚把 _tileCells 作废（state.js:3999）。
+   * ============================================================ */
+  GAME.migrateAvatar158 = function (st) {
+    if (!st) return 0;
+    var a = st._avatar;
+    if (!a || !Array.isArray(a.dir) || a.dir.length !== 3
+      || !isFinite(a.dir[0]) || !isFinite(a.dir[1]) || !isFinite(a.dir[2])
+      || !isFinite(a.h) || !isFinite(a.yaw)) {
+      var ci = (st._standCi != null && st._standCi >= 0) ? (st._standCi | 0)
+        : ((st.cities && st.cities[0] && st.cities[0].ci != null) ? (st.cities[0].ci | 0) : -1);
+      var d = null;
+      if (ci >= 0 && GAME.mapSphere && GAME.mapSphere.cells && GAME.mapSphere.cells[ci]) {
+        var src = GAME.mapSphere.cells[ci].dir;
+        if (src && src.length === 3) d = [src[0], src[1], src[2]];
+      }
+      if (!d) d = [0, 1, 0];
+      var L = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
+      st._avatar = { dir: [d[0] / L, d[1] / L, d[2] / L], h: 0, yaw: 0, v: [0, 0, 0] };
+      return 1;
+    }
+    /* 读档后的瞬时动量不恢复（position 恢复，velocity 不恢复） */
+    if (!Array.isArray(a.v)) a.v = [0, 0, 0];
+    else { a.v[0] = 0; a.v[1] = 0; a.v[2] = 0; }
+    return 0;
+  };
+
+  /* ============================================================
    * v90.100（球系身份）：老档把**身份/键**从平面 (x,y) 迁到 ci。
    * ------------------------------------------------------------
    * 前置：migrateSphereCi70 已为实体补 `.ci`。本迁移做「身份层」的换血：
@@ -4000,6 +4036,8 @@ import './data.js';
       }
       /* v152：格网细分 40962 → 10242 —— 读档按经纬把 ci 重落新格网（幂等 `_sub152`）。 */
       try { GAME.migrateSphereSub(st); } catch (eSub) { /* 迁移失败不挡读档 */ }
+      /* v158.0（P0）：位姿必须在球面/ci 重落之后补，否则 dir 会指向旧格网。 */
+      try { GAME.migrateAvatar158(st); } catch (eAv) { /* 迁移失败不挡读档 */ }
       /* v92：探明度。球面已切好（上面的 setPlanet）才有格数，故放在这里。
          · 老档（无 fog 数据）→ backfill：把走过的城/野地/据点补成已知，
            **不清零** —— 加迷雾不该抹掉玩家几十小时的成果。
@@ -4168,6 +4206,10 @@ import './data.js';
            等于每份存档永久多背 1.5MB。7 份存档 → 10MB+，5MB 配额必然爆。
            它是纯派生缓存（下次迁移可重建），一律不入档。 */
         if (k === '_sub153LL') return undefined;
+        /* v158.0（P0）：瞬时速度是派生量，不入档。
+           ⚠️ 绝不写裸 `k === 'v'` —— fog 包用 `{v:2,...}` 存版本号（fog.js:294），
+           裸删会让老档的探明度整包失效（§589s 当场翻红）。必须按父对象精确匹配。 */
+        if (k === 'v' && this === GAME.state._avatar) return undefined;
         /* 日志类：只留最近 N 条（v156.69 配额） */
         var cap = LOG_KEEP[k];
         if (cap && Array.isArray(v) && v.length > cap) return v.slice(-cap);

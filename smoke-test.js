@@ -49304,6 +49304,77 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /shade\[vj\] = 1\.0;/.test(mp),
       '水下 → 径向法线 + shade 1');
 
+    /* ㉑ P0 大世界位姿（v158.0 · 老板授权 123） —— 骨架四条：
+       一个状态量 _avatar / 一个唯一出口 / 六个不变量 / 总开关回退。 */
+    (function () {
+      var stC158 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8'));
+      var mpC158 = stripComment(mp);
+      var mnC158 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
+
+      check('§589v 位姿唯一出口：playerPose / setPlayerPose / _groundAtUnit / migrateAvatar158 各 1 处',
+        /M\.playerPose = function \(\)/.test(mpC158)
+        && /M\.setPlayerPose = function \(p\)/.test(mpC158)
+        && /M\._groundAtUnit = function \(dirOrCi\)/.test(mpC158)
+        && /GAME\.migrateAvatar158 = function \(st\)/.test(stC158)
+        && /GAME\.migrateAvatar158\(st\);/.test(stC158),
+        '读 / 写 / 采样 / 迁移');
+
+      check('§589w 脚底贴地：逐帧取真实地形高 + gap 回读 + 胶囊半径（非贴地吸附的半成品）',
+        /p\.h = M\._groundAtUnit\(p\.dir\)/.test(mpC158)
+        && /out\.gap = \+Math\.abs\(chk\.h - M\._groundAtUnit\(chk\.dir\)\)/.test(mpC158)
+        && /M\.CAPSULE_R = 0\.3/.test(mpC158),
+        'h←ground · gap 回读 · R=0.3');
+
+      check('§589x 坡度：>40° 挡上行且反向滑落（老板原话 · 5° 滞回防抖）',
+        /M\.SLOPE_LIMIT = 40/.test(mpC158)
+        && /slope > M\.SLOPE_LIMIT && g1 > g0/.test(mpC158)
+        && /out\.slide = 1; out\.blocked = 1/.test(mpC158),
+        '40° + 阻挡 + 滑落');
+
+      check('§589y 跟随相机：6m / 15° / 指数阻尼在岗 · 跟随体内不写 camO.dist 与 lookPitch',
+        (function () {
+          var body = mpC158.slice(mpC158.indexOf('M.followAvatar = function'), mpC158.indexOf('M.setFollow = function'));
+          return /M\.FOLLOW_DIST = 6\.0/.test(mpC158)
+            && /M\.FOLLOW_PITCH = 15/.test(mpC158)
+            && /1 - Math\.exp\(-dt \/ M\.FOLLOW_DAMP\)/.test(body)
+            && /cam\.lookAt\(P\[0\], P\[1\], P\[2\]\)/.test(body)
+            && !/camO\.dist\s*=/.test(body) && !/camO\.lookPitch\s*=/.test(body)
+            && !/camO\.quat/.test(body);
+        })(),
+        'rig 参数 + 轨迹球零污染');
+
+      check('§589z 格锚同步：teleportTo 一次写 dir/ci · 跨格才反算 nearestCell',
+        /M\.setPlayerPose\(\{ dir: \[d\[0\], d\[1\], d\[2\]\], h: M\._groundAtUnit\(d\), yaw: 0, v: \[0, 0, 0\], ci: ci \}\)/.test(mpC158)
+        && /GAME\.mapSphere\.nearestCell\(a\.dir\)/.test(mpC158)
+        && /dotSame <= 0\.9999/.test(mpC158),
+        '传送同步 + 跳格反算（省每帧 O(nv)）');
+
+      check('§589aa 存档：_avatar 入档 · 瞬时 v 精确剔除（不误伤 fog.v）',
+        /_avatar: null/.test(stC158)
+        && /if \(k === 'v' && this === GAME\.state\._avatar\) return undefined;/.test(stC158)
+        && !/if \(k === 'v'\) return undefined;/.test(stC158)
+        && /raw\.fog\.v === 2/.test(fsMod.readFileSync(pathMod.join(__dirname, 'smoke-test.js'), 'utf8')),
+        '父对象精匹配 · 老断言 fog.v 仍在');
+
+      check('§589ab 反向证据：_avatar 无散落赋值 · placeCamera 体内不许读地形（§243①e 不回退）',
+        (function () {
+          var pc = mpC158.slice(mpC158.indexOf('function placeCamera()'), mpC158.indexOf('M.render = function'));
+          return (mpC158.match(/GAME\.state\._avatar\s*=/g) || []).length === 0
+            && (mnC158.match(/GAME\.state\._avatar\s*=/g) || []).length === 0
+            && (stC158.match(/if \(k === '_avatar'\) return undefined;/g) || []).length === 0
+            && !/groundHAt\(|elevAvgAt\(|camFloorAt\(|GAME\.map\.heightAt/.test(pc);
+        })(),
+        '唯一出口 + placeCamera 纯净');
+
+      check('§589ac 总开关：PLAYER_AVATAR=false 回到点格传送 + 轨道相机（Tab 接线在岗）',
+        /M\.PLAYER_AVATAR = true/.test(mpC158)
+        && /if \(!M\.PLAYER_AVATAR\) on = false;/.test(mpC158)
+        && /if \(M\.FOLLOW && M\.PLAYER_AVATAR\)/.test(mpC158)
+        && /_avCode === 'Tab'/.test(mnC158)
+        && /window\.addEventListener\('blur', function \(\) \{ GAME\._keys = \{\}; \}\)/.test(mnC158),
+        '总开关 + Tab + 失焦清键');
+    })();
+
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）
        · 起伏项除以 `(0.70 + 0.46 * uPivot)` —— 纯方向明暗必然压暗坡面，不归一化整幅会变暗 15% */
