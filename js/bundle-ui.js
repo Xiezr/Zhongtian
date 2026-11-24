@@ -633,6 +633,8 @@
       townScaleOf: _townScaleOf,
       /* v156.19：球面坐标系的纯数学出口（无 three 也要能验） */
       surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+      /* v158.1（P1）：行走/交互共用的连续切平面基 —— 探针与游戏必须同口径 */
+      avatarBasis: avatarBasis,
       /* v157.54：拖拽平移的两个纯数学出口（无 three 也要能真调，见上方注释） */
       panBasisOf: panBasisOf, panStepOf: panStepOf };
     return;
@@ -642,6 +644,7 @@
     openCellPanel: _openCellPanel, cellBrief: _cellBrief,
     townScaleOf: _townScaleOf,
     surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+    avatarBasis: avatarBasis,
     panBasisOf: panBasisOf, panStepOf: panStepOf };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
@@ -7046,6 +7049,18 @@
         M.followAvatar(_avDt);
         var _pp = M.playerPose();
         if (_pp && Array.isArray(_pp.dir)) camO.dir = _pp.dir.slice();
+        /* v158.1（P1）：走近提示挂在跟随态里，且只在目标变化时写 DOM ——
+           每帧无脑 innerHTML 会把 rAF 吃掉一大截；sig 去重后跨格才刷一次。 */
+        try {
+          if (GAME.ui && GAME.ui.renderInteractHint) {
+            var _nh = M.nearestInteractable();
+            var _nhSig = _nh ? (_nh.ci + ':' + _nh.kind + ':' + _nh.verb) : '';
+            if (_nhSig !== M._interactHintSig) {
+              M._interactHintSig = _nhSig;
+              GAME.ui.renderInteractHint(_nh);
+            }
+          }
+        } catch (eHint) { }
       } catch (eAv) { }
     }
     /* v157.15：整平拖刷的**节流重建**。
@@ -8593,6 +8608,99 @@
     return true;
   };
 
+  /* ============================================================
+   * v158.1（P1 大世界）：走近即交互
+   * ------------------------------------------------------------
+   * 老板口径（计划 §P1）：走到遗迹/资源/传送点前**出现提示**，按 E 触发
+   * **原来那个面板**或获得物。因此这里只做"找目标"，绝不另起面板/另写背包。
+   *
+   * 判据（三条同时满足才算命中）：
+   *   ① 距离：当前格 + 6 邻格（SP.adj 是六边邻接；球面没有"8 邻格"）；
+   *   ② 朝向：目标方向落在角色**前方 30° 锥**内 —— 复用 P0 的 avatarBasis
+   *      与 stepAvatar 同一个 fwd 公式，禁止另算一套（§589v 唯一出口）；
+   *   ③ 内容：该格有实物（遗迹/村社/营地/城/据点/放置物），不是"路过就提示"。
+   * 不进半径自动触发：老板 v157.96 口径"世界不能路过就踩雷"，必须显式按键。
+   * ============================================================ */
+  M.INTERACT_NEAR = true;
+  M.INTERACT_RANGE = 1;                 /* 六边环数：≤1 格 */
+  M.INTERACT_CONE = 30;                 /* 度：正前方半角 */
+  var INTERACT_INFO = {
+    own: ['己方城市', '进入'], npc: ['名城', '查看'], adm: ['行政城', '查看'],
+    fort: ['据点', '查看'], lord: ['君主所在', '进入'],
+    ruin: ['遗迹', '探索'], village: ['村社', '交涉'], camp: ['营地', '清剿'],
+    prop: ['放置物', '查看']
+  };
+  function _propAtCi(ci) {
+    try {
+      var d = SP.cells[ci].dir;
+      var g = M.gridAt([d[0] * R, d[1] * R, d[2] * R]);
+      if (!g) return null;
+      return (GAME.place && GAME.place.at) ? GAME.place.at(g.i, g.j) : null;
+    } catch (eP) { return null; }
+  }
+  function _interactKindOf(ci) {
+    var k = (M.cellKind && M.cellKind[ci]) || null;
+    if (k && INTERACT_INFO[k]) return k;
+    try { if (GAME.ruin && GAME.ruin.isFound && GAME.ruin.isFound(ci)) return 'ruin'; } catch (e1) { }
+    try { if (GAME.camp && GAME.camp.isFound && GAME.camp.isFound(ci)) return 'camp'; } catch (e2) { }
+    try {
+      if (GAME.village && GAME.village.at && GAME.village.at(ci)
+        && (!GAME.village.isKnown || GAME.village.isKnown(ci))) return 'village';
+    } catch (e3) { }
+    if (_propAtCi(ci)) return 'prop';
+    return null;
+  }
+  /* 返回 {ci, kind, name, verb, angle, hex} 或 null。**只读**，不改 state。 */
+  M.nearestInteractable = function () {
+    if (!M.INTERACT_NEAR || !M.PLAYER_AVATAR) return null;
+    var st = GAME.state, p = M.playerPose();
+    if (!st || !p || !SP || !SP.cells) return null;
+    var ci = st._standCi;
+    if (!(ci >= 0) || !SP.cells[ci]) return null;
+    var fr = avatarBasis(p.dir), yaw = p.yaw || 0;
+    var fwd = [
+      fr.east[0] * Math.sin(yaw) - fr.south[0] * Math.cos(yaw),
+      fr.east[1] * Math.sin(yaw) - fr.south[1] * Math.cos(yaw),
+      fr.east[2] * Math.sin(yaw) - fr.south[2] * Math.cos(yaw)
+    ];
+    var cand = [ci].concat(SP.adj[ci] || []);
+    var lim = M.INTERACT_RANGE | 0, cone = M.INTERACT_CONE;
+    var best = null;
+    for (var i = 0; i < cand.length; i++) {
+      var t = cand[i];
+      if (!(t >= 0) || !SP.cells[t]) continue;
+      var hex = (t === ci) ? 0 : 1;
+      if (hex > lim) continue;
+      var ang = 0;
+      if (hex) {
+        /* ⚠️ 别拿 fwd 直接点乘 td：td 是**径向**（邻格与脚下只差 ~1°），
+           fwd 是**切向**，两者天然正交（实测 dot≈0.018 → 89°），会把正前方
+           的所有目标都判成背后。先把 td 投影到角色切平面，再与 fwd 比夹角。 */
+        var td = SP.cells[t].dir;
+        var rad = td[0] * p.dir[0] + td[1] * p.dir[1] + td[2] * p.dir[2];
+        var pv = [td[0] - rad * p.dir[0], td[1] - rad * p.dir[1], td[2] - rad * p.dir[2]];
+        var pl = Math.sqrt(pv[0] * pv[0] + pv[1] * pv[1] + pv[2] * pv[2]);
+        if (pl > 1e-9) {
+          var dot = (fwd[0] * pv[0] + fwd[1] * pv[1] + fwd[2] * pv[2]) / pl;
+          ang = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+          if (ang > cone) continue;                  /* 背对 / 超锥 = 误触，直接排除 */
+        }
+      }
+      /* 未探明的格不长出可交互物 —— 与 _cellBrief「未探明」口径一致 */
+      try { if (GAME.fog && GAME.fog.get && GAME.fog.get(t) <= 0) continue; } catch (eF) { }
+      var kind = _interactKindOf(t);
+      if (!kind || !INTERACT_INFO[kind]) continue;
+      var score = hex * 100 + ang;                   /* 当前格优先，其次夹角最小 */
+      if (best && score >= best._score) continue;
+      best = {
+        ci: t, kind: kind, name: INTERACT_INFO[kind][0], verb: INTERACT_INFO[kind][1],
+        angle: +ang.toFixed(2), hex: hex, _score: score
+      };
+    }
+    if (best) delete best._score;
+    return best;
+  };
+
   /* 胶囊半径（世界单位）：皮肤宽度 0.03 = 半径的 10%，照 Unity CharacterController 口径。 */
   M.CAPSULE_R = 0.3;
   M.WALK_SPEED = 4.5;
@@ -8732,6 +8840,10 @@
       M._followPos = null;
     }
     M.FOLLOW = on;
+    if (!on && GAME.ui && GAME.ui.renderInteractHint) {
+      M._interactHintSig = '';                       /* 退出跟随立刻收提示，不留在屏幕上 */
+      GAME.ui.renderInteractHint(null);
+    }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return M.FOLLOW;
   };
@@ -31108,6 +31220,42 @@ ui.openDuel = function (fid, moveId) {
      去向：`map3d.pickAt` 现在直达 `openCellPanel`（按 kind 分发到原面板）；
      四个 `cell-menu-detail/exp/dispatch/scout` 动作在 `main.js` 同步删除。
      `smoke §580②` 已翻转为反向守卫：点击不许再经任何中间菜单。 */
+
+  /* ============================================================
+   * v158.1（P1 大世界）：走近交互提示条
+   * ------------------------------------------------------------
+   * 不是新面板 —— 只是一行跟随态常驻提示；M.nearestInteractable() 出目标，
+   * 由 map3d 渲染循环按 sig 去重后驱动（跨格才写一次 DOM）。
+   * ⚠️ 必须挂 `GAME.ui.*`：新开顶层 `GAME.interactHint` 会让 arch 多一条 core>ui 边。
+   * ============================================================ */
+  ui.renderInteractHint = function (hit) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('interact-hint');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'interact-hint';
+      el.style.cssText = 'position:absolute;left:50%;bottom:88px;transform:translateX(-50%);'
+        + 'z-index:1900;pointer-events:none;display:none;white-space:nowrap;'
+        + 'background:rgba(12,18,26,.86);color:var(--gold-light,#f5e6b8);'
+        + 'border:1px solid var(--gold-dark,#8a6d2f);border-radius:8px;'
+        + 'padding:6px 12px;font-size:15px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
+      root.appendChild(el);
+    }
+    if (!hit || (ui.modalVisible && ui.modalVisible())) {
+      el.style.display = 'none';
+      el.textContent = '';
+      el.removeAttribute('data-ci');
+      return el;
+    }
+    el.innerHTML = '<span style="display:inline-block;background:var(--gold,#c9a44c);color:#1a1206;'
+      + 'border-radius:4px;padding:1px 7px;margin-right:8px;font-size:13px;">E</span>'
+      + U.escape(String(hit.verb || '查看') + String(hit.name || '目标'));
+    el.setAttribute('data-ci', String(hit.ci));
+    el.setAttribute('data-kind', String(hit.kind || ''));
+    el.style.display = 'block';
+    return el;
+  };
 })();
 
 /* ---- ui-exped.js ---- */
@@ -41284,6 +41432,19 @@ ui.openDuel = function (fid, moveId) {
           e.preventDefault();
           return;
         }
+        /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
+           没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
+           鼠标点格的旧路径逐字不变。 */
+        if (_avCode === 'KeyE' && _mkAv.FOLLOW && !e.shiftKey) {
+          var _near = _mkAv.nearestInteractable && _mkAv.nearestInteractable();
+          if (_near) {
+            if (_mkAv.openCellPanel) _mkAv.openCellPanel(_near.ci);
+            _mkAv._interactHintSig = '';              /* 面板关掉后要能重新亮提示 */
+            if (ui.renderInteractHint) ui.renderInteractHint(null);
+          }
+          e.preventDefault();
+          return;
+        }
         if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
           if (!GAME._keys) GAME._keys = {};
           GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
@@ -41550,7 +41711,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.0';
+  GAME.VERSION = 'v158.1';
   function boot() {
     fitAppSize();
     try {

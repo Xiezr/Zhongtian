@@ -49373,6 +49373,39 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /_avCode === 'Tab'/.test(mnC158)
         && /window\.addEventListener\('blur', function \(\) \{ GAME\._keys = \{\}; \}\)/.test(mnC158),
         '总开关 + Tab + 失焦清键');
+
+      /* v158.1（P1）：走近即交互 —— 命中判据 / 提示与分派 / 反向证据。 */
+      var umC1581 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui-mapui.js'), 'utf8'));
+      check('§589ad 走近命中：nearestInteractable 唯一出口 + 前方 30°/≤1 格 + 只查当前格与 6 邻格',
+        /M\.INTERACT_NEAR = true/.test(mpC158)
+        && /M\.INTERACT_RANGE = 1/.test(mpC158)
+        && /M\.INTERACT_CONE = 30/.test(mpC158)
+        && /M\.nearestInteractable = function \(\)/.test(mpC158)
+        && /var fr = avatarBasis\(p\.dir\)/.test(mpC158)
+        && /var cand = \[ci\]\.concat\(SP\.adj\[ci\] \|\| \[\]\)/.test(mpC158)
+        && /if \(ang > cone\) continue;/.test(mpC158)
+        && /GAME\.fog\.get\(t\) <= 0/.test(mpC158),
+        '唯一出口 + 六邻格 + 前向锥 + 未探明排除');
+
+      check('§589ae 走近操作：提示条挂 GAME.ui.* + E 键直达原面板（不新开面板）',
+        /ui\.renderInteractHint = function \(hit\)/.test(umC1581)
+        && /getElementById\('interact-hint'\)/.test(umC1581)
+        && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+        && /_mkAv\.nearestInteractable && _mkAv\.nearestInteractable\(\)/.test(mnC158)
+        && /_mkAv\.openCellPanel\(_near\.ci\)/.test(mnC158),
+        '提示条 + E 键 + openCellPanel 同出口');
+
+      check('§589af 反向证据：旧点格面板仍在 · E 键零背包写入（只走既有 items.add）',
+        /M\.openCellPanel\(ci\);/.test(mpC158)
+        && /case 'cell-teleport'/.test(mnC158)
+        && (function () {
+          var at = mnC158.indexOf("_avCode === 'KeyE'");
+          if (at < 0) return false;
+          var blk = mnC158.slice(at, at + 600);
+          return !/items\.add|state\.items/.test(blk);
+        })()
+        && /GAME\.items\.add/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ruin.js'), 'utf8')),
+        '旧路径保留 + E 键不另写背包');
     })();
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证

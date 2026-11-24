@@ -16497,6 +16497,42 @@ import './ui.js';
      去向：`map3d.pickAt` 现在直达 `openCellPanel`（按 kind 分发到原面板）；
      四个 `cell-menu-detail/exp/dispatch/scout` 动作在 `main.js` 同步删除。
      `smoke §580②` 已翻转为反向守卫：点击不许再经任何中间菜单。 */
+
+  /* ============================================================
+   * v158.1（P1 大世界）：走近交互提示条
+   * ------------------------------------------------------------
+   * 不是新面板 —— 只是一行跟随态常驻提示；M.nearestInteractable() 出目标，
+   * 由 map3d 渲染循环按 sig 去重后驱动（跨格才写一次 DOM）。
+   * ⚠️ 必须挂 `GAME.ui.*`：新开顶层 `GAME.interactHint` 会让 arch 多一条 core>ui 边。
+   * ============================================================ */
+  ui.renderInteractHint = function (hit) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('interact-hint');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'interact-hint';
+      el.style.cssText = 'position:absolute;left:50%;bottom:88px;transform:translateX(-50%);'
+        + 'z-index:1900;pointer-events:none;display:none;white-space:nowrap;'
+        + 'background:rgba(12,18,26,.86);color:var(--gold-light,#f5e6b8);'
+        + 'border:1px solid var(--gold-dark,#8a6d2f);border-radius:8px;'
+        + 'padding:6px 12px;font-size:15px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
+      root.appendChild(el);
+    }
+    if (!hit || (ui.modalVisible && ui.modalVisible())) {
+      el.style.display = 'none';
+      el.textContent = '';
+      el.removeAttribute('data-ci');
+      return el;
+    }
+    el.innerHTML = '<span style="display:inline-block;background:var(--gold,#c9a44c);color:#1a1206;'
+      + 'border-radius:4px;padding:1px 7px;margin-right:8px;font-size:13px;">E</span>'
+      + U.escape(String(hit.verb || '查看') + String(hit.name || '目标'));
+    el.setAttribute('data-ci', String(hit.ci));
+    el.setAttribute('data-kind', String(hit.kind || ''));
+    el.style.display = 'block';
+    return el;
+  };
 })();
 
 /* ============================================================

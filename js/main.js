@@ -3977,6 +3977,19 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
+        /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
+           没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
+           鼠标点格的旧路径逐字不变。 */
+        if (_avCode === 'KeyE' && _mkAv.FOLLOW && !e.shiftKey) {
+          var _near = _mkAv.nearestInteractable && _mkAv.nearestInteractable();
+          if (_near) {
+            if (_mkAv.openCellPanel) _mkAv.openCellPanel(_near.ci);
+            _mkAv._interactHintSig = '';              /* 面板关掉后要能重新亮提示 */
+            if (ui.renderInteractHint) ui.renderInteractHint(null);
+          }
+          e.preventDefault();
+          return;
+        }
         if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
           if (!GAME._keys) GAME._keys = {};
           GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
@@ -4243,7 +4256,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.0';
+  GAME.VERSION = 'v158.1';
   function boot() {
     fitAppSize();
     try {
