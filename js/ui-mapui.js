@@ -933,4 +933,38 @@ import './ui.js';
     el.style.display = on ? 'block' : 'none';
     return el;
   };
+
+  /* ============================================================
+   * v158.4（P4 大世界）：街区居民提示条
+   * ------------------------------------------------------------
+   * ⚠️ 同 P2/P3：不复用 #interact-hint（每帧按 sig 重写 innerHTML、
+   *    pointer-events:none）。由 GAME.npc.tick 按 id/hostile/verb 的签名
+   *    去重驱动；挂 GAME.ui.*，不新增顶层全局、不抢 P1/P3 拾取。
+   * ============================================================ */
+  ui.renderNpcHint = function (hit) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('npc-hint');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'npc-hint';
+      el.style.cssText = 'position:absolute;left:50%;bottom:132px;transform:translateX(-50%);'
+        + 'z-index:1903;display:none;pointer-events:none;white-space:nowrap;font-size:14px;';
+      root.appendChild(el);
+    }
+    if (!hit || (ui.modalVisible && ui.modalVisible())) {
+      el.style.display = 'none';
+      el.textContent = '';
+      /* 桩环境（smoke 的 DOM stub）没有 removeAttribute —— 观测层不许炸玩法。 */
+      if (el.removeAttribute) el.removeAttribute('data-npc');
+      return el;
+    }
+    el.innerHTML = '<span style="display:inline-block;background:var(--gold,#c9a44c);color:#1a1206;'
+      + 'border-radius:4px;padding:1px 7px;margin-right:8px;font-size:13px;">E</span>'
+      + U.escape(String(hit.verb || '交谈') + String(hit.name || '行人'));
+    el.setAttribute('data-npc', String(hit.id));
+    el.setAttribute('data-hostile', hit.hostile ? '1' : '0');
+    el.style.display = 'block';
+    return el;
+  };
 })();

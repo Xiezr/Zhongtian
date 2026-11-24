@@ -166,6 +166,9 @@
     }
     /* v158.3（P3）：载具画在同一个街区 root 上（与街道同源渐显，不新建场景）。 */
     if (G.vehicle && G.vehicle.build) G.vehicle.build(root, plan);
+    /* v158.4（P4）：居民也画在同一个 root 上，材质并入 D._mats 一起渐显；
+       不进 nodeList、不碰 D.pos/camO，位置只在 GAME.npc.list 里。 */
+    if (G.npc && G.npc.build) G.npc.build(root, plan);
     /* 挂在 map3d 的同一个 scene（scene 出口由 map3d 提供，不自建） */
     var sc = G.map3d && G.map3d._scene && G.map3d._scene();
     if (!sc || !sc.add) return false;
@@ -206,6 +209,8 @@
     D.active = true;                       /* ← 唯一进入写 */
     D._clock = Date.now();
     D._from = null;                        /* 首帧由 camera() 从当前 cam 采样 */
+    /* v158.4（P4）：居民运行态由 plan + ci 派生，读档重进即重建，不入档。 */
+    if (G.npc && G.npc.spawn) G.npc.spawn(plan, D.cityId || (city ? city.id : null), ci);
     if (!build()) {                        /* 无 THREE（jsdom）仍允许逻辑态进入 */
       D._noRender = true;
     } else {
@@ -241,6 +246,8 @@
         clearRoot();
         /* v158.3（P3）：离街区时清载具运行时态（不入档、不留残留按键/速度）。 */
         if (G.vehicle && G.vehicle.reset) G.vehicle.reset();
+        /* v158.4（P4）：离街区清居民运行态与提示条，不留幽灵 NPC。 */
+        if (G.npc && G.npc.reset) G.npc.reset();
         if (snap && G.map3d.setPlayerPose) G.map3d.setPlayerPose(snap);
         if (G.ui && G.ui.renderDistrictHud) G.ui.renderDistrictHud(false);
         if (G.ui && G.ui.renderVehicleHud) G.ui.renderVehicleHud(false);
@@ -255,6 +262,8 @@
       var V = G.vehicle;
       if (V && V.mounted) V.step(dt, V.keys, D.plan);
       else D.step(dt, D.keys);
+      /* v158.4（P4）：NPC 与玩家同帧推进；载具态只关交互提示，不关日程。 */
+      if (G.npc && G.npc.tick) G.npc.tick(dt);
     }
     var op = Math.max(0, Math.min(1, D.t));
     for (var i = 0; i < D._mats.length; i++) D._mats[i].opacity = op;

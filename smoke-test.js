@@ -12684,7 +12684,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
     var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
-      'map3d', 'scene3d', 'district', 'vehicle', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
+      'map3d', 'scene3d', 'district', 'vehicle', 'npc', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
@@ -49497,6 +49497,153 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         })(),
         '旧路径保留 + 三级按键不串线 + 步行本体未动');
     })();
+
+    /* v158.4（P4 · NPC 生态与事件）：唯一出口 / 4 段日程实测 / 触发误报 0 / 反向证据。
+       主观项「世界是活的」由老板站街边观察 2 分钟判定，AI 不结案。 */
+    /* P0~P3 的源码串在上一组 IIFE 里，本组是新的作用域 —— 重新取一次，不跨作用域借。 */
+    var mpC158 = stripComment(mp);
+    var mnC158 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
+    var dC1582 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'district.js'), 'utf8'));
+    var vC1583 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'vehicle.js'), 'utf8'));
+    var nC1584 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'npc.js'), 'utf8'));
+    var umC1584 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui-mapui.js'), 'utf8'));
+    check('§589an NPC 生态唯一出口：派生自 scene3d._npcPlan.count · 12 人 · 4 段锚点 · 位置不入档 · M.NPC 回退',
+      /S\._npcPlan\(plan, seed, \{ count: N\.MIN_COUNT \}\)/.test(nC1584)
+      && /N\.MIN_COUNT = 12/.test(nC1584)
+      && /N\.spawn = function \(plan, cityId, ci\)/.test(nC1584)
+      && /N\.tick = function \(dt\)/.test(nC1584)
+      && /N\.nearest = function \(\)/.test(nC1584)
+      && /N\.interact = function \(\)/.test(nC1584)
+      && /N\.reset = function \(\)/.test(nC1584)
+      && /DU\.play\(me, foe, moves/.test(nC1584)
+      && !/GAME\.state|state\._avatar|npcPos/.test(nC1584)
+      && /M\.NPC = true/.test(mpC158)
+      && /G\.npc\.spawn\(plan/.test(dC1582)
+      && /G\.npc\.reset\(\)/.test(dC1582)
+      && /G\.npc\.tick\(dt\)/.test(dC1582),
+      '唯一出口 + 同源航点 + 不写 state + 回退开关');
+
+    check('§589ao 日程实测：同屏 ≥12 · 4 段锚点互异 · 切段后位置差 ≥0.5m · tick p95 ≤2ms', (function () {
+      var N = G.npc, D = G.district;
+      if (!N || !N.spawn || !D || !(G.state || {}).world) return false;
+      var sv = { a: N.active, l: N.list, p: N.plan, s: N.seed, ci: N.ci,
+        da: D.active, dp: D.phase, dpos: D.pos, dy: D.yaw, dpl: D.plan,
+        el: G.state.world.elapsed };
+      var times = [], diff = 0;
+      try {
+        var T = 2.1, cells = [], solids = [], i;
+        for (i = 0; i < 48; i++) {
+          var col = i % 8, row = Math.floor(i / 8), x = (col - 3.5) * T, z = (row - 2.5) * T;
+          var house = (i % 3 === 0);
+          cells.push({ idx: i, col: col, row: row, x: x, z: z, kind: house ? 'house' : 'empty', lvl: 1 });
+          if (house) solids.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 0.6, z1: z + 0.6 });
+        }
+        var plan = { cols: 8, rows: 6, T: T, cells: cells, solids: solids,
+          bounds: { x0: -20, x1: 20, z0: -20, z1: 20 }, spawn: { x: 0, z: 8 } };
+        var sr = N.spawn(plan, 'smoke', 0);
+        if (!sr.ok || N.list.length < 12) return false;
+        for (i = 0; i < N.list.length; i++) {
+          var an = N.list[i].anchors;
+          if (!an || an.length !== 4) return false;
+          for (var a = 0; a < 4; a++) for (var b = a + 1; b < 4; b++) {
+            var ex = an[a].x - an[b].x, ez = an[a].z - an[b].z;
+            if (ex * ex + ez * ez < 0.64) return false;   /* 平凡解：四段同点 */
+          }
+        }
+        D.active = true; D.phase = 'hold'; D.pos = { x: 0, z: 0 }; D.yaw = 0; D.plan = plan;
+        var run = function (hour) {
+          G.state.world.elapsed = hour * 3600;
+          for (var t = 0; t < 200; t++) {
+            var t0 = Date.now();
+            N.tick(1 / 60);
+            times.push(Date.now() - t0);
+          }
+          return N.list.map(function (np) { return [np.x, np.z]; });
+        };
+        var seq = [run(2), run(8), run(13), run(18)];
+        for (i = 0; i < 12; i++) for (var p = 1; p < 4; p++) {
+          var dx = seq[p][i][0] - seq[p - 1][i][0], dz = seq[p][i][1] - seq[p - 1][i][1];
+          if (Math.sqrt(dx * dx + dz * dz) >= 0.5) diff++;
+        }
+        times.sort(function (x, y) { return x - y; });
+        var p95 = times[Math.floor(times.length * 0.95)] || 0;
+        return diff >= 12 && p95 <= 2;
+      } catch (e) { return false; }
+      finally {
+        D.active = sv.da; D.phase = sv.dp; D.pos = sv.dpos; D.yaw = sv.dy; D.plan = sv.dpl;
+        G.state.world.elapsed = sv.el;
+        N.active = sv.a; N.list = sv.l; N.plan = sv.p; N.seed = sv.s; N.ci = sv.ci;
+      }
+    })(), '12 人 × 800 帧 · 四段切换 ≥12 人次位移 · p95 ≤2ms');
+
+    check('§589ap 触发零误报：无目标/背后/载具态静默 · 敌对才开打 · 战斗只走 DU.play', (function () {
+      var N = G.npc, D = G.district, V = G.vehicle;
+      if (!N || !D || !G.duel || !G.duel.play) return false;
+      var sv = { a: N.active, l: N.list, p: N.plan, da: D.active, dp: D.phase,
+        dpos: D.pos, dy: D.yaw, dpl: D.plan, vm: V ? V.mounted : null,
+        play: G.duel.play, st: null, add: null };
+      try {
+        var gens = (G.state || {}).generals || [];
+        if (gens.length) { sv.st = gens[0].stamina; }
+        else {
+          sv.add = { id: 'npc_smoke_g', name: '试将', level: 20, tong: 80, yw: 90, zm: 60,
+            nz: 60, attack: 80, defense: 70, stamina: 300 };
+          G.state.generals = gens;
+          gens.push(sv.add);
+        }
+        N.active = true;
+        N.list = [
+          { id: 0, name: '甲', hostile: false, x: 0, z: -2, anchors: [{ x: 0, z: -2 }, { x: 0, z: -2 }, { x: 0, z: -2 }, { x: 0, z: -2 }] },
+          { id: 4, name: '乙', hostile: true, x: 2, z: 0, anchors: [{ x: 2, z: 0 }, { x: 2, z: 0 }, { x: 2, z: 0 }, { x: 2, z: 0 }] }
+        ];
+        N.plan = { bounds: { x0: -20, x1: 20, z0: -20, z1: 20 } };
+        D.active = true; D.phase = 'hold'; D.pos = { x: 0, z: 0 }; D.yaw = 0; D.plan = {};
+        if (N.nearest() === null) return false;            /* 正前方 2m 必须命中 */
+        N.list[0].z = 2;
+        if (N.nearest() !== null || N.talk().ok || N.fight().ok) return false;  /* 背后误报 0 */
+        N.list[0].z = -20;
+        if (N.nearest() !== null) return false;            /* 远处误报 0 */
+        N.list[0].z = -2;
+        if (V) V.mounted = true;
+        if (N.nearest() !== null || N.interact().ok) return false;              /* 载具态误报 0 */
+        if (V) V.mounted = sv.vm;
+        var t = N.talk();
+        if (!t.ok || !N.TALK[N.phase()] || N.TALK[N.phase()].indexOf(t.line) < 0) return false;
+        if (N.fight().ok) return false;                    /* 平民不许开打 */
+        N.list[0].z = 20;                                  /* 平民移远 */
+        N.list[1].x = 0; N.list[1].z = -2;                 /* 敌对挪到正前方，不再侧后方误判 */
+        var calls = 0, orig = G.duel.play;
+        G.duel.play = function () { calls++; return orig.apply(this, arguments); };
+        var f = N.fight();
+        G.duel.play = orig;
+        return calls === 1 && f.ok && f.rounds >= 1;       /* 平凡解：0 合也算赢 */
+      } catch (e) { return false; }
+      finally {
+        G.duel.play = sv.play;
+        var gs = (G.state || {}).generals || [];
+        if (sv.add) { var k = gs.indexOf(sv.add); if (k >= 0) gs.splice(k, 1); }
+        else if (gs[0]) G.setStaNow(gs[0], sv.st);
+        if (V) V.mounted = sv.vm;
+        D.active = sv.da; D.phase = sv.dp; D.pos = sv.dpos; D.yaw = sv.dy; D.plan = sv.dpl;
+        N.active = sv.a; N.list = sv.l; N.plan = sv.p;
+      }
+    })(), '四重误报关全真才出手 · 战斗一合以上 · 调用 DU.play 恰好 1 次');
+
+    check('§589aq 反向证据：P0~P3 逐字保留 · 提示条独立 · 存档无 npcPos · 不出第四套玩家位姿',
+      /M\.PLAYER_AVATAR = true/.test(mpC158)
+      && /M\.INTERACT_RANGE = 1/.test(mpC158)
+      && /M\.DISTRICT = true/.test(mpC158)
+      && /M\.VEHICLE = true/.test(mpC158)
+      && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+      && /GAME\.vehicle\.keys\[_avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(mnC158)
+      && /V\.toggle = function \(\)/.test(vC1583)
+      && /D\.step = function \(dt, keys\)/.test(dC1582)
+      && /ui\.renderNpcHint = function \(hit\)/.test(umC1584)
+      && /getElementById\('npc-hint'\)/.test(umC1584)
+      && !/getElementById\('interact-hint'\)[\s\S]{0,200}data-npc/.test(umC1584)
+      && /GAME\.npc\.nearest\(\)/.test(mnC158)
+      && JSON.stringify(G.savePayload ? G.savePayload() : G.state).indexOf('npcPos') < 0,
+      '旧路径保留 + 独立 HUD + 存档反向证据');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）

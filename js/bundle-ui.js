@@ -1168,6 +1168,9 @@
   /* v158.3（P3 大世界）：载具层总开关。关掉后街区步行/上马入口全部失效，
      回到 v158.2 的纯步行街区；不改 P0/P1/P2 任何状态与位姿。 */
   M.VEHICLE = true;
+  /* v158.4（P4 大世界）：NPC 生态层总开关。关掉后街区照常，只是街上没人、
+     E 键不弹对话/战斗提示；不改 P0~P3 任何状态与位置锚。 */
+  M.NPC = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -13101,7 +13104,10 @@
     }
     return false;
   }
-  S._npcPlan = function (plan, seed) {
+  /* v158.4（P4）：opts.count 只覆盖人数，不另算一套航点。
+     默认（不传 opts）仍是 4~10 的氛围层，§354 的既有断言逐字不变；
+     P4 传入 count=12 时复用同一套 free 格筛选 + 三航点 + rng 逻辑。 */
+  S._npcPlan = function (plan, seed, opts) {
     var out = [];
     try {
       if (!plan || !plan.cells || !plan.cells.length) return out;
@@ -13116,6 +13122,9 @@
       }
       if (!free.length) return out;               /* 没有空地 → 没有行人，不假修建 */
       var n = Math.max(4, Math.min(10, Math.round(plan.cells.length / 8)));
+      if (opts && opts.count != null) {
+        n = Math.max(1, Math.min(Math.floor(opts.count), Math.max(1, free.length * 2)));
+      }
       for (var p = 0; p < n; p++) {
         var home = free[Math.floor(R() * free.length)];
         /* 每人 3 个航点：家 + 两个随机空地（带 0.8 米内抖动，别走成尺子）。
@@ -31337,6 +31346,40 @@ ui.openDuel = function (fid, moveId) {
     el.style.display = on ? 'block' : 'none';
     return el;
   };
+
+  /* ============================================================
+   * v158.4（P4 大世界）：街区居民提示条
+   * ------------------------------------------------------------
+   * ⚠️ 同 P2/P3：不复用 #interact-hint（每帧按 sig 重写 innerHTML、
+   *    pointer-events:none）。由 GAME.npc.tick 按 id/hostile/verb 的签名
+   *    去重驱动；挂 GAME.ui.*，不新增顶层全局、不抢 P1/P3 拾取。
+   * ============================================================ */
+  ui.renderNpcHint = function (hit) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('npc-hint');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'npc-hint';
+      el.style.cssText = 'position:absolute;left:50%;bottom:132px;transform:translateX(-50%);'
+        + 'z-index:1903;display:none;pointer-events:none;white-space:nowrap;font-size:14px;';
+      root.appendChild(el);
+    }
+    if (!hit || (ui.modalVisible && ui.modalVisible())) {
+      el.style.display = 'none';
+      el.textContent = '';
+      /* 桩环境（smoke 的 DOM stub）没有 removeAttribute —— 观测层不许炸玩法。 */
+      if (el.removeAttribute) el.removeAttribute('data-npc');
+      return el;
+    }
+    el.innerHTML = '<span style="display:inline-block;background:var(--gold,#c9a44c);color:#1a1206;'
+      + 'border-radius:4px;padding:1px 7px;margin-right:8px;font-size:13px;">E</span>'
+      + U.escape(String(hit.verb || '交谈') + String(hit.name || '行人'));
+    el.setAttribute('data-npc', String(hit.id));
+    el.setAttribute('data-hostile', hit.hostile ? '1' : '0');
+    el.style.display = 'block';
+    return el;
+  };
 })();
 
 /* ---- ui-exped.js ---- */
@@ -41561,6 +41604,18 @@ ui.openDuel = function (fid, moveId) {
           e.preventDefault();
           return;
         }
+        /* v158.4（P4 大世界）：街区态 + 走近居民 → E 对话/开打（先于 P1 的 E 分支）。
+           独立 if + return，P3 上下车与 P1 那一行字面串逐字不动；nearest() 内部
+           已做 hold 态 / 距离 / 前方扇形 / 载具态四重误报关，没目标就静默落回 P1。 */
+        if (_avCode === 'KeyE' && !e.shiftKey && _mkAv.NPC !== false
+          && GAME.npc && GAME.district && GAME.district.active
+          && !(GAME.vehicle && GAME.vehicle.mounted)
+          && GAME.npc.nearest()) {
+          var _nres = GAME.npc.interact();
+          if (!_nres.ok && _nres.msg) ui.toast(_nres.msg);
+          e.preventDefault();
+          return;
+        }
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
@@ -41866,7 +41921,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.3';
+  GAME.VERSION = 'v158.4';
   function boot() {
     fitAppSize();
     try {

@@ -874,6 +874,9 @@ import './gltf.js';
   /* v158.3（P3 大世界）：载具层总开关。关掉后街区步行/上马入口全部失效，
      回到 v158.2 的纯步行街区；不改 P0/P1/P2 任何状态与位姿。 */
   M.VEHICLE = true;
+  /* v158.4（P4 大世界）：NPC 生态层总开关。关掉后街区照常，只是街上没人、
+     E 键不弹对话/战斗提示；不改 P0~P3 任何状态与位置锚。 */
+  M.NPC = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {

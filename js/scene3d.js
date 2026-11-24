@@ -3263,7 +3263,10 @@
     }
     return false;
   }
-  S._npcPlan = function (plan, seed) {
+  /* v158.4（P4）：opts.count 只覆盖人数，不另算一套航点。
+     默认（不传 opts）仍是 4~10 的氛围层，§354 的既有断言逐字不变；
+     P4 传入 count=12 时复用同一套 free 格筛选 + 三航点 + rng 逻辑。 */
+  S._npcPlan = function (plan, seed, opts) {
     var out = [];
     try {
       if (!plan || !plan.cells || !plan.cells.length) return out;
@@ -3278,6 +3281,9 @@
       }
       if (!free.length) return out;               /* 没有空地 → 没有行人，不假修建 */
       var n = Math.max(4, Math.min(10, Math.round(plan.cells.length / 8)));
+      if (opts && opts.count != null) {
+        n = Math.max(1, Math.min(Math.floor(opts.count), Math.max(1, free.length * 2)));
+      }
       for (var p = 0; p < n; p++) {
         var home = free[Math.floor(R() * free.length)];
         /* 每人 3 个航点：家 + 两个随机空地（带 0.8 米内抖动，别走成尺子）。

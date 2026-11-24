@@ -4025,6 +4025,18 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
+        /* v158.4（P4 大世界）：街区态 + 走近居民 → E 对话/开打（先于 P1 的 E 分支）。
+           独立 if + return，P3 上下车与 P1 那一行字面串逐字不动；nearest() 内部
+           已做 hold 态 / 距离 / 前方扇形 / 载具态四重误报关，没目标就静默落回 P1。 */
+        if (_avCode === 'KeyE' && !e.shiftKey && _mkAv.NPC !== false
+          && GAME.npc && GAME.district && GAME.district.active
+          && !(GAME.vehicle && GAME.vehicle.mounted)
+          && GAME.npc.nearest()) {
+          var _nres = GAME.npc.interact();
+          if (!_nres.ok && _nres.msg) ui.toast(_nres.msg);
+          e.preventDefault();
+          return;
+        }
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
@@ -4330,7 +4342,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.3';
+  GAME.VERSION = 'v158.4';
   function boot() {
     fitAppSize();
     try {
