@@ -3516,6 +3516,8 @@ import './data.js';
       }
       GAME.saveMeta(GAME.metaOf(GAME.state));   // 同步维护轻量索引
       GAME._setSlotIndex('main', GAME.state, json.length);
+      /* P5：本地写成功后异步镜像（不改同步返回；失败静默降级） */
+      GAME.idbMirror('main', json, GAME.state);
       return true;
     } catch (e) {
       if (window.console && window.console.warn) window.console.warn('存档失败：' + (e && e.message));
@@ -4289,6 +4291,8 @@ import './data.js';
       }
       GAME._setSlotIndex(slot.id, GAME.state, json.length);
       if (slot.id === 'main') GAME.saveMeta(GAME.metaOf(GAME.state));
+      /* P5：本地写成功后异步镜像（不改同步返回；失败静默降级） */
+      GAME.idbMirror(slot.id, json, GAME.state);
       return { ok: true, msg: GAME._quotaMsg(_w, '已存入「' + slot.name + '」'), size: json.length };
     } catch (e) {
       if (window.console && window.console.warn) window.console.warn('存档失败：' + (e && e.message));
@@ -4347,7 +4351,69 @@ import './data.js';
     if (!slot || slot.kind === 'main') return { ok: false, msg: '主档不可删除' };
     try { localStorage.removeItem(slot.key); } catch (e) {}
     GAME._clearSlotIndex(id);
+    /* P5：删本地档时同步清镜像（fire-and-forget，失败静默） */
+    if (GAME.SAVE_BACKEND === 'idb' && GAME.idb && GAME.idb.remove) {
+      try { GAME.idb.remove(id); } catch (e2) { }
+    }
     return { ok: true, msg: '已清空「' + slot.name + '」' };
+  };
+
+  /* ============================================================
+   * P5（v158.5）· 持久化第二后端（IndexedDB 镜像）适配层
+   * ------------------------------------------------------------
+   * 三条设计红线（改这里前先读）：
+   *   ① **localStorage 仍是同步权威**：所有同步出口（saveTo/loadFrom/
+   *      loadGame/saveGame）的返回契约一字不改 → 38 处存档断言 + 同步
+   *      boot 流程零回归。IDB 只做"成功之后的异步镜像"与"缺档时的异步补水"。
+   *   ② **开关默认 local**：`SAVE_BACKEND='local'` 时本层完全不介入，
+   *      行为与 v158.4 逐字一致；只有显式切到 'idb' 才双写。
+   *   ③ **任何一步失败都静默降级**：IDB 不可用/配额/隐私模式 → 全部 Promise
+   *      catch 吞掉，localStorage 照常，绝不阻断游戏。
+   * 版本口径：SAVE_VERSION=3 是存档结构版本，**不升 v4 强制作废老档**；
+   *   IDB 镜像记录里的 version 只是"这份 json 是哪个存档结构"，读回仍走
+   *   adoptState 的既有迁移链（v3 迁入 / 现版原生双读）。
+   * ============================================================ */
+  GAME.SAVE_BACKEND = 'local';   /* 'local' | 'idb' —— 唯一开关，默认不改变现状 */
+  GAME.setSaveBackend = function (mode) {
+    var m = (mode === 'idb') ? 'idb' : 'local';
+    GAME.SAVE_BACKEND = m;
+    return m;
+  };
+  /* 镜像一份 json 到 IDB（异步、fire-and-forget）。只在双写期调用。
+     返回 boolean = "是否已发起镜像"（不是成功与否；成功在 Promise 里）。 */
+  GAME.idbMirror = function (slotId, json, st) {
+    if (GAME.SAVE_BACKEND !== 'idb' || !GAME.idb) return false;
+    if (!GAME.idbAvailable || !GAME.idbAvailable()) return false;
+    try {
+      var meta = {
+        version: SAVE_VERSION,
+        savedAt: (st && st.savedAt) || U.now(),
+        checksum: GAME.checksum(json)
+      };
+      GAME.idb.write(slotId, json, meta);
+      return true;
+    } catch (e) { return false; }
+  };
+  /* 异步补水：本地档缺失时，从 IDB 读回并走 adoptState 同一套后处理。
+     返回 Promise<state|null>。**不改 loadGame 的同步契约** ——
+     调用方（启动流程 / 手动读档）自己决定何时 await。 */
+  GAME.idbHydrate = function (slotId) {
+    var id = slotId || 'main';
+    if (!GAME.idb || !GAME.idbAvailable || !GAME.idbAvailable()) return Promise.resolve(null);
+    return GAME.idb.read(id).then(function (res) {
+      if (!res || !res.ok || !res.json) return null;
+      var st;
+      try { st = JSON.parse(res.json); } catch (e) { return null; }
+      if (!st || st.version !== SAVE_VERSION) return null;   /* 双读闸：只认现版结构 */
+      /* 镜像校验和：文本在传输/落盘中被改坏则拒绝（与 exportText 同口径） */
+      if (res.meta && res.meta.checksum && res.meta.checksum !== GAME.checksum(res.json)) return null;
+      try { return GAME.adoptState(st); } catch (e2) { return null; }
+    }).catch(function () { return null; });
+  };
+  /* 镜像清单（UI/探针可读，不读正文）。失败返回空数组。 */
+  GAME.idbList = function () {
+    if (!GAME.idb) return Promise.resolve([]);
+    return GAME.idb.list().catch(function () { return []; });
   };
   GAME.MSG_MAX = GAME.MSG_MAX || 800;
   /* 导出：一个带自描述头部 + 校验和的 JSON 文本，玩家可存成文件或直接粘贴 */

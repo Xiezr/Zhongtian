@@ -12683,7 +12683,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'saveidb', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'district', 'vehicle', 'npc', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
@@ -49644,6 +49644,111 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /GAME\.npc\.nearest\(\)/.test(mnC158)
       && JSON.stringify(G.savePayload ? G.savePayload() : G.state).indexOf('npcPos') < 0,
       '旧路径保留 + 独立 HUD + 存档反向证据');
+
+    /* v158.5（P5 · 内容与持久化 / IndexedDB 迁移）：唯一出口 / 双写双读 / 反向证据 / 行为面。
+       主观项「老板用自己现有的档开一次，确认东西都还在」与真机 60fps p95 由老板判定，AI 不结案。 */
+    var sC1585 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'saveidb.js'), 'utf8'));
+    var stC1585 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8'));
+    var mnC1585 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
+    var mjC1585 = {};
+    try { mjC1585 = JSON.parse(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'modules.json'), 'utf8')); } catch (eJ) { }
+    /* 源码层唯一出口扫描：排除生成产物（bundle-*.js / ui-all.js），与探针 A2 同口径 */
+    var src1585 = fsMod.readdirSync(pathMod.join(__dirname, 'js')).filter(function (f) {
+      return /\.js$/.test(f) && !/^bundle-/.test(f) && f !== 'ui-all.js';
+    });
+    var hit1585 = src1585.filter(function (f) {
+      return /indexedDB/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', f), 'utf8'));
+    });
+    check('§589ar P5 唯一出口：indexedDB 只在 saveidb.js · 唯一 .open · 分块 256KB · core 包注册 · 覆盖写先删后写（防回归）',
+      hit1585.length === 1 && hit1585[0] === 'saveidb.js'
+      && (sC1585.match(/\.open\(/g) || []).length === 1
+      && /var CHUNK_BYTES = 256 \* 1024/.test(sC1585)
+      && /var api = GAME\.idb = \{/.test(sC1585)
+      && /write: function \(slotId, json, meta\)/.test(sC1585)
+      && /read: function \(slotId\)/.test(sC1585)
+      && /list: function \(\)/.test(sC1585)
+      && /remove: function \(slotId\)/.test(sC1585)
+      && /clear: function \(\)/.test(sC1585)
+      && /GAME\.idbSetFactory = function/.test(sC1585)
+      && /GAME\.idbResetFactory = function/.test(sC1585)
+      && /function split\(json\)/.test(sC1585)
+      && /st\.put\(rec, slotId \+ '::meta'\)/.test(sC1585)
+      /* v158.5 首轮探针抓到的两个真 bug，写死防回归： */
+      && sC1585.indexOf('if (old && old.n) for (var k = 0; k < old.n; k++) st.delete(') > 0
+      && sC1585.indexOf('if (old && old.n) for (var k = 0; k < old.n; k++) st.delete(')
+         < sC1585.indexOf('for (var i = 0; i < parts.length; i++) st.put(parts[i]')
+      && /st\.get\(INDEX_KEY\)\.onsuccess = function \(e\) \{[\s\S]{0,320}for \(var i = 0; i < ids\.length; i\+\+\)/.test(sC1585)
+      && (mjC1585.layout || {}).order && mjC1585.layout.order.indexOf('saveidb') > mjC1585.layout.order.indexOf('state')
+      && (mjC1585.bundles || {}).core && mjC1585.bundles.core.indexOf('saveidb') >= 0,
+      '唯一出口 + 分块 + 先删后写 + list 在 onsuccess 内 + core 包');
+
+    check('§589as P5 接线：SAVE_BACKEND 默认 local · saveTo/saveGame 双写 · dropSlot 清镜像 · hydrate 双读闸 · boot 补水',
+      /GAME\.SAVE_BACKEND = 'local'/.test(stC1585)
+      && /GAME\.setSaveBackend = function \(mode\)/.test(stC1585)
+      && /var m = \(mode === 'idb'\) \? 'idb' : 'local'/.test(stC1585)
+      && /GAME\.idbMirror = function \(slotId, json, st\)/.test(stC1585)
+      && /if \(GAME\.SAVE_BACKEND !== 'idb' \|\| !GAME\.idb\) return false/.test(stC1585)
+      && /GAME\.idb\.write\(slotId, json, meta\)/.test(stC1585)
+      && /checksum: GAME\.checksum\(json\)/.test(stC1585)
+      && /GAME\.idbMirror\('main', json, GAME\.state\)/.test(stC1585)
+      && /GAME\.idbMirror\(slot\.id, json, GAME\.state\)/.test(stC1585)
+      && /GAME\.idb\.remove\(id\)/.test(stC1585)
+      && /GAME\.idbHydrate = function \(slotId\)/.test(stC1585)
+      && /if \(!st \|\| st\.version !== SAVE_VERSION\) return null/.test(stC1585)
+      && /res\.meta\.checksum !== GAME\.checksum\(res\.json\)/.test(stC1585)
+      && /GAME\.adoptState\(st\)/.test(stC1585)
+      && /GAME\.idbList = function \(\)/.test(stC1585)
+      && /GAME\.SAVE_BACKEND === 'idb' && GAME\.idbHydrate/.test(mnC1585)
+      && /GAME\.idbHydrate\('main'\)\.then/.test(mnC1585)
+      && /ui\.setCreate\(\)/.test(mnC1585),
+      '默认不改现状 + 成功之后才镜像 + 双读只认 v3 + boot 同步骨架不变');
+
+    check('§589at P5 反向证据：SAVE_VERSION=3 未升 · savePayload 唯一出口 · 同步返回契约未改 · 派生 0 入档 · P0~P4 逐字保留',
+      /var SAVE_VERSION = 3/.test(stC1585)
+      && /GAME\.savePayload = function \(\)/.test(stC1585)
+      && /var json = GAME\.savePayload\(\)/.test(stC1585)
+      && /return \{ ok: true, msg: GAME\._quotaMsg\(_w, '已存入「' \+ slot\.name \+ '」'\), size: json\.length \}/.test(stC1585)
+      && /return GAME\.adoptState\(st\)/.test(stC1585)
+      && /M\.PLAYER_AVATAR = true/.test(mpC158)
+      && /M\.DISTRICT = true/.test(mpC158)
+      && /M\.VEHICLE = true/.test(mpC158)
+      && /M\.NPC = true/.test(mpC158)
+      && /V\.toggle = function \(\)/.test(vC1583)
+      && /N\.spawn = function \(plan, cityId, ci\)/.test(nC1584)
+      && (function () {
+        var raw = G.savePayload ? G.savePayload() : '';
+        return raw.indexOf('npcPos') < 0 && raw.indexOf('SAVE_BACKEND') < 0
+          && raw.indexOf('idbMirror') < 0 && raw.indexOf('_sub153LL') < 0;
+      })(),
+      '不升 v4 强制作废老档 + 派生字段 0 入档 + 五阶段开关全在');
+
+    check('§589au P5 行为面：后端切换 20 次 10/10 交替可观测 · fake 注入三态 · 降级零抛出 · hydrate 返回 Promise',
+      (function () {
+        var sv = G.SAVE_BACKEND;
+        try {
+          G.idbResetFactory();
+          var a0 = G.idbAvailable();                       /* node 无原生 IDB → false */
+          G.idbSetFactory({ open: function () { return {}; } });
+          var a1 = G.idbAvailable();                       /* 注入 → true */
+          G.idbResetFactory();
+          var a2 = G.idbAvailable();                       /* reset → false */
+          if (a0 !== false || a1 !== true || a2 !== false) return false;
+          G.idbSetFactory({ open: function () { return {}; } });
+          var localNo = 0, idbYes = 0;
+          for (var i = 0; i < 20; i++) {
+            var m = G.setSaveBackend(i % 2 ? 'idb' : 'local');
+            var r = G.idbMirror('main', '{}', G.state);
+            if (i % 2 === 0 && m === 'local' && r === false) localNo++;
+            if (i % 2 === 1 && m === 'idb' && r === true) idbYes++;
+          }
+          G.idbResetFactory();
+          var degraded = G.idbMirror('main', '{}', G.state) === false;
+          var hyd = G.idbHydrate('main');
+          var isP = !!hyd && typeof hyd.then === 'function';
+          return localNo === 10 && idbYes === 10 && degraded && isP;
+        } catch (e1585) { return false; }
+        finally { G.setSaveBackend(sv || 'local'); G.idbResetFactory(); }
+      })(), '20 次切换有下限（非 0 平凡解）+ 三态 + 降级不阻断');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）

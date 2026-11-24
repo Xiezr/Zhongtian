@@ -4342,7 +4342,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.4';
+  GAME.VERSION = 'v158.5';
   function boot() {
     fitAppSize();
     try {
@@ -4376,6 +4376,20 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       }
       else ui.setCreate();
     } else {
+      /* P5（v158.5）：本地无档时，若开了 IDB 双写后端，异步试补水。
+         同步骨架不变（先落创角界面），补水成功再切回游戏 —— 隐私模式/不可用
+         时 idbHydrate 直接 resolve(null)，零副作用。 */
+      if (GAME.SAVE_BACKEND === 'idb' && GAME.idbHydrate) {
+        GAME.idbHydrate('main').then(function (rst) {
+          if (!rst) return;
+          GAME.state = rst;
+          GAME.map.generate();
+          if (GAME.battle && GAME.battle.restoreBattles) GAME.battle.restoreBattles();
+          ui.enterGame();
+          GAME.refreshAll();
+          ui.toast('📂 已从持久化后端恢复存档');
+        }).catch(function () { });
+      }
       ui.setCreate();
     }
     startLoop();

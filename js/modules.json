@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "c85190060c43db8c",
+ "sourceHash": "9c7a2cd60757aead",
  "layout": {
   "order": [
    "core",
@@ -11,6 +11,7 @@
    "data",
    "rules",
    "state",
+   "saveidb",
    "systems",
    "items",
    "generals",
@@ -138,6 +139,7 @@
   "data",
   "rules",
   "state",
+  "saveidb",
   "systems",
   "items",
   "generals",
@@ -232,6 +234,7 @@
    "data",
    "rules",
    "state",
+   "saveidb",
    "systems",
    "items",
    "generals",
@@ -845,12 +848,12 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4390,
+   "lines": 4404,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
-    "ui-fx",
     "battle",
+    "ui-fx",
     "state",
     "domain",
     "ui-modal",
@@ -1148,6 +1151,14 @@
    ]
   },
   {
+   "name": "saveidb",
+   "file": "js/saveidb.js",
+   "lines": 275,
+   "bundle": "core",
+   "duty": "saveidb.js — P5「内容与持久化」持久化第二后端（全仓唯一 IndexedDB 出口）",
+   "deps": []
+  },
+  {
    "name": "scene3d",
    "file": "js/scene3d.js",
    "lines": 4577,
@@ -1206,7 +1217,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6496,
+   "lines": 6562,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [
@@ -1225,6 +1236,7 @@
     "map3d",
     "items",
     "registry",
+    "saveidb",
     "portraits",
     "growth",
     "taint",
