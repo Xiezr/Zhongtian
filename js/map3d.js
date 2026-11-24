@@ -177,6 +177,9 @@ import './gltf.js';
       GAME.map._regionOverride = reg;
       ui.openLandModalCi(ci);
     }
+    /* v158.6（P5-b 任务链）：打开过任一面板 = "环顾四周"这一格看过。
+       观察钩子只登记、不拦截、不改面板内容（见 js/quest.js onLook）。 */
+    if (GAME.questline && GAME.questline.onLook) GAME.questline.onLook();
   }
   /* ---- 纯数学实现（**不依赖 THREE**）----
      为什么不用 THREE.Vector3/Quaternion：map3d 在没有 three 的环境（node 门禁、
@@ -877,6 +880,9 @@ import './gltf.js';
   /* v158.4（P4 大世界）：NPC 生态层总开关。关掉后街区照常，只是街上没人、
      E 键不弹对话/战斗提示；不改 P0~P3 任何状态与位置锚。 */
   M.NPC = true;
+  /* v158.6（P5-b 大世界）：任务链引导层总开关。关掉后引导链停摆，
+     其余照常；不改 P0~P4 任何状态、位置、输入分派。 */
+  M.QUEST = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -6797,6 +6803,11 @@ import './gltf.js';
       M._districtWasActive = false;
     }
     if (M.DISTRICT && GAME.district && GAME.district.active) M._districtWasActive = true;
+    /* v158.6（P5-b 任务链）：观察器 tick —— 轮询 P0~P4 状态、达标推进，
+       不拦截输入、不写位姿；每帧一次、异常隔离。 */
+    if (GAME.questline && GAME.questline.tick) {
+      try { GAME.questline.tick(); } catch (eQ) { }
+    }
     /* v157.15：整平拖刷的**节流重建**。
        整层重建 ~180ms，拖拽时每格重建会把手感拖死 → 150ms 一次；
        松手由 M.terraceFlush() 立刻补一帧，保证最终画面与数据一致。

@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "9c7a2cd60757aead",
+ "sourceHash": "ce668cd103022fd1",
  "layout": {
   "order": [
    "core",
@@ -64,6 +64,7 @@
    "district",
    "vehicle",
    "npc",
+   "quest",
    "battle",
    "battlelog",
    "strategy",
@@ -192,6 +193,7 @@
   "district",
   "vehicle",
   "npc",
+  "quest",
   "battle",
   "battlelog",
   "strategy",
@@ -283,6 +285,7 @@
    "district",
    "vehicle",
    "npc",
+   "quest",
    "placement",
    "belt",
    "planetgen"
@@ -568,7 +571,7 @@
   {
    "name": "district",
    "file": "js/district.js",
-   "lines": 332,
+   "lines": 334,
    "bundle": "core",
    "duty": "district.js — v158.2（P2 · 城市街区 L1）运行时街区层",
    "deps": [
@@ -925,7 +928,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9546,
+   "lines": 9557,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -1002,7 +1005,7 @@
   {
    "name": "npc",
    "file": "js/npc.js",
-   "lines": 350,
+   "lines": 354,
    "bundle": "core",
    "duty": "npc.js — v158.4（P4 · NPC 生态与事件）运行时居民层",
    "deps": [
@@ -1064,6 +1067,16 @@
    "bundle": "war",
    "duty": "js/portraits.js  英雄肖像（v90 · 通用头像池）",
    "deps": []
+  },
+  {
+   "name": "quest",
+   "file": "js/quest.js",
+   "lines": 230,
+   "bundle": "core",
+   "duty": "quest.js — v158.6（P5-b · 任务链）大世界引导链",
+   "deps": [
+    "ui-fx"
+   ]
   },
   {
    "name": "registry",
@@ -1866,7 +1879,7 @@
   {
    "name": "vehicle",
    "file": "js/vehicle.js",
-   "lines": 181,
+   "lines": 183,
    "bundle": "core",
    "duty": "vehicle.js — v158.3（P3 · 载具与碰撞）运行时载具层",
    "deps": [

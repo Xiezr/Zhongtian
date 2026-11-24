@@ -240,6 +240,8 @@ import './core.js';
     var text = near.name + '：' + line;
     if (G.log) G.log(text);
     if (G.ui && G.ui.toast) G.ui.toast(text);
+    /* v158.6（P5-b 任务链）：对话成功 = 观察钩子（后置登记，不拦截）。 */
+    if (G.questline && G.questline.onTalk) G.questline.onTalk();
     return { ok: true, id: near.id, name: near.name, line: line, text: text };
   };
 
@@ -276,6 +278,8 @@ import './core.js';
       G.log('街边冲突：' + (me.name || '我军') + ' 对 ' + near.name + '，'
         + (res.winner === 'atk' ? '胜' : res.winner === 'def' ? '败' : '平手'));
     }
+    /* v158.6（P5-b 任务链）：开打成功 = 观察钩子（后置登记，不拦截）。 */
+    if (G.questline && G.questline.onFight) G.questline.onFight(res.rounds.length);
     return { ok: true, id: near.id, name: near.name, winner: res.winner,
       rounds: res.rounds.length, hpA: res.hpA, hpB: res.hpB };
   };

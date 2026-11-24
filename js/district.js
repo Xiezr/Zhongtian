@@ -211,6 +211,8 @@
     D._from = null;                        /* 首帧由 camera() 从当前 cam 采样 */
     /* v158.4（P4）：居民运行态由 plan + ci 派生，读档重进即重建，不入档。 */
     if (G.npc && G.npc.spawn) G.npc.spawn(plan, D.cityId || (city ? city.id : null), ci);
+    /* v158.6（P5-b 任务链）：进城 = 观察钩子（后置登记，不拦截）。 */
+    if (G.questline && G.questline.onEnter) G.questline.onEnter();
     if (!build()) {                        /* 无 THREE（jsdom）仍允许逻辑态进入 */
       D._noRender = true;
     } else {

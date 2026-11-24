@@ -12684,7 +12684,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
     var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'saveidb', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
-      'map3d', 'scene3d', 'district', 'vehicle', 'npc', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
+      'map3d', 'scene3d', 'district', 'vehicle', 'npc', 'quest', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
@@ -49749,6 +49749,71 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         } catch (e1585) { return false; }
         finally { G.setSaveBackend(sv || 'local'); G.idbResetFactory(); }
       })(), '20 次切换有下限（非 0 平凡解）+ 三态 + 降级不阻断');
+
+    /* v158.6（P5-b · 内容与持久化 / 任务链）：六步状态机 / 观察器不拦截 / 派生不入档 / 反向证据。
+       主观项「串起 P0~P4 走通一条引导线」的体验由老板实机判定，AI 不结案。 */
+    var qC1586 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'quest.js'), 'utf8'));
+    var mpC1586 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map3d.js'), 'utf8'));
+    var dcC1586 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'district.js'), 'utf8'));
+    var vcC1586 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'vehicle.js'), 'utf8'));
+    var ncC1586 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'npc.js'), 'utf8'));
+    var mjC1586 = {};
+    try { mjC1586 = JSON.parse(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'modules.json'), 'utf8')); } catch (eJ2) { }
+    check('§589av P5-b 任务链唯一出口：六步状态机 + 进度入档/位置派生 + core 包注册 + 回退开关 M.QUEST',
+      /var Q = G\.questline = G\.questline \|\| \{\}/.test(qC1586)
+      && (qC1586.match(/id: '(walk|look|enter|ride|talk|fight)'/g) || []).length === 6
+      && /s\.quest = \{ step: 0, done: \{\} \}/.test(qC1586)
+      && /id: 'questline'/.test(qC1586)
+      && (mjC1586.layout || {}).order && mjC1586.layout.order.indexOf('quest') > mjC1586.layout.order.indexOf('npc')
+      && (mjC1586.bundles || {}).core && mjC1586.bundles.core.indexOf('quest') >= 0
+      && /M\.QUEST = true/.test(mpC1586),
+      '六步状态机 + quest 入档 + registry 注册 + 回退开关');
+
+    check('§589aw P5-b 观察器不拦截：E 键分派仍是 P3→P4→P1 · 钩子只后置登记 · 不新增按键分支',
+      /_avCode === 'KeyE' && !e\.shiftKey && _mkAv\.DISTRICT/.test(mnC1585)
+      && /_avCode === 'KeyE' && !e\.shiftKey && _mkAv\.NPC !== false/.test(mnC1585)
+      && /_avCode === 'KeyE' && _mkAv\.FOLLOW && !e\.shiftKey/.test(mnC1585)
+      && !/questline\.interact|questline\.nearest/.test(mnC1585)
+      && /GAME\.questline && GAME\.questline\.onLook\) GAME\.questline\.onLook\(\)/.test(mpC1586)
+      && /G\.questline && G\.questline\.onEnter\) G\.questline\.onEnter\(\)/.test(dcC1586)
+      && /G\.questline && G\.questline\.onRide\) G\.questline\.onRide\(\)/.test(vcC1586)
+      && /G\.questline && G\.questline\.onTalk\) G\.questline\.onTalk\(\)/.test(ncC1586)
+      && /G\.questline && G\.questline\.onFight\) G\.questline\.onFight\(res\.rounds\.length\)/.test(ncC1586),
+      'E 键三分支逐字保留 + 五处钩子后置登记');
+
+    check('§589ax P5-b 派生不入档 + 纯事件驱动：存档无 questPos · quest 只存 step/done · 不碰现实日',
+      /step: 0, done: \{\}/.test(qC1586)
+      && /function onLook|Q\.onLook = function/.test(qC1586)
+      && /function onEnter|Q\.onEnter = function/.test(qC1586)
+      && /function onRide|Q\.onRide = function/.test(qC1586)
+      && /function onTalk|Q\.onTalk = function/.test(qC1586)
+      && /function onFight|Q\.onFight = function/.test(qC1586)
+      && !/questPos/.test(qC1586)
+      && !/Date\.now/.test(qC1586)
+      && !/questDayIndex/.test(qC1586),
+      '进度入档 + 位置派生 + 无时钟依赖');
+
+    check('§589ay P5-b 行为面：六步顺序推进 · walk 有距离下限 · fight 有回合下限 · 关开关不推进',
+      (function () {
+        var Gq = G.questline, Mq = G.map3d;
+        if (!Gq || !Gq.STEPS || Gq.STEPS.length !== 6) return false;
+        if (Gq.STEPS.map(function (s) { return s.id; }).join(',') !== 'walk,look,enter,ride,talk,fight') return false;
+        var svQ = Gq.state ? Gq.state().step : null;
+        try {
+          Gq.reset();
+          Gq.state().step = 0; Gq.state().done = {};
+          Gq._walkAcc = 0;   /* 未达标 */
+          var r0 = Gq.tick();
+          Gq._walkAcc = 5;   /* 达标 ≥3m */
+          var r1 = Gq.tick();
+          var s1 = Gq.summary().step;
+          Mq.QUEST = false;
+          Gq.onLook();
+          var rOff = Gq.tick();   /* 关开关不推进 */
+          Mq.QUEST = true;
+          return r0 === null && r1 && r1.step === 'walk' && s1 === 1 && rOff === null;
+        } finally { if (Gq.state) Gq.state().step = svQ || 0; Gq.reset(); }
+      })(), 'walk 下限 3m + 关开关不推进（非平凡解）');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）

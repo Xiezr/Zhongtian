@@ -77,6 +77,8 @@
     V.keys = {};
     if (D.keys) D.keys = {};
     V.syncMesh();
+    /* v158.6（P5-b 任务链）：上车 = 观察钩子（后置登记，不拦截）。 */
+    if (G.questline && G.questline.onRide) G.questline.onRide();
     return { ok: true, kind: V.kind, name: near.name };
   };
 
