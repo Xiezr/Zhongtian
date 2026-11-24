@@ -908,4 +908,29 @@ import './ui.js';
     el.style.display = on ? 'block' : 'none';
     return el;
   };
+
+  /* ============================================================
+   * v158.3（P3 大世界）：载具态 HUD（纯文字，不新增按钮 → 无孤儿按钮风险）
+   * ------------------------------------------------------------
+   * ⚠️ 同 P2：不复用 #interact-hint（每帧按 sig 重写 innerHTML、pointer-events:none）。
+   * 上马时由 main.js 的 E 分支点亮；下车/离街区时熄灭。出口挂 GAME.ui.*。
+   * ============================================================ */
+  ui.renderVehicleHud = function (on) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('vehicle-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'vehicle-hud';
+      el.style.cssText = 'position:absolute;left:50%;bottom:132px;transform:translateX(-50%);'
+        + 'z-index:1902;display:none;pointer-events:none;white-space:nowrap;font-size:14px;';
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.9);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:7px 13px;font-weight:700;">'
+        + 'E 下车 · WASD 驾驶 · A/D 转向</span>';
+      root.appendChild(el);
+    }
+    el.style.display = on ? 'block' : 'none';
+    return el;
+  };
 })();

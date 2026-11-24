@@ -4012,6 +4012,19 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
+        /* v158.3（P3 大世界）：街区态 + 载具在旁 → E 上下车（先于 P1 的 E 分支）。
+           独立 if + return，P1 那一行字面串逐字不动；车外/关载具时自然落回 P1。
+           上下车各一次 E（≤2 按键）；toggle 拒绝时静默。 */
+        if (_avCode === 'KeyE' && !e.shiftKey && _mkAv.DISTRICT
+          && GAME.vehicle && _mkAv.VEHICLE !== false
+          && GAME.district && GAME.district.active
+          && (GAME.vehicle.mounted || GAME.vehicle.nearestMount())) {
+          var _vres = GAME.vehicle.toggle();
+          if (ui.renderVehicleHud) ui.renderVehicleHud(GAME.vehicle.mounted);
+          if (!_vres.ok && _vres.msg) ui.toast(_vres.msg);
+          e.preventDefault();
+          return;
+        }
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
@@ -4026,6 +4039,14 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           return;
         }
         if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
+          /* v158.3（P3）：载具态第三级按键 —— 写 vehicle.keys，不写 D.keys/GAME._keys，
+             否则街区步行与球面位姿会同时被推（三级状态互不串线）。 */
+          if (_mkAv.VEHICLE !== false && GAME.vehicle && GAME.vehicle.mounted) {
+            if (!GAME.vehicle.keys) GAME.vehicle.keys = {};
+            GAME.vehicle.keys[_avCode.charAt(3).toLowerCase()] = 1;
+            e.preventDefault();
+            return;
+          }
           /* v158.2（P2）：街区态把 W/A/S/D 交给街区局部步进；
              不写 GAME._keys —— 否则 P0 stepAvatar 会同时推球面位姿，
              退出后"位置不变"就守不住（两级开关键状态互不串线）。 */
@@ -4077,9 +4098,14 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       if (/^Key[WASD]$/.test(_c) && GAME.district && GAME.district.keys) {
         GAME.district.keys[_c.charAt(3).toLowerCase()] = 0;
       }
+      /* v158.3（P3）：载具态第三级按键独立清。 */
+      if (/^Key[WASD]$/.test(_c) && GAME.vehicle && GAME.vehicle.keys) {
+        GAME.vehicle.keys[_c.charAt(3).toLowerCase()] = 0;
+      }
     });
     window.addEventListener('blur', function () { GAME._keys = {}; });
     window.addEventListener('blur', function () { if (GAME.district) GAME.district.keys = {}; });
+    window.addEventListener('blur', function () { if (GAME.vehicle) GAME.vehicle.keys = {}; });
   }
 
   var AUTO_SAVE_MS = 5 * 60 * 1000;   // 自动存档间隔：5 分钟
@@ -4304,7 +4330,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.2';
+  GAME.VERSION = 'v158.3';
   function boot() {
     fitAppSize();
     try {

@@ -1165,6 +1165,9 @@
   /* v158.2（P2 大世界）：街区层总开关。关掉即回到 v158.1 的"格子模型 + 面板"，
      街区几何不建、相机不覆盖、位姿不动。 */
   M.DISTRICT = true;
+  /* v158.3（P3 大世界）：载具层总开关。关掉后街区步行/上马入口全部失效，
+     回到 v158.2 的纯步行街区；不改 P0/P1/P2 任何状态与位姿。 */
+  M.VEHICLE = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -7061,7 +7064,8 @@
           /* v158.2（P2）：街区态由 district HUD 接管，P1 的地面提示必须静默，
              否则两条 HUD 会叠在同一屏上（同一格既是城又是街道）。 */
           if (GAME.ui && GAME.ui.renderInteractHint
-            && !(M.DISTRICT && GAME.district && GAME.district.active)) {
+            && !(M.DISTRICT && GAME.district && GAME.district.active)
+            && !(GAME.vehicle && GAME.vehicle.mounted)) {
             var _nh = M.nearestInteractable();
             var _nhSig = _nh ? (_nh.ci + ':' + _nh.kind + ':' + _nh.verb) : '';
             if (_nhSig !== M._interactHintSig) {
@@ -31308,6 +31312,31 @@ ui.openDuel = function (fid, moveId) {
     el.style.display = on ? 'block' : 'none';
     return el;
   };
+
+  /* ============================================================
+   * v158.3（P3 大世界）：载具态 HUD（纯文字，不新增按钮 → 无孤儿按钮风险）
+   * ------------------------------------------------------------
+   * ⚠️ 同 P2：不复用 #interact-hint（每帧按 sig 重写 innerHTML、pointer-events:none）。
+   * 上马时由 main.js 的 E 分支点亮；下车/离街区时熄灭。出口挂 GAME.ui.*。
+   * ============================================================ */
+  ui.renderVehicleHud = function (on) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('vehicle-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'vehicle-hud';
+      el.style.cssText = 'position:absolute;left:50%;bottom:132px;transform:translateX(-50%);'
+        + 'z-index:1902;display:none;pointer-events:none;white-space:nowrap;font-size:14px;';
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.9);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:7px 13px;font-weight:700;">'
+        + 'E 下车 · WASD 驾驶 · A/D 转向</span>';
+      root.appendChild(el);
+    }
+    el.style.display = on ? 'block' : 'none';
+    return el;
+  };
 })();
 
 /* ---- ui-exped.js ---- */
@@ -41519,6 +41548,19 @@ ui.openDuel = function (fid, moveId) {
           e.preventDefault();
           return;
         }
+        /* v158.3（P3 大世界）：街区态 + 载具在旁 → E 上下车（先于 P1 的 E 分支）。
+           独立 if + return，P1 那一行字面串逐字不动；车外/关载具时自然落回 P1。
+           上下车各一次 E（≤2 按键）；toggle 拒绝时静默。 */
+        if (_avCode === 'KeyE' && !e.shiftKey && _mkAv.DISTRICT
+          && GAME.vehicle && _mkAv.VEHICLE !== false
+          && GAME.district && GAME.district.active
+          && (GAME.vehicle.mounted || GAME.vehicle.nearestMount())) {
+          var _vres = GAME.vehicle.toggle();
+          if (ui.renderVehicleHud) ui.renderVehicleHud(GAME.vehicle.mounted);
+          if (!_vres.ok && _vres.msg) ui.toast(_vres.msg);
+          e.preventDefault();
+          return;
+        }
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
@@ -41533,6 +41575,14 @@ ui.openDuel = function (fid, moveId) {
           return;
         }
         if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
+          /* v158.3（P3）：载具态第三级按键 —— 写 vehicle.keys，不写 D.keys/GAME._keys，
+             否则街区步行与球面位姿会同时被推（三级状态互不串线）。 */
+          if (_mkAv.VEHICLE !== false && GAME.vehicle && GAME.vehicle.mounted) {
+            if (!GAME.vehicle.keys) GAME.vehicle.keys = {};
+            GAME.vehicle.keys[_avCode.charAt(3).toLowerCase()] = 1;
+            e.preventDefault();
+            return;
+          }
           /* v158.2（P2）：街区态把 W/A/S/D 交给街区局部步进；
              不写 GAME._keys —— 否则 P0 stepAvatar 会同时推球面位姿，
              退出后"位置不变"就守不住（两级开关键状态互不串线）。 */
@@ -41584,9 +41634,14 @@ ui.openDuel = function (fid, moveId) {
       if (/^Key[WASD]$/.test(_c) && GAME.district && GAME.district.keys) {
         GAME.district.keys[_c.charAt(3).toLowerCase()] = 0;
       }
+      /* v158.3（P3）：载具态第三级按键独立清。 */
+      if (/^Key[WASD]$/.test(_c) && GAME.vehicle && GAME.vehicle.keys) {
+        GAME.vehicle.keys[_c.charAt(3).toLowerCase()] = 0;
+      }
     });
     window.addEventListener('blur', function () { GAME._keys = {}; });
     window.addEventListener('blur', function () { if (GAME.district) GAME.district.keys = {}; });
+    window.addEventListener('blur', function () { if (GAME.vehicle) GAME.vehicle.keys = {}; });
   }
 
   var AUTO_SAVE_MS = 5 * 60 * 1000;   // 自动存档间隔：5 分钟
@@ -41811,7 +41866,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.2';
+  GAME.VERSION = 'v158.3';
   function boot() {
     fitAppSize();
     try {

@@ -12684,7 +12684,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
     var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
-      'map3d', 'scene3d', 'district', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
+      'map3d', 'scene3d', 'district', 'vehicle', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
@@ -49457,6 +49457,45 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           return !/GAME\._keys/.test(blk);
         })(),
         '旧入口保留 + 两级按键状态不串线');
+
+      /* v158.3（P3 · 载具与碰撞）：状态机唯一 / 同源碰撞 / 三级按键隔离 / 反向证据。
+         主观项「撞得住、停得稳」由老板实机判定，AI 不结案。 */
+      var vC1583 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'vehicle.js'), 'utf8'));
+      check('§589ak 载具状态机：toggle 唯一上/下出口 · 不入档 · 位置锚复用 D.pos/D.yaw · 不碰 camO',
+        /V\.mount = function \(\)/.test(vC1583)
+        && /V\.dismount = function \(\)/.test(vC1583)
+        && /V\.toggle = function \(\)/.test(vC1583)
+        && /V\.mounted \? V\.dismount\(\) : V\.mount\(\)/.test(vC1583)
+        && !/GAME\.state\._avatar|state\._avatar/.test(vC1583)
+        && !/camO\./.test(vC1583)
+        && /D\.pos\.x/.test(vC1583) && /D\.yaw/.test(vC1583),
+        '唯一状态机 + 位置锚同源 + 不碰 P0 位姿/相机');
+
+      check('§589al 载具碰撞：复用 D.hitSolid + plan.bounds · 固定子步进 0.5 格 · 刹车 ≤0.5s · 高度只调 P0 出口',
+        /D\.hitSolid\(plan, nx, D\.pos\.z, r\)/.test(vC1583)
+        && /D\.hitSolid\(plan, D\.pos\.x, nz, r\)/.test(vC1583)
+        && /\(plan\.T \|\| 3\) \* V\.SUBSTEP_FRAC/.test(vC1583)
+        && /V\.SUBSTEP_FRAC = 0\.5/.test(vC1583)
+        && /V\.BRAKE_S = 0\.5/.test(vC1583)
+        && /M\._groundAtUnit\(D\.ci\)/.test(vC1583)
+        && /if \(hit\) \{ V\.speed = 0; break; \}/.test(vC1583),
+        '同源碰撞 + 子步进上限 + 撞停 + 不新增高度计算');
+
+      check('§589am 反向证据：P0/P1/P2 逐字保留 · 载具键三级隔离 · D.step 本体未改 · 载具态 P1 提示静默',
+        /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+        && /if \(_mkAv\.DISTRICT && GAME\.district && GAME\.district\.active\) \{/.test(mnC158)
+        && /GAME\.vehicle\.keys\[_avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(mnC158)
+        && /GAME\.vehicle && GAME\.vehicle\.mounted/.test(mpC158)
+        && /D\.step = function \(dt, keys\)/.test(dC1582)
+        && /if \(V && V\.mounted\) V\.step\(dt, V\.keys, D\.plan\);/.test(dC1582)
+        && (function () {
+          var at = mnC158.indexOf("if (_mkAv.DISTRICT && GAME.district && GAME.district.active) {");
+          if (at < 0) return false;
+          var end = mnC158.indexOf("} else {", at);
+          if (end < 0) return false;
+          return !/GAME\._keys/.test(mnC158.slice(at, end));
+        })(),
+        '旧路径保留 + 三级按键不串线 + 步行本体未动');
     })();
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证

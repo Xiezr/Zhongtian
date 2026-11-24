@@ -164,6 +164,8 @@
       box(0.7, 2.6, 0.7, -plan.gateHalf, 1.3, plan.hd, 0x8a8072, root);
       box(0.7, 2.6, 0.7, plan.gateHalf, 1.3, plan.hd, 0x8a8072, root);
     }
+    /* v158.3（P3）：载具画在同一个街区 root 上（与街道同源渐显，不新建场景）。 */
+    if (G.vehicle && G.vehicle.build) G.vehicle.build(root, plan);
     /* 挂在 map3d 的同一个 scene（scene 出口由 map3d 提供，不自建） */
     var sc = G.map3d && G.map3d._scene && G.map3d._scene();
     if (!sc || !sc.add) return false;
@@ -237,15 +239,22 @@
         D.active = false;                  /* ← 唯一退出写 */
         D.phase = 'out';
         clearRoot();
+        /* v158.3（P3）：离街区时清载具运行时态（不入档、不留残留按键/速度）。 */
+        if (G.vehicle && G.vehicle.reset) G.vehicle.reset();
         if (snap && G.map3d.setPlayerPose) G.map3d.setPlayerPose(snap);
         if (G.ui && G.ui.renderDistrictHud) G.ui.renderDistrictHud(false);
+        if (G.ui && G.ui.renderVehicleHud) G.ui.renderVehicleHud(false);
         D.snapshot = null;
         D.plan = null;
         D.frame = null;
         return { done: true };
       }
     } else {
-      D.step(dt, D.keys);
+      /* v158.3（P3）：载具态走 V.step，步行态仍走 D.step（函数本体逐字不动 ——
+         P2 探针直接调 D.step 验撞墙，改它就会翻红）。 */
+      var V = G.vehicle;
+      if (V && V.mounted) V.step(dt, V.keys, D.plan);
+      else D.step(dt, D.keys);
     }
     var op = Math.max(0, Math.min(1, D.t));
     for (var i = 0; i < D._mats.length; i++) D._mats[i].opacity = op;

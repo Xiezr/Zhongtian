@@ -871,6 +871,9 @@ import './gltf.js';
   /* v158.2（P2 大世界）：街区层总开关。关掉即回到 v158.1 的"格子模型 + 面板"，
      街区几何不建、相机不覆盖、位姿不动。 */
   M.DISTRICT = true;
+  /* v158.3（P3 大世界）：载具层总开关。关掉后街区步行/上马入口全部失效，
+     回到 v158.2 的纯步行街区；不改 P0/P1/P2 任何状态与位姿。 */
+  M.VEHICLE = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -6767,7 +6770,8 @@ import './gltf.js';
           /* v158.2（P2）：街区态由 district HUD 接管，P1 的地面提示必须静默，
              否则两条 HUD 会叠在同一屏上（同一格既是城又是街道）。 */
           if (GAME.ui && GAME.ui.renderInteractHint
-            && !(M.DISTRICT && GAME.district && GAME.district.active)) {
+            && !(M.DISTRICT && GAME.district && GAME.district.active)
+            && !(GAME.vehicle && GAME.vehicle.mounted)) {
             var _nh = M.nearestInteractable();
             var _nhSig = _nh ? (_nh.ci + ':' + _nh.kind + ':' + _nh.verb) : '';
             if (_nhSig !== M._interactHintSig) {

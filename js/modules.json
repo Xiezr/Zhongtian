@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "911b48974e05f19b",
+ "sourceHash": "1f0578a48a448995",
  "layout": {
   "order": [
    "core",
@@ -61,6 +61,7 @@
    "map3d",
    "scene3d",
    "district",
+   "vehicle",
    "battle",
    "battlelog",
    "strategy",
@@ -186,6 +187,7 @@
   "map3d",
   "scene3d",
   "district",
+  "vehicle",
   "battle",
   "battlelog",
   "strategy",
@@ -274,6 +276,7 @@
    "market",
    "events",
    "district",
+   "vehicle",
    "placement",
    "belt",
    "planetgen"
@@ -559,7 +562,7 @@
   {
    "name": "district",
    "file": "js/district.js",
-   "lines": 314,
+   "lines": 323,
    "bundle": "core",
    "duty": "district.js — v158.2（P2 · 城市街区 L1）运行时街区层",
    "deps": [
@@ -839,7 +842,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4352,
+   "lines": 4378,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -916,7 +919,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9539,
+   "lines": 9543,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -1614,7 +1617,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 912,
+   "lines": 937,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1623,13 +1626,13 @@
     "state",
     "data",
     "ui-modal",
+    "ui-shell",
     "sphere",
     "ui-fx",
     "ui-craft",
-    "ui-shell",
+    "ui",
     "growth",
     "taint",
-    "ui",
     "convoy",
     "ui-exped",
     "idle",
@@ -1830,6 +1833,16 @@
     "cities",
     "state",
     "data"
+   ]
+  },
+  {
+   "name": "vehicle",
+   "file": "js/vehicle.js",
+   "lines": 181,
+   "bundle": "core",
+   "duty": "vehicle.js — v158.3（P3 · 载具与碰撞）运行时载具层",
+   "deps": [
+    "state"
    ]
   },
   {
