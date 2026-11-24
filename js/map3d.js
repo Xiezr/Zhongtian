@@ -339,6 +339,8 @@ import './gltf.js';
       townScaleOf: _townScaleOf,
       /* v156.19：球面坐标系的纯数学出口（无 three 也要能验） */
       surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+      /* v158.2（P2）：街区几何挂到同一个 scene 的唯一出口（无 THREE 时返回 null） */
+      _scene: function () { return (typeof scene !== 'undefined') ? scene : null; },
       /* v158.1（P1）：行走/交互共用的连续切平面基 —— 探针与游戏必须同口径 */
       avatarBasis: avatarBasis,
       /* v157.54：拖拽平移的两个纯数学出口（无 three 也要能真调，见上方注释） */
@@ -350,6 +352,7 @@ import './gltf.js';
     openCellPanel: _openCellPanel, cellBrief: _cellBrief,
     townScaleOf: _townScaleOf,
     surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+    _scene: function () { return scene; },
     avatarBasis: avatarBasis,
     panBasisOf: panBasisOf, panStepOf: panStepOf };
 
@@ -865,6 +868,9 @@ import './gltf.js';
      这样退出跟随时轨迹球姿态逐位还原，零跳变。 */
   M.PLAYER_AVATAR = true;
   M.FOLLOW = false;
+  /* v158.2（P2 大世界）：街区层总开关。关掉即回到 v158.1 的"格子模型 + 面板"，
+     街区几何不建、相机不覆盖、位姿不动。 */
+  M.DISTRICT = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -6758,7 +6764,10 @@ import './gltf.js';
         /* v158.1（P1）：走近提示挂在跟随态里，且只在目标变化时写 DOM ——
            每帧无脑 innerHTML 会把 rAF 吃掉一大截；sig 去重后跨格才刷一次。 */
         try {
-          if (GAME.ui && GAME.ui.renderInteractHint) {
+          /* v158.2（P2）：街区态由 district HUD 接管，P1 的地面提示必须静默，
+             否则两条 HUD 会叠在同一屏上（同一格既是城又是街道）。 */
+          if (GAME.ui && GAME.ui.renderInteractHint
+            && !(M.DISTRICT && GAME.district && GAME.district.active)) {
             var _nh = M.nearestInteractable();
             var _nhSig = _nh ? (_nh.ci + ':' + _nh.kind + ':' + _nh.verb) : '';
             if (_nhSig !== M._interactHintSig) {
@@ -6769,6 +6778,18 @@ import './gltf.js';
         } catch (eHint) { }
       } catch (eAv) { }
     }
+    /* v158.2（P2 · 城市街区 L1）：在 P0/P1 之后覆盖相机 —— 只写 cam，
+       绝不写 camO.dist / camO.quat / lookPitch，退出街区时上一帧的轨道相机逐位还原。 */
+    if (M.DISTRICT && GAME.district && GAME.district.active) {
+      try {
+        GAME.district.tick();
+        GAME.district.camera();
+      } catch (eDist) { }
+    } else if (M._districtWasActive && GAME.district && GAME.district.resetCam) {
+      GAME.district.resetCam();
+      M._districtWasActive = false;
+    }
+    if (M.DISTRICT && GAME.district && GAME.district.active) M._districtWasActive = true;
     /* v157.15：整平拖刷的**节流重建**。
        整层重建 ~180ms，拖拽时每格重建会把手感拖死 → 150ms 一次；
        松手由 M.terraceFlush() 立刻补一帧，保证最终画面与数据一致。

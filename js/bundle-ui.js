@@ -633,6 +633,8 @@
       townScaleOf: _townScaleOf,
       /* v156.19：球面坐标系的纯数学出口（无 three 也要能验） */
       surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+      /* v158.2（P2）：街区几何挂到同一个 scene 的唯一出口（无 THREE 时返回 null） */
+      _scene: function () { return (typeof scene !== 'undefined') ? scene : null; },
       /* v158.1（P1）：行走/交互共用的连续切平面基 —— 探针与游戏必须同口径 */
       avatarBasis: avatarBasis,
       /* v157.54：拖拽平移的两个纯数学出口（无 three 也要能真调，见上方注释） */
@@ -644,6 +646,7 @@
     openCellPanel: _openCellPanel, cellBrief: _cellBrief,
     townScaleOf: _townScaleOf,
     surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame,
+    _scene: function () { return scene; },
     avatarBasis: avatarBasis,
     panBasisOf: panBasisOf, panStepOf: panStepOf };
 
@@ -1159,6 +1162,9 @@
      这样退出跟随时轨迹球姿态逐位还原，零跳变。 */
   M.PLAYER_AVATAR = true;
   M.FOLLOW = false;
+  /* v158.2（P2 大世界）：街区层总开关。关掉即回到 v158.1 的"格子模型 + 面板"，
+     街区几何不建、相机不覆盖、位姿不动。 */
+  M.DISTRICT = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -7052,7 +7058,10 @@
         /* v158.1（P1）：走近提示挂在跟随态里，且只在目标变化时写 DOM ——
            每帧无脑 innerHTML 会把 rAF 吃掉一大截；sig 去重后跨格才刷一次。 */
         try {
-          if (GAME.ui && GAME.ui.renderInteractHint) {
+          /* v158.2（P2）：街区态由 district HUD 接管，P1 的地面提示必须静默，
+             否则两条 HUD 会叠在同一屏上（同一格既是城又是街道）。 */
+          if (GAME.ui && GAME.ui.renderInteractHint
+            && !(M.DISTRICT && GAME.district && GAME.district.active)) {
             var _nh = M.nearestInteractable();
             var _nhSig = _nh ? (_nh.ci + ':' + _nh.kind + ':' + _nh.verb) : '';
             if (_nhSig !== M._interactHintSig) {
@@ -7063,6 +7072,18 @@
         } catch (eHint) { }
       } catch (eAv) { }
     }
+    /* v158.2（P2 · 城市街区 L1）：在 P0/P1 之后覆盖相机 —— 只写 cam，
+       绝不写 camO.dist / camO.quat / lookPitch，退出街区时上一帧的轨道相机逐位还原。 */
+    if (M.DISTRICT && GAME.district && GAME.district.active) {
+      try {
+        GAME.district.tick();
+        GAME.district.camera();
+      } catch (eDist) { }
+    } else if (M._districtWasActive && GAME.district && GAME.district.resetCam) {
+      GAME.district.resetCam();
+      M._districtWasActive = false;
+    }
+    if (M.DISTRICT && GAME.district && GAME.district.active) M._districtWasActive = true;
     /* v157.15：整平拖刷的**节流重建**。
        整层重建 ~180ms，拖拽时每格重建会把手感拖死 → 150ms 一次；
        松手由 M.terraceFlush() 立刻补一帧，保证最终画面与数据一致。
@@ -30580,6 +30601,11 @@ ui.openDuel = function (fid, moveId) {
             '<button class="btn" data-action="city-enter-3d" data-city="' + city.id + '"' +
               ' title="' + U.escape('直接进 3D 街区：走街串巷，走到建筑旁按 E 进屋（建造/升级仍在城市页那套面板）')
               + '">🏙 进城逛逛（3D）</button>' +
+            /* v158.2（P2 大世界）：同一坐标系的街区入口 —— 不切场景、不读盘。
+               与上面的 city-enter-3d（旧 scene3d 独立 renderer）并存，互不改写。 */
+            '<button class="btn" data-action="district-enter" data-city="' + city.id + '"' +
+              ' title="' + U.escape('走进这座城的街道（无读盘；按 Q 或右下角按钮回星球）')
+              + '">🚶 走进街区</button>' +
             '<button class="btn" data-action="city-dispatch-exp" data-city="' + city.id + '"' +
               ' title="' + U.escape('派遣：把兵力 / 英雄调往本城 —— 在出征界面选主将 + 兵种，抵达即入城（不带货也可发）')
               + '">🛡️ 派遣</button>' +
@@ -31254,6 +31280,32 @@ ui.openDuel = function (fid, moveId) {
     el.setAttribute('data-ci', String(hit.ci));
     el.setAttribute('data-kind', String(hit.kind || ''));
     el.style.display = 'block';
+    return el;
+  };
+
+  /* ============================================================
+   * v158.2（P2 大世界）：街区态 HUD
+   * ------------------------------------------------------------
+   * ⚠️ 不复用 #interact-hint：那一条 pointer-events:none 且每帧按 sig 重写
+   *    innerHTML，按钮会被吃掉（P1 探针 B1/B2 就是拿它做反向守卫的）。
+   * 仍挂 ui.layerRoot() 唯一挂载点；出口挂 GAME.ui.*，不新增顶层全局。
+   * ============================================================ */
+  ui.renderDistrictHud = function (on) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('district-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'district-hud';
+      el.style.cssText = 'position:absolute;right:22px;bottom:88px;z-index:1901;'
+        + 'display:none;pointer-events:auto;font-size:14px;';
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:8px 12px;margin-right:8px;">WASD 走动 · A/D 转向</span>'
+        + '<button class="btn" data-action="district-exit" style="font-weight:700;">退出街区（Q）</button>';
+      root.appendChild(el);
+    }
+    el.style.display = on ? 'block' : 'none';
     return el;
   };
 })();
@@ -37580,6 +37632,33 @@ ui.openDuel = function (fid, moveId) {
         if (!r3d || !r3d.ok) toast((r3d && r3d.msg) || '打不开 3D 视图');
         break;
       }
+      case 'district-enter': {
+        /* v158.2（P2 大世界）：同一坐标系走进街区 —— 不切场景、不读盘。
+           与上面的 city-enter-3d 并存：那条是旧 scene3d 独立 renderer，本条不动它。 */
+        var deId = el.dataset.city, deC = GAME.cityById(deId);
+        if (!deC) { ui.toast('城市不存在'); break; }
+        var deM = GAME.map3d, deCi = (deC.ci != null) ? (deC.ci | 0) : (GAME.state && GAME.state._standCi);
+        if (!deM || !deM.DISTRICT || !deM.PLAYER_AVATAR) { ui.toast('街区层已关闭'); break; }
+        if (!deM.FOLLOW) deM.setFollow(true);
+        /* 站在城格上才能进：不在本城格就用 P0 唯一写入口落过去（快照在 enter 里取） */
+        if (deM.playerCi() !== deCi && GAME.mapSphere && GAME.mapSphere.cells[deCi]) {
+          var deD = GAME.mapSphere.cells[deCi].dir;
+          deM.setPlayerPose({ dir: [deD[0], deD[1], deD[2]], h: deM._groundAtUnit(deCi),
+            yaw: 0, v: [0, 0, 0], ci: deCi });
+        }
+        var deR = (GAME.district && GAME.district.enter) ? GAME.district.enter(deCi, deC) : null;
+        if (!deR || !deR.ok) { ui.toast((deR && deR.msg) || '进不了街区'); break; }
+        ui.closeAllModals();
+        if (ui.renderDistrictHud) ui.renderDistrictHud(true);
+        if (deM) deM._districtWasActive = true;
+        break;
+      }
+      case 'district-exit': {
+        if (GAME.district && GAME.district.exit) GAME.district.exit();
+        if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+        if (GAME._keys) GAME._keys = {};
+        break;
+      }
       case 'open-wall': {
         /* v89.128（老板「围墙以环城一圈的结构作为一个建筑」）：环城热区点击 =
            打开**环城槽**的面板（已建 → 升级/拆除；未建 → 修建）。不占格、不找空地。 */
@@ -41432,6 +41511,14 @@ ui.openDuel = function (fid, moveId) {
           e.preventDefault();
           return;
         }
+        /* v158.2（P2 大世界）：Q = 退出街区（与 HUD 按钮同一出口，不新开状态机）。 */
+        if (_avCode === 'KeyQ' && _mkAv.DISTRICT && GAME.district && GAME.district.active && !e.shiftKey) {
+          GAME.district.exit();
+          if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+          GAME._keys = {};
+          e.preventDefault();
+          return;
+        }
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
@@ -41446,8 +41533,16 @@ ui.openDuel = function (fid, moveId) {
           return;
         }
         if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
-          if (!GAME._keys) GAME._keys = {};
-          GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
+          /* v158.2（P2）：街区态把 W/A/S/D 交给街区局部步进；
+             不写 GAME._keys —— 否则 P0 stepAvatar 会同时推球面位姿，
+             退出后"位置不变"就守不住（两级开关键状态互不串线）。 */
+          if (_mkAv.DISTRICT && GAME.district && GAME.district.active) {
+            if (!GAME.district.keys) GAME.district.keys = {};
+            GAME.district.keys[_avCode.charAt(3).toLowerCase()] = 1;
+          } else {
+            if (!GAME._keys) GAME._keys = {};
+            GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
+          }
           e.preventDefault();
           return;
         }
@@ -41485,8 +41580,13 @@ ui.openDuel = function (fid, moveId) {
     document.addEventListener('keyup', function (e) {
       var _c = e.code || '';
       if (/^Key[WASD]$/.test(_c) && GAME._keys) GAME._keys[_c.charAt(3).toLowerCase()] = 0;
+      /* v158.2（P2）：街区态按键独立清，不借 GAME._keys —— 两级开关键状态互不串线 */
+      if (/^Key[WASD]$/.test(_c) && GAME.district && GAME.district.keys) {
+        GAME.district.keys[_c.charAt(3).toLowerCase()] = 0;
+      }
     });
     window.addEventListener('blur', function () { GAME._keys = {}; });
+    window.addEventListener('blur', function () { if (GAME.district) GAME.district.keys = {}; });
   }
 
   var AUTO_SAVE_MS = 5 * 60 * 1000;   // 自动存档间隔：5 分钟
@@ -41711,7 +41811,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.1';
+  GAME.VERSION = 'v158.2';
   function boot() {
     fitAppSize();
     try {

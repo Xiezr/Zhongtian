@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "3d201e2ddaf1e4be",
+ "sourceHash": "911b48974e05f19b",
  "layout": {
   "order": [
    "core",
@@ -60,6 +60,7 @@
    "gltf",
    "map3d",
    "scene3d",
+   "district",
    "battle",
    "battlelog",
    "strategy",
@@ -184,6 +185,7 @@
   "gltf",
   "map3d",
   "scene3d",
+  "district",
   "battle",
   "battlelog",
   "strategy",
@@ -271,6 +273,7 @@
    "duel",
    "market",
    "events",
+   "district",
    "placement",
    "belt",
    "planetgen"
@@ -554,6 +557,17 @@
    ]
   },
   {
+   "name": "district",
+   "file": "js/district.js",
+   "lines": 314,
+   "bundle": "core",
+   "duty": "district.js — v158.2（P2 · 城市街区 L1）运行时街区层",
+   "deps": [
+    "ui-mapui",
+    "state"
+   ]
+  },
+  {
    "name": "domain",
    "file": "js/domain.js",
    "lines": 9717,
@@ -825,7 +839,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4304,
+   "lines": 4352,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -842,8 +856,8 @@
     "ui-planet",
     "systems",
     "ui-battle",
-    "ui",
     "ui-mapui",
+    "ui",
     "ui-city",
     "map",
     "ui-report",
@@ -861,6 +875,7 @@
     "agenda",
     "delve",
     "ui-core",
+    "sphere",
     "tower",
     "wonderwar",
     "registry",
@@ -901,7 +916,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9518,
+   "lines": 9539,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -1599,7 +1614,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 881,
+   "lines": 912,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1611,10 +1626,11 @@
     "sphere",
     "ui-fx",
     "ui-craft",
+    "ui-shell",
     "growth",
     "taint",
-    "convoy",
     "ui",
+    "convoy",
     "ui-exped",
     "idle",
     "climate",
@@ -1622,7 +1638,6 @@
     "ui-space",
     "ui-battle",
     "ui-view",
-    "ui-shell",
     "trooplv",
     "battle"
    ]

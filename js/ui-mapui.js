@@ -201,6 +201,11 @@ import './ui.js';
             '<button class="btn" data-action="city-enter-3d" data-city="' + city.id + '"' +
               ' title="' + U.escape('直接进 3D 街区：走街串巷，走到建筑旁按 E 进屋（建造/升级仍在城市页那套面板）')
               + '">🏙 进城逛逛（3D）</button>' +
+            /* v158.2（P2 大世界）：同一坐标系的街区入口 —— 不切场景、不读盘。
+               与上面的 city-enter-3d（旧 scene3d 独立 renderer）并存，互不改写。 */
+            '<button class="btn" data-action="district-enter" data-city="' + city.id + '"' +
+              ' title="' + U.escape('走进这座城的街道（无读盘；按 Q 或右下角按钮回星球）')
+              + '">🚶 走进街区</button>' +
             '<button class="btn" data-action="city-dispatch-exp" data-city="' + city.id + '"' +
               ' title="' + U.escape('派遣：把兵力 / 英雄调往本城 —— 在出征界面选主将 + 兵种，抵达即入城（不带货也可发）')
               + '">🛡️ 派遣</button>' +
@@ -875,6 +880,32 @@ import './ui.js';
     el.setAttribute('data-ci', String(hit.ci));
     el.setAttribute('data-kind', String(hit.kind || ''));
     el.style.display = 'block';
+    return el;
+  };
+
+  /* ============================================================
+   * v158.2（P2 大世界）：街区态 HUD
+   * ------------------------------------------------------------
+   * ⚠️ 不复用 #interact-hint：那一条 pointer-events:none 且每帧按 sig 重写
+   *    innerHTML，按钮会被吃掉（P1 探针 B1/B2 就是拿它做反向守卫的）。
+   * 仍挂 ui.layerRoot() 唯一挂载点；出口挂 GAME.ui.*，不新增顶层全局。
+   * ============================================================ */
+  ui.renderDistrictHud = function (on) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('district-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'district-hud';
+      el.style.cssText = 'position:absolute;right:22px;bottom:88px;z-index:1901;'
+        + 'display:none;pointer-events:auto;font-size:14px;';
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:8px 12px;margin-right:8px;">WASD 走动 · A/D 转向</span>'
+        + '<button class="btn" data-action="district-exit" style="font-weight:700;">退出街区（Q）</button>';
+      root.appendChild(el);
+    }
+    el.style.display = on ? 'block' : 'none';
     return el;
   };
 })();

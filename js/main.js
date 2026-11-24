@@ -125,6 +125,33 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (!r3d || !r3d.ok) toast((r3d && r3d.msg) || '打不开 3D 视图');
         break;
       }
+      case 'district-enter': {
+        /* v158.2（P2 大世界）：同一坐标系走进街区 —— 不切场景、不读盘。
+           与上面的 city-enter-3d 并存：那条是旧 scene3d 独立 renderer，本条不动它。 */
+        var deId = el.dataset.city, deC = GAME.cityById(deId);
+        if (!deC) { ui.toast('城市不存在'); break; }
+        var deM = GAME.map3d, deCi = (deC.ci != null) ? (deC.ci | 0) : (GAME.state && GAME.state._standCi);
+        if (!deM || !deM.DISTRICT || !deM.PLAYER_AVATAR) { ui.toast('街区层已关闭'); break; }
+        if (!deM.FOLLOW) deM.setFollow(true);
+        /* 站在城格上才能进：不在本城格就用 P0 唯一写入口落过去（快照在 enter 里取） */
+        if (deM.playerCi() !== deCi && GAME.mapSphere && GAME.mapSphere.cells[deCi]) {
+          var deD = GAME.mapSphere.cells[deCi].dir;
+          deM.setPlayerPose({ dir: [deD[0], deD[1], deD[2]], h: deM._groundAtUnit(deCi),
+            yaw: 0, v: [0, 0, 0], ci: deCi });
+        }
+        var deR = (GAME.district && GAME.district.enter) ? GAME.district.enter(deCi, deC) : null;
+        if (!deR || !deR.ok) { ui.toast((deR && deR.msg) || '进不了街区'); break; }
+        ui.closeAllModals();
+        if (ui.renderDistrictHud) ui.renderDistrictHud(true);
+        if (deM) deM._districtWasActive = true;
+        break;
+      }
+      case 'district-exit': {
+        if (GAME.district && GAME.district.exit) GAME.district.exit();
+        if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+        if (GAME._keys) GAME._keys = {};
+        break;
+      }
       case 'open-wall': {
         /* v89.128（老板「围墙以环城一圈的结构作为一个建筑」）：环城热区点击 =
            打开**环城槽**的面板（已建 → 升级/拆除；未建 → 修建）。不占格、不找空地。 */
@@ -3977,6 +4004,14 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
+        /* v158.2（P2 大世界）：Q = 退出街区（与 HUD 按钮同一出口，不新开状态机）。 */
+        if (_avCode === 'KeyQ' && _mkAv.DISTRICT && GAME.district && GAME.district.active && !e.shiftKey) {
+          GAME.district.exit();
+          if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+          GAME._keys = {};
+          e.preventDefault();
+          return;
+        }
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
@@ -3991,8 +4026,16 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           return;
         }
         if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
-          if (!GAME._keys) GAME._keys = {};
-          GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
+          /* v158.2（P2）：街区态把 W/A/S/D 交给街区局部步进；
+             不写 GAME._keys —— 否则 P0 stepAvatar 会同时推球面位姿，
+             退出后"位置不变"就守不住（两级开关键状态互不串线）。 */
+          if (_mkAv.DISTRICT && GAME.district && GAME.district.active) {
+            if (!GAME.district.keys) GAME.district.keys = {};
+            GAME.district.keys[_avCode.charAt(3).toLowerCase()] = 1;
+          } else {
+            if (!GAME._keys) GAME._keys = {};
+            GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
+          }
           e.preventDefault();
           return;
         }
@@ -4030,8 +4073,13 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
     document.addEventListener('keyup', function (e) {
       var _c = e.code || '';
       if (/^Key[WASD]$/.test(_c) && GAME._keys) GAME._keys[_c.charAt(3).toLowerCase()] = 0;
+      /* v158.2（P2）：街区态按键独立清，不借 GAME._keys —— 两级开关键状态互不串线 */
+      if (/^Key[WASD]$/.test(_c) && GAME.district && GAME.district.keys) {
+        GAME.district.keys[_c.charAt(3).toLowerCase()] = 0;
+      }
     });
     window.addEventListener('blur', function () { GAME._keys = {}; });
+    window.addEventListener('blur', function () { if (GAME.district) GAME.district.keys = {}; });
   }
 
   var AUTO_SAVE_MS = 5 * 60 * 1000;   // 自动存档间隔：5 分钟
@@ -4256,7 +4304,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.1';
+  GAME.VERSION = 'v158.2';
   function boot() {
     fitAppSize();
     try {

@@ -12684,7 +12684,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
     var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
-      'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
+      'map3d', 'scene3d', 'district', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
@@ -49406,6 +49406,57 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         })()
         && /GAME\.items\.add/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ruin.js'), 'utf8')),
         '旧路径保留 + E 键不另写背包');
+
+      /* v158.2（P2 · 城市街区 L1）：状态机唯一 / 同源几何 / 入口接线 / 反向证据。
+         主观项「没有切换感」由老板实机判定，AI 不结案。 */
+      var dC1582 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'district.js'), 'utf8'));
+      check('§589ag 街区状态机：enter/exit 各一处写 active · 不直接写 _avatar · 快照走 P0 出口',
+        /D\.enter = function \(ci, city\)/.test(dC1582)
+        && /D\.exit = function \(\)/.test(dC1582)
+        && /唯一进入写/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'district.js'), 'utf8'))
+        && /唯一退出写/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'district.js'), 'utf8'))
+        && !/GAME\.state\._avatar|state\._avatar/.test(dC1582)
+        && /M\.playerPose\(\)/.test(dC1582)
+        && /setPlayerPose\(snap\)/.test(dC1582),
+        '唯一状态机 + 快照/还原都走 P0 出口');
+
+      check('§589ah 街区同源：avatarBasis 标架 + scene3d.cityPlan 布局 · 相机只写 cam · 过渡 ≤300ms',
+        /M\.avatarBasis\(c\.dir\)/.test(dC1582)
+        && /S\.cityPlan\(city\)/.test(dC1582)
+        && /D\.TRANSITION_MS = 240/.test(dC1582)
+        && !/camO\./.test(dC1582)
+        && /cam\.position\.copy\(pp\)/.test(dC1582)
+        && /cam\.lookAt\(tt\)/.test(dC1582)
+        && /GAME\.district\.tick\(\);/.test(mpC158)
+        && /GAME\.district\.camera\(\);/.test(mpC158),
+        '同源坐标 + 同一本布局账 + 不碰 camO');
+
+      check('§589ai 街区入口：面板按钮 + 独立 HUD（不复用 interact-hint）+ 两处 case + Q 退出',
+        /data-action="district-enter"/.test(umC1581)
+        && /ui\.renderDistrictHud = function \(on\)/.test(umC1581)
+        && /getElementById\('district-hud'\)/.test(umC1581)
+        && !/getElementById\('interact-hint'\)[\s\S]{0,400}data-action="district-exit"/.test(umC1581)
+        && /case 'district-enter'/.test(mnC158)
+        && /case 'district-exit'/.test(mnC158)
+        && /_avCode === 'KeyQ' && _mkAv\.DISTRICT/.test(mnC158),
+        '按钮 + HUD + case + 键盘出口');
+
+      check('§589aj 反向证据：P0/P1 与旧 3D 入口逐字保留 · 街区键不写 GAME._keys',
+        /if \(M\.FOLLOW && M\.PLAYER_AVATAR\)/.test(mpC158)
+        && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+        && /case 'city-enter-3d'/.test(mnC158)
+        && /case 'city-enter'/.test(mnC158)
+        && (function () {
+          var at = mnC158.indexOf("if (_mkAv.DISTRICT && GAME.district && GAME.district.active) {");
+          if (at < 0) return false;
+          /* 只取 if 块本体：定长 260 字会把紧随其后的 else 分支也框进来，
+             而 else 里本来就该写 GAME._keys —— 上一轮就是被这个窗口误判成红的。 */
+          var end = mnC158.indexOf("} else {", at);
+          if (end < 0) return false;
+          var blk = mnC158.slice(at, end);
+          return !/GAME\._keys/.test(blk);
+        })(),
+        '旧入口保留 + 两级按键状态不串线');
     })();
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
