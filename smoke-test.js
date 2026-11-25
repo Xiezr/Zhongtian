@@ -50751,6 +50751,89 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })());
 
 
+
+  /* ============================================================
+   * §612 v158.23 · 「星球固定，相机视角自由连续到达任何角度」
+   * ------------------------------------------------------------
+   * 老板原话：「星球在场景中固定，只能移动相机的方向和位置，
+   *            这回我相机视角应该能自由连续到达任何角度了吧」
+   *
+   * 病根：轨迹球分支已经把拖动累积成四元数（能翻任意极点），
+   *   但紧接着**无条件** `camO.quat = null` 让 placeCamera 按 yaw/pitch 重建，
+   *   而 pitch = asin(dir.y) 主值域只有 ±90° → 跨极点信息（roll + 越过天顶）
+   *   当场丢光，拖过天顶只会沿原经线折回。
+   * 规则变更：轨迹球模式下 quat 是真值，**不许清**。
+   * ============================================================ */
+  check('§612① 结构面：轨迹球模式下 quat 是真值，不许无条件清空', (function () {
+    return /if \(!M\.CAM_TRACKBALL\) camO\.quat = null;/.test(_m3d608);
+  })());
+
+  check('§612② 反向守卫：拖动末尾不许出现裸 `camO.quat = null`（退回转台）', (function () {
+    /* 取"累积四元数"那一行之后的 600 字，裸清空必须不存在 */
+    var i = _m3d608.indexOf('camO.quat = _dqP.multiply(_dqY).multiply(camO.quat).normalize();');
+    if (i < 0) return false;
+    var tail = _m3d608.slice(i, i + 900);
+    /* 允许条件式 `if (!M.CAM_TRACKBALL) camO.quat = null;`；禁止裸写 */
+    var bare = tail.replace(/if \(!M\.CAM_TRACKBALL\) camO\.quat = null;/g, '');
+    return !/camO\.quat = null;/.test(bare);
+  })());
+
+  (function () {                    /* v158.23：外层只做计算，判定交给下面唯一的 check（避免同名双条） */
+    /* 纯矩阵复现轨迹球数学（不依赖 THREE）：
+         right = R·ex ； R = Rot(right, -dy·K) · Rot(worldY, -dx·K) · R ； dir = R·ez
+       与 map3d 里 `_dqP.multiply(_dqY).multiply(camO.quat)` 同序（左乘 = 世界系）。 */
+    var K = 0.005;
+    function mul(A, B) {
+      var C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++) {
+        C[i][j] = A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j];
+      }
+      return C;
+    }
+    function rot(ax, th) {
+      var c = Math.cos(th), s = Math.sin(th), t = 1 - c, x = ax[0], y = ax[1], z = ax[2];
+      return [
+        [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+        [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+        [t * x * z - s * y, t * y * z + s * x, t * z * z + c]
+      ];
+    }
+    /* R0 = Ry(yaw)·Rx(-pitch)，与 placeCamera 的 Euler(-pitch, yaw, 0, 'YXZ') 同构 */
+    var R = mul(rot([0, 1, 0], 0.8), rot([1, 0, 0], -0.42));
+    var worst = 0, prev = null, crossed = false, backUp = false, n = 0, minY = 9, maxY = -9;
+    for (var f = 0; f < 400; f++) {
+      var right = [R[0][0], R[1][0], R[2][0]];
+      R = mul(rot(right, -(-4.5) * K), R);      /* 每帧向上拖 4.5px */
+      var d = [R[0][2], R[1][2], R[2][2]];
+      var L = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
+      d = [d[0] / L, d[1] / L, d[2] / L];
+      if (d[1] < minY) minY = d[1];
+      if (d[1] > maxY) maxY = d[1];
+      if (prev) {
+        var dot = Math.max(-1, Math.min(1, d[0] * prev[0] + d[1] * prev[1] + d[2] * prev[2]));
+        var a = Math.acos(dot) * 180 / Math.PI;
+        if (a > worst) worst = a;
+        if (d[1] < -0.5) crossed = true;         /* 进过南半球 */
+        if (crossed && d[1] > 0.5) backUp = true; /* 又翻回来了 */
+      }
+      prev = d; n++;
+    }
+    /* ⚠️ 标题必须是**固定字面量**：写成 `'...' + 变量` 会被元判据当成
+       "条件为字符串字面量（恒真）"（实测 §612③ 第一版就是这么被拦下的）。
+       数值一律放 detail。 */
+    check('§612③ 数值面：模拟 400 帧竖直拖 —— 翻过两个极点且逐帧连续',
+      n === 400 && crossed && backUp && worst < 6,
+      'dir.y=' + minY.toFixed(2) + '~' + maxY.toFixed(2) + ' crossed=' + crossed + ' back=' + backUp + ' maxStep=' + worst.toFixed(2) + '°');
+  })();
+
+  check('§612④ 相机姿态直接用四元数（cam.quaternion.copy(camO.quat)），不回头读 yaw/pitch', (function () {
+    return /cam\.quaternion\.copy\(camO\.quat\);/.test(_m3d608)
+      /* 反向：轨道拖拽里不许再把 dir 反算成 pitch 后清 quat 重建 */
+      && !/camO\.quat = null; camO\._euler = null;/ .test(
+           _m3d608.slice(_m3d608.indexOf('if (M.CAM_TRACKBALL) {'),
+                         _m3d608.indexOf('} else {', _m3d608.indexOf('if (M.CAM_TRACKBALL) {'))));
+  })());
+
   /* ============================================================
    * §611 v158.22 · 「操控一小人走在地面上」（老板：星露谷不就是场景样板吗）
    * ------------------------------------------------------------

@@ -8400,7 +8400,20 @@
              折回**不改变姿态**，所以不会跳（这与"跨极点归一化"是两件事）。 */
           if (camO.pitch > 1e4 || camO.pitch < -1e4) camO.pitch %= (Math.PI * 2);
           if (camO.yaw > 1e4 || camO.yaw < -1e4) camO.yaw %= (Math.PI * 2);
-          camO.quat = null; camO._euler = null;   /* 让 placeCamera 按 yaw/pitch 重建 */
+          /* ============================================================
+           * v158.23（老板「星球在场景中固定，相机视角应该能自由连续到达任何角度」）
+           * ------------------------------------------------------------
+           * 病灶就在这一行：上面刚把拖动累积成四元数（可以翻过任意极点），
+           * 这里**无条件清掉它**，让 placeCamera 按 `yaw/pitch` 重建。
+           * 而 pitch 是 `asin(dir.y)` —— 主值域只有 ±90°：
+           *   · 跨极点的信息（roll、以及"越过天顶后继续走"）在这一步全丢；
+           *   · 拖过天顶只会沿原经线折回，**永远进不了另一半球**；
+           *   · 表现为老板说的"有个地方无法跨过"。
+           * 轨迹球模式下 quat 就是真值，**绝不许清**（`_dirty` 判据是 `!camO.quat`，
+           * 只要它在，placeCamera 就一直用姿态本身，不回头读 yaw/pitch）。
+           * ============================================================ */
+          if (!M.CAM_TRACKBALL) camO.quat = null;
+          camO._euler = null;
           /* ⛔ v157.81：这里原有 `} else if (_P0 && _P1)` 那个分支（抓地砖 → 反算 yaw/pitch）
              —— 死代码，已删。函数上方 `if (M._surf) { ... return; }` 已经挡住了地表模式，
              走到这里 `M._surf` 必为 false，该分支永远不可达。
@@ -42977,7 +42990,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.22';
+  GAME.VERSION = 'v158.23';
   function boot() {
     fitAppSize();
     try {
