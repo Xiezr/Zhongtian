@@ -9612,6 +9612,15 @@
     var c = GAME.map.lonlatOf(x, y), d = GAME.map.dirOf(c.lon, c.lat);
     camO.yaw = Math.atan2(d[0], d[2]);
     camO.pitch = Math.max(-1.35, Math.min(1.35, c.lat * Math.PI / 180));
+    /* v158.16（玩家视角走查）：轨迹球模式下 **quat 才是真值** —— placeCamera 的
+       `_dirty` 判据是 `M.CAM_TRACKBALL ? !camO.quat : …`，只要 quat 有值就不会
+       按 yaw/pitch 重建。所以这里只改 yaw/pitch 等于没改朝向，实际效果是
+       「回本城」把镜头拉近（dist 生效）却不转向，城反被推出画面
+       （实测城格 NDC y: 0.66 → 1.05，出视野）。
+       必须显式清掉姿态缓存，让下一帧按新 yaw/pitch 重建。
+       ⚠️ 别改成"直接写 quat"：setFromEuler(-pitch, yaw, roll, 'YXZ') 与
+          placeCamera 同一套约定，重建即为唯一出口，避免两处算出不同 roll。 */
+    camO.quat = null; camO._euler = null; camO.dir = null;
     camO.dist = R * 1.9; _syncZoom();
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
@@ -42347,7 +42356,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.15';
+  GAME.VERSION = 'v158.16';
   function boot() {
     fitAppSize();
     try {
