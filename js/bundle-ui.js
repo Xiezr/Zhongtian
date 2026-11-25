@@ -1721,6 +1721,16 @@
     for (var j2 = 0; j2 < N - 1; j2++) for (var i2 = 0; i2 < N - 1; i2++) {
       var a = j2 * N + i2, b = a + 1, c2 = a + N, d2 = c2 + 1;
       /* ============================================================
+       * v158.21（老板「为什么近地面的视野边界是个正方形？我没见过正方形的一个视野边界」）
+       * ------------------------------------------------------------
+       * 地形层原来是 `N×N` **方阵**采样（u,v 都取到 ±half），四个角伸到 half×1.41 ——
+       * 这就是玩家看到的那口"正方形井"的最终来源（平台那边也一并裁圆了）。
+       * 现在只保留"四边形中心落在半径 half 的圆内"的三角，边界成弧。
+       * 被跳过的位置在 idx 里留 0（退化三角，不渲染、也不影响包围球）。
+       * ============================================================ */
+      var _cu = -half + (i2 + 0.5) * step, _cv = -half + (j2 + 0.5) * step;
+      if (_cu * _cu + _cv * _cv > half * half) continue;
+      /* ============================================================
        * v157.21：**四边形中心落在整平格里才不画**
        * ------------------------------------------------------------
        * 上一版按"任一顶点属于整平格就跳过"，边界会被 1.4 米采样网格放大成
@@ -1847,6 +1857,16 @@
 
     for (var i = g0.i - RANGE; i <= g0.i + RANGE; i++) {
       for (var j = g0.j - RANGE; j <= g0.j + RANGE; j++) {
+        /* ============================================================
+         * v158.21（老板「为什么近地面的视野边界是个正方形？我没见过正方形的一个视野边界」）
+         * ------------------------------------------------------------
+         * 原来是 `(2*RANGE+1)²` 的**方阵**（45×45 = 2025 格）：四个角伸到 79×1.41 ≈ 112 米，
+         * 而地形层 `_surfTerrainGeo` 从 43 米外才铺 —— 方阵的直角边直接压在地形上，
+         * 就是玩家看到的那口"正方形井"。
+         * 现在按**圆形**裁切（半径 RANGE 格），边界是弧、且外圈被地形层接住，看不出接缝。
+         * ============================================================ */
+        var _di = i - g0.i, _dj = j - g0.j;
+        if (_di * _di + _dj * _dj > RANGE * RANGE) continue;
         var th = _terrHOfIJ(i, j);
         /* 四角（格点编号：SW=(i,j) SE=(i+1,j) NE=(i+1,j+1) NW=(i,j+1)） */
         var cSW = cornerNat(i, j), cSE = cornerNat(i + 1, j),
@@ -7928,6 +7948,40 @@
       if (GAME.ui && GAME.ui.tipHide) GAME.ui.tipHide();
     });
     window.addEventListener('mousemove', function (e) {
+      /* ============================================================
+       * v158.21（老板「视野外不能点击。不能点击我怎么左键进行拖动」）
+       * ------------------------------------------------------------
+       * 地表模式的相机朝向由 **`M._surfDir`** 决定（placeCamera 的地表分支不读 camO.quat），
+       * 所以左键轨道拖拽在贴地时"改四元数"等于白改 —— 实测拖 200px 只走了 Δyaw=0.0008。
+       * 现在贴地时左键也走"环视"这条唯一出口（与右键 lookDrag 同一套数学），
+       * 拖动 = 绕站立者转视线：左右环视 / 抬头低头，任何方向都有回应。
+       * ============================================================ */
+      if (M._surf && drag && !lookDrag) {
+        var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
+        if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
+        lx = e.clientX; ly = e.clientY;
+        if (Math.abs(_sdx2) + Math.abs(_sdy2) > 3) M._rmbMoved = true;
+        var _radS2 = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
+        var _dS2 = (M._surfDir ? M._surfDir.clone()
+          : new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion)).normalize();
+        if (_sdx2) {
+          var _aY2 = TURN.lookYaw.surf * _sdx2 * M.TURN_K_LOOK;
+          if (Math.abs(_dS2.dot(_radS2)) > 0.999) {
+            if (M._surfRight) M._surfRight.applyAxisAngle(_dS2, _aY2).normalize();
+          } else {
+            _dS2.applyAxisAngle(_radS2, _aY2).normalize();
+            if (M._surfRight) M._surfRight.applyAxisAngle(_radS2, _aY2).normalize();
+          }
+        }
+        if (_sdy2) {
+          var _rS2 = _surfRightOf(_dS2, _radS2);
+          _dS2.applyAxisAngle(_rS2, -TURN.lookPitch.surf * _sdy2 * M.TURN_K_SURF).normalize();
+        }
+        M._surfDir = _dS2;
+        M._surfHold = true;
+        _surfTilt = null;
+        touch(); redraw(); return;
+      }
       if (lookDrag) {
         var _dx = e.clientX - lx, _dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
         /* 两个轴同一规则：**画面内容跟手**（见下方 v157g 注释）。
@@ -8087,10 +8141,11 @@
         }
         return;
       }
-      if (M._surf) {          /* 地表但没抓到地面点（看着天空）→ 不做任何移动 */
-        touch(); redraw();
-        return;
-      }
+      /* ⛔ v158.21（老板「视野外不能点击。不能点击我怎么左键进行拖动」）：
+         这里原来是 `if (M._surf) { touch(); redraw(); return; }` ——
+         地表模式**没抓到地面点**（看着天空、或者鼠标在有限平台的界外）就什么都不做。
+         配合方形的有限平台，玩家在边界外按住左键完全没反应，等于被锁在正方形里。
+         现在不 return，落到下面的轨道拖拽：没抓到手，就用"转球"的方式给一个回应。 */
       /* ============================================================
        * v156.55（老板「右键的相机，我希望是相机绕球心运动，
        *          而不是在视野内摆弄球体」）—— **轨道相机：无 roll、无翻越**
@@ -8219,7 +8274,17 @@
          * 任何值，(cos p, sin p) 自己就把姿态映射回来；一次拖动转几圈都连续。
          * 地表模式（`M._surf`）不参与，仍走抓地砖。
          * ============================================================ */
-        if (!M._surf) {
+        /* ============================================================
+         * v158.21（老板「视野外不能点击 · 不能左键拖动 · 近地面视野是正方形」）
+         * ------------------------------------------------------------
+         * 原来这里是 `if (!M._surf) { ... }` —— **地表模式整段跳过轨道拖拽**，
+         * 理由是"地表走抓地砖"，而那个 `else if (_P0 && _P1)` 分支 v157.81 就删了。
+         * 净效果：贴地时鼠标左键**完全拖不动**，再配上方形的 45×45 平台边界，
+         * 玩家被锁在一口正方形井里。
+         * 现在地表也走同一套轨迹球：拖动 = 绕球心转，视野随之平移（不是地面翻滚，
+         * 因为贴地时 camO.dist 固定在 R+眼高，转的是视线方向）。
+         * ============================================================ */
+        if (true) {
           var _sdxv = e.clientX - _prevX, _sdyv = e.clientY - _prevY;
           var _K = 0.005;                       /* 弧度/像素：拖满一屏约 180° */
           if (M.CAM_TRACKBALL) {
@@ -31382,15 +31447,35 @@ ui.openDuel = function (fid, moveId) {
       if (!RS || !RS.view || !RS.ON_MAP) return;
       var rv = null;
       try { rv = RS.view(ci); } catch (e0) { rv = null; }
-      if (!rv) return;
-      if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;
+      if (!rv) {
+        /* ============================================================
+         * v158.21（老板连问三次「我的建造呢？」）
+         * ------------------------------------------------------------
+         * 湖泊 + 沼泽占全图约 37%（实测 12888 + 2454 / 40962）—— 它们只能**派军采集**、
+         * 不建采集场（EXT_BUILDINGS 只有农场/林场/采石场/矿场四种）。
+         * 原来这里直接 return，什么都不显示 → 玩家点这类格找不到建造，以为功能没了。
+         * 现在给一块"说清楚"的说明：这块地为什么不能建、能建的地长什么样。
+         * ============================================================ */
+        var _tn = (ter && ter.name) || '这块地';
+        resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">🏭 采集场</div>' +
+          '<div class="attr"><span class="k">' + U.escape(_tn) + '</span>' +
+          '<span class="v" style="color:var(--text-dim);">只能派军采集，不能建厂' +
+          ' —— 建厂要森林 / 山地 / 荒漠 / 平原 / 草原</span></div>' +
+          '<div class="op-hint">采集场是资源建筑：建好后按丰度持续产出，不用派兵守着。</div></div>';
+        return;
+      }
+      /* ⛔ v158.21（老板「我的建造呢？」×3）：这行原来是
+         `if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;`
+         —— 把**平原和草原（都是农场 grain）也挡掉了**，玩家点平原/草原看不到建造入口。
+         现在交给 `RS.RES_OF_TYPE` 自己判断（有资源就给区块），不再另写一份白名单。 */
       /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
          会读成黑话，这里按 DATA.RESOURCES 取正式名（`resFull`，v158.17 提到函数级）。 */
       var rname = resFull(rv.res || '');
       var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
-      /* v158.17：未勘探时区块标题直接写清状态 —— 「资源地块」四个字看不出"这块地还没查过" */
-      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块' +
-        (rv.scanned ? '' : ' · 未勘探') + '</div>';
+      /* v158.21（老板连问三次「我的建造呢？」）：「资源地块」这四个字读不出"这里能建东西"。
+         标题改成直白的「🏭 采集场」，未勘探时直接写"勘探后即可建造"。 */
+      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">🏭 采集场' +
+        (rv.scanned ? '' : ' · 未勘探（勘探后即可建造）') + '</div>';
       if (!rv.scanned) {
         resBox +=
           '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未知 —— 地形特征推断可能有 ' +
@@ -31465,7 +31550,11 @@ ui.openDuel = function (fid, moveId) {
         '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
           base.toLocaleString() + ' 名</div>' +
-        prodBox + resBox +
+        /* v158.21（老板「为什么地块一点就进入了占领啊什么的？那我怎么进行资源建筑的建造？我的建造呢？」
+           ×3）—— 建造区块原来排在 prodBox（产量/材料/珠宝）**之后**，下面是「侦查/掠夺/占领」
+           三个大按钮，玩家一眼只看到"占领"，以为这块地只能打。现在把 resBox 提到最前，
+           紧跟标题 —— 点开第一眼就是"这里能建什么"。 */
+        resBox + prodBox +
         (GAME.jianghuWildMounted ? ui.jianghuHTML(ci) : '') +
         /* v89.152（老板 4）：三键固定放菜单底部；文案「占领」（不带"并驻守"） */
         '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
@@ -42739,7 +42828,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.20';
+  GAME.VERSION = 'v158.21';
   function boot() {
     fitAppSize();
     try {

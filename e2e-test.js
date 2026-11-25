@@ -843,7 +843,11 @@ async function runTests(dom, URL) {
   G.ui.openLandModalCi(_ciU18);
   await sleep(60);
   const landHtmlU18 = document.querySelector('#modal-root').innerHTML;
-  check('未占领野地的地块面板也有「资源地块」区', landHtmlU18.indexOf('资源地块') >= 0);
+  /* 规则变更（v158.21 · 老板「我的建造呢？」×3）：区块标题「资源地块」改成「🏭 采集场」——
+     那四个字读不出"这里能建东西"。三件套：标题新规则 + 仍钉"区块在未占领分支里"这件事
+     （这才是本条要守的回归）+ 下面那条 res-scan 入口断言不动。 */
+  check('未占领野地的地块面板也有「🏭 采集场」区（v158.21 由「资源地块」更名）',
+    landHtmlU18.indexOf('🏭 采集场') >= 0 || landHtmlU18.indexOf('采集场') >= 0);
   check('未占领野地可就地勘探（入口不被面板分支顺序吃掉）',
     landHtmlU18.indexOf('data-action="res-scan"') >= 0);
   G.ui.closeAllModals();

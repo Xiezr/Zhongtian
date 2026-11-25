@@ -48939,8 +48939,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs = require('fs'), path = require('path');
     var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
 
-    check('§586r 结构面：轨道旋转 = pitch/yaw 纯累加，不归一化，交给 placeCamera 重建',
-      /if \(!M\._surf\) \{\n          var _sdxv = e\.clientX - _prevX, _sdyv = e\.clientY - _prevY;/.test(mp)
+    check('§586r 结构面：轨道旋转 = pitch/yaw 纯累加，不归一化，交给 placeCamera 重建（v158.21：地表也走这一套）',
+      /* 规则变更（v158.21 · 老板「不能左键拖动」）：旧判据要求 `if (!M._surf) { ... }` ——
+         即"地表模式跳过轨道拖拽"。实测贴地时鼠标完全拖不动（Δyaw 0.0008），已推翻：
+         地表改用 _surfDir 那条唯一出口，这里不再要求 !M._surf 前缀。
+         累加两式 + quat 置空重建这三条**必须逐字保留**（高处仍是这套数学）。 */
+      /var _sdxv = e\.clientX - _prevX, _sdyv = e\.clientY - _prevY;/.test(mp)
       && /camO\.pitch \+= _sdyv \* _K;/.test(mp)
       && /camO\.yaw -= _sdxv \* _K;/.test(mp)
       && /camO\.quat = null; camO\._euler = null;/.test(mp),
@@ -50462,9 +50466,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return /_D\.snapshot = null;/.test(blk) && /_D\.exit\(\);/.test(blk);
   })());
 
-  check('§607④ 未探明格：区块标题写明"未勘探" + 说明勘探代价与作用', (function () {
-    return /· 未勘探/.test(_u607) && /勘探不花资源/.test(_u607)
-      && /rv\.scanned \? '' : ' · 未勘探'/.test(_u607);
+  check('§607④ 未探明格：区块标题写明"未勘探" + 说明勘探代价与作用（v158.21 标题改「🏭 采集场」）', (function () {
+    /* 规则变更（v158.21 · 老板「我的建造呢？」×3）：「资源地块」读不出"这里能建东西"，
+       标题改成直白的「🏭 采集场」；未勘探时补"勘探后即可建造"。三件套：标题新规则 +
+       真实形态断言 + 保留"勘探不花资源"这条作用说明（它才是玩家要的决策依据）。 */
+    return /🏭 采集场/.test(_u607) && /· 未勘探（勘探后即可建造）/.test(_u607)
+      && /勘探不花资源/.test(_u607);
   })());
 
   check('§607⑤ 采集场面板：丰度自成一档（管产量、不管储量）', (function () {

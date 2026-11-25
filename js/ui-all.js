@@ -16326,15 +16326,35 @@ import './ui.js';
       if (!RS || !RS.view || !RS.ON_MAP) return;
       var rv = null;
       try { rv = RS.view(ci); } catch (e0) { rv = null; }
-      if (!rv) return;
-      if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;
+      if (!rv) {
+        /* ============================================================
+         * v158.21（老板连问三次「我的建造呢？」）
+         * ------------------------------------------------------------
+         * 湖泊 + 沼泽占全图约 37%（实测 12888 + 2454 / 40962）—— 它们只能**派军采集**、
+         * 不建采集场（EXT_BUILDINGS 只有农场/林场/采石场/矿场四种）。
+         * 原来这里直接 return，什么都不显示 → 玩家点这类格找不到建造，以为功能没了。
+         * 现在给一块"说清楚"的说明：这块地为什么不能建、能建的地长什么样。
+         * ============================================================ */
+        var _tn = (ter && ter.name) || '这块地';
+        resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">🏭 采集场</div>' +
+          '<div class="attr"><span class="k">' + U.escape(_tn) + '</span>' +
+          '<span class="v" style="color:var(--text-dim);">只能派军采集，不能建厂' +
+          ' —— 建厂要森林 / 山地 / 荒漠 / 平原 / 草原</span></div>' +
+          '<div class="op-hint">采集场是资源建筑：建好后按丰度持续产出，不用派兵守着。</div></div>';
+        return;
+      }
+      /* ⛔ v158.21（老板「我的建造呢？」×3）：这行原来是
+         `if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;`
+         —— 把**平原和草原（都是农场 grain）也挡掉了**，玩家点平原/草原看不到建造入口。
+         现在交给 `RS.RES_OF_TYPE` 自己判断（有资源就给区块），不再另写一份白名单。 */
       /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
          会读成黑话，这里按 DATA.RESOURCES 取正式名（`resFull`，v158.17 提到函数级）。 */
       var rname = resFull(rv.res || '');
       var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
-      /* v158.17：未勘探时区块标题直接写清状态 —— 「资源地块」四个字看不出"这块地还没查过" */
-      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块' +
-        (rv.scanned ? '' : ' · 未勘探') + '</div>';
+      /* v158.21（老板连问三次「我的建造呢？」）：「资源地块」这四个字读不出"这里能建东西"。
+         标题改成直白的「🏭 采集场」，未勘探时直接写"勘探后即可建造"。 */
+      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">🏭 采集场' +
+        (rv.scanned ? '' : ' · 未勘探（勘探后即可建造）') + '</div>';
       if (!rv.scanned) {
         resBox +=
           '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未知 —— 地形特征推断可能有 ' +
@@ -16409,7 +16429,11 @@ import './ui.js';
         '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
           base.toLocaleString() + ' 名</div>' +
-        prodBox + resBox +
+        /* v158.21（老板「为什么地块一点就进入了占领啊什么的？那我怎么进行资源建筑的建造？我的建造呢？」
+           ×3）—— 建造区块原来排在 prodBox（产量/材料/珠宝）**之后**，下面是「侦查/掠夺/占领」
+           三个大按钮，玩家一眼只看到"占领"，以为这块地只能打。现在把 resBox 提到最前，
+           紧跟标题 —— 点开第一眼就是"这里能建什么"。 */
+        resBox + prodBox +
         (GAME.jianghuWildMounted ? ui.jianghuHTML(ci) : '') +
         /* v89.152（老板 4）：三键固定放菜单底部；文案「占领」（不带"并驻守"） */
         '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
