@@ -27695,8 +27695,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
       return _mk155 === 1 && !!_pl155 && one === expect && G.extStoreCapOneOf({ type: null, lv: 0 }) === 0
         /* v89.212（老板 1）：面板标签按归属资源（石场 → 「另加电能上限」；v89.229 资源换代）；
-           悬停分解行改「· 城外堆场（本类地块）：+」；选建悬停按类型动态映射资源名。 */
-        && html.indexOf('另加电能上限') >= 0 && html.indexOf(U.fmt(one)) >= 0
+           悬停分解行改「· 城外堆场（本类地块）：+」；选建悬停按类型动态映射资源名。
+
+           v158.17 规则变更（老板「堆场说两遍」）：面板原文是
+           「另加电能上限 +X（每级另加电能上限 +Y）」—— 同一句话里"另加…上限"出现两次，
+           读者要自己数哪一遍是总数。现改为「电能上限 +X（每级 +Y）」。
+           判据按新口径重写：① 新文案在；② 旧文案**必须消失**（反向守卫，防又抄回去）。 */
+        && html.indexOf('电能上限 +') >= 0 && html.indexOf(U.fmt(one)) >= 0
+        && html.indexOf('另加电能上限') < 0 && html.indexOf('每级 +') >= 0
         && u155.indexOf('· 城外堆场（本类地块）：+') >= 0
         && u155.indexOf("'｜每级另加' + (_rnB || '资源') + '上限 +'") >= 0
         && DATA.EXT_BUILDINGS.quarry.desc === '依山蓄能，电能产地';
@@ -50063,7 +50069,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       (function () {
         var i = umFh15814.indexOf('ui.renderDistrictHud = function');
         if (i < 0) return false;
-        var body = umFh15814.slice(i, i + 1200);
+        /* v158.17：原来是 slice(i, i+1200) 的**魔法窗口** —— 本版在同一个函数里加了
+           "出口提示随 plan.wall 变"的一段，把 `getElementById('follow-hud')` 挤出了窗口，
+           判据假红。改成"整段函数体"（到下一个函数名为止）：更严、且不再对行数敏感。 */
+        var j = umFh15814.indexOf('ui.renderVehicleHud = function', i);
+        var body = (j > i) ? umFh15814.slice(i, j) : umFh15814.slice(i);
         return /方向键 走动/.test(body)
           && /getElementById\('follow-hud'\)/.test(body)
           && /display = \(!on && GAME\.map3d && GAME\.map3d\.FOLLOW\)/.test(body);
@@ -50343,6 +50353,147 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var after = bucketOf();
     return before === after && before >= 5;         /* 下限：开局 5 座厂至少要在册，防 0===0 */
   })());
+
+  /* ============================================================
+   * §607 v158.17 · 玩家视角 6 条缺口落地（老板「参考现有成熟设计完善」）
+   * ------------------------------------------------------------
+   * 上一轮（v158.16）以玩家视角走查列出 6 条"看得见但做不了"的缺口，这一版逐条补齐。
+   * 每条都钉住**可回归的形态**，不是"改了就算"：
+   *   ① 街区里画「我自己」—— 挂街区 root（与 vehicle/npc 同一范式）、真人比例；
+   *      同时球面那只小人必须在街区态整组收起（否则同一个人被画两次）；
+   *   ② 走出南边即回星球 —— D.step 只举 _out 标记，收街区仍走 D.exit 唯一出口；
+   *   ③ 导航按钮同时搬人 —— ui → map3d.gotoXY → setPlayerPose（P0 唯一入口）；
+   *   ④ 未探明格的引导（区块标题写明"未勘探" + 说明代价）；
+   *   ⑤ 采集场面板文案（丰度/储量/堆场/工期/图标/全名，逐条见下）；
+   *   ⑥ 夜面底数 0.35 → 0.55：只抬夜面，日面保持不变。
+   * ============================================================ */
+  console.log('  --- §607 v158.17 玩家视角 6 条缺口（街区主角/出城/回本城/文案/夜面） ---');
+  var _fs607 = require('fs'), _p607 = require('path');
+  var _d607 = _fs607.readFileSync(_p607.join(__dirname, 'js/district.js'), 'utf8');
+  var _m607 = _fs607.readFileSync(_p607.join(__dirname, 'js/map3d.js'), 'utf8');
+  var _u607 = _fs607.readFileSync(_p607.join(__dirname, 'js/ui-mapui.js'), 'utf8');
+  var _s607 = _fs607.readFileSync(_p607.join(__dirname, 'js/ui-space.js'), 'utf8');
+
+  check('§607① 街区主角：buildAvatar 挂街区 root · 真人比例（1.21×scale ≈ 1.72m）· 每帧跟位', (function () {
+    var mScale = /D\.AVATAR_SCALE = ([\d.]+);/.exec(_d607);
+    var sc = mScale ? parseFloat(mScale[1]) : 0;
+    return /function buildAvatar\(root\)/.test(_d607)
+      && /g\.scale\.setScalar\(D\.AVATAR_SCALE\)/.test(_d607)
+      && /buildAvatar\(root\);/.test(_d607)                  /* 由 build() 真的调用 */
+      && /function syncAvatar\(dt, moving\)/.test(_d607)
+      && /syncAvatar\(dt, /m.test(_d607)                     /* tick 里真的每帧调 */
+      && sc > 1.2 && sc < 1.7                                 /* 1.72/1.21 ≈ 1.42 */
+      && Math.abs(1.21 * sc - 1.72) < 0.12;                   /* 落在真人身高带内 */
+  })(), 'scale×1.21 = ' + (function () {
+    var m = /D\.AVATAR_SCALE = ([\d.]+);/.exec(_d607);
+    return m ? (1.21 * parseFloat(m[1])).toFixed(2) + 'm' : '?';
+  })());
+
+  check('§607① 球面小人在街区态整组收起（同一个人不许画两次）', (function () {
+    /* 判据放在渲染循环的街区分支里：district.active → hidden，否则还原。
+       v158.16 实测 figVsMe=9.45 —— 球面小人站在格心、人站在街区 spawn，画面里是"另一个人"。 */
+    var at = _m607.indexOf('GAME.district.tick();');
+    if (at < 0) return false;
+    var blk = _m607.slice(at, at + 1800);
+    return /if \(figRoot\) figRoot\.visible = false;/.test(blk)
+      && /if \(figRoot\) figRoot\.visible = true;/.test(blk);
+  })());
+
+  check('§607② 走出南边即回星球（真调 D.step：南边举 _out · 北边不举）', (function () {
+    var D = GAME.district;
+    if (!D || !D.step || !D.planOf) return false;
+    var b0 = { active: D.active, plan: D.plan, pos: D.pos, keys: D.keys, out: D._out };
+    var hit = 0;
+    try {
+      D.active = true;
+      D.plan = D.planOf(null);                       /* 确定性空城：有 bounds / 无墙 */
+      D.keys = {};
+      D.pos = { x: 0, z: D.plan.bounds.z1 - 0.4 };   /* 贴着南边 */
+      D._out = false;
+      D.step(1 / 60, { s: 1 });                      /* yaw=0 时 S = +Z = 南 */
+      if (D._out === true) hit++;
+      D._out = false;
+      D.pos = { x: 0, z: D.plan.bounds.z0 + 0.4 };   /* 贴着北边 */
+      D.step(1 / 60, { w: 1 });
+      if (D._out === false) hit++;                   /* 北边界只是夹边，不是出口 */
+    } finally {
+      D.active = b0.active; D.plan = b0.plan; D.pos = b0.pos; D.keys = b0.keys; D._out = b0.out;
+    }
+    return hit === 2;
+  })());
+
+  check('§607② 收街区仍走 D.exit 唯一出口（tick 里不许自己写 active=false）', (function () {
+    var at = _d607.indexOf('if (D._out)');
+    if (at < 0) return false;
+    var blk = _d607.slice(at, at + 500);
+    /* 「唯一退出写」要落在 D.tick 的相位归零分支里：模块顶部那次初始化不算
+       （`D.active = false;` 在文件第 20 行是初值，不是退出路径）。 */
+    var a = _d607.indexOf('D.tick = function'), b = _d607.indexOf('D.step = function');
+    if (a < 0 || b <= a) return false;
+    var tk = _d607.slice(a, b);
+    var iPhase = tk.indexOf('D.t <= 0'), iWrite = tk.indexOf('D.active = false');
+    return /D\.exit\(\);/.test(blk)
+      && !/D\.active = false/.test(blk)                       /* 举标记那段不许自己收街区 */
+      && (tk.match(/D\.active = false/g) || []).length === 1    /* tick 内只有一处退出写 */
+      && iPhase >= 0 && iWrite > iPhase;                        /* 且就在相位归零之后 */
+  })());
+
+  check('§607③ 导航按钮同时搬人（ui → gotoXY → setPlayerPose · 街区快照必须清）', (function () {
+    var at = _m607.indexOf('M.gotoXY = function');
+    if (at < 0) return false;
+    var g = _m607.slice(at, at + 2200);
+    return /function navMovePerson\(x, y, ci\)/.test(_s607)
+      && /navMovePerson\(c\.x, c\.y, c\.ci\)/.test(_s607)          /* 回本城带格锚 */
+      && /navMovePerson\(pc\.x, pc\.y, pc\.ci\)/.test(_s607)       /* 回主城 */
+      && /navMovePerson\(265, 215\)/.test(_s607)                   /* 灰烬城：无城档，按坐标反算 */
+      && /M\.setPlayerPose\(p\)/.test(g)                            /* 位姿仍走 P0 唯一入口 */
+      && /D\.snapshot = null;/.test(g);                             /* 别让街区 240ms 后还原旧位姿 */
+  })());
+
+  check('§607③ teleportTo 换格时先撤街区（防"人在野地、街区还开着"）', (function () {
+    var at = _m607.indexOf('M.teleportTo = function');
+    if (at < 0) return false;
+    var blk = _m607.slice(at, at + 1400);
+    return /_D\.snapshot = null;/.test(blk) && /_D\.exit\(\);/.test(blk);
+  })());
+
+  check('§607④ 未探明格：区块标题写明"未勘探" + 说明勘探代价与作用', (function () {
+    return /· 未勘探/.test(_u607) && /勘探不花资源/.test(_u607)
+      && /rv\.scanned \? '' : ' · 未勘探'/.test(_u607);
+  })());
+
+  check('§607⑤ 采集场面板：丰度自成一档（管产量、不管储量）', (function () {
+    return /<span class="k">丰度<\/span>/.test(_u607)
+      && /产量 ×' \+ rv\.richness\.toFixed\(2\)/.test(_u607);
+  })());
+
+  check('§607⑤ 储量读法：剩余百分比 + 绝对量带「上限」标签（不再并排两个大数字）', (function () {
+    return /'剩 ' \+ (pct|reservePct)\.toFixed\(0\) \+ '%/.test(_u607)
+      && /' \/ 上限 ' \+ U\.numText/.test(_u607);
+  })());
+
+  check('§607⑤ 可采时长 >48h 换"天"（不再甩 1333.3 现实小时）', (function () {
+    return /realH >= 48 \? \(\(realH \/ 24\)\.toFixed\(1\) \+ ' 天'\)/.test(_u607)
+      && /\+ realTxt \+ '现实时间/.test(_u607);        /* 后接 </span>，故不留闭引号 */
+  })());
+
+  check('§607⑤ 造价/工期各自成行 · 图标取建筑的 · 正文资源用全名', (function () {
+    var at = _u607.indexOf('else if (!rv.plant)');
+    if (at < 0) return false;
+    var blk = _u607.slice(at, at + 1600);
+    return /<span class="k">工期<\/span>/.test(blk)                 /* 工期独立一行 */
+      && !/'工期 ' \+ U\.dur\(cost\.time\)/.test(blk)                /* 造价行不再拖工期 */
+      && /U\.escape\(eb\.icon \|\| '⚒'\)/.test(_u607)                /* 水培温室用 🌱 不用 🏭 */
+      && /function resFull\(k\)/.test(_u607);                       /* 面板级全名映射 */
+  })());
+
+  check('§607⑥ 夜面底数 0.55（只抬夜面 · 日面必须仍是 1.0）', (function () {
+    var term = 0.45;                                   /* M.LIGHT.term 默认 */
+    var night = (1 - term) + term * 0.55, day = (1 - term) + term * 1.0;
+    return /\(0\.55 \+ 0\.45 \* _sunL\)/.test(_m607)
+      && !/0\.35 \+ 0\.65 \* _sunL/.test(_m607)        /* 旧式反向守卫 */
+      && night >= 0.78 && Math.abs(day - 1) < 1e-9;    /* 日面逐位不变 */
+  })(), 'night=' + ((1 - 0.45) + 0.45 * 0.55).toFixed(4));
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')

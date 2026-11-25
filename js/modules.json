@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "a98c1a2670f955c3",
+ "sourceHash": "a69ebd07b1f74512",
  "layout": {
   "order": [
    "core",
@@ -574,12 +574,13 @@
   {
    "name": "district",
    "file": "js/district.js",
-   "lines": 334,
+   "lines": 456,
    "bundle": "core",
    "duty": "district.js — v158.2（P2 · 城市街区 L1）运行时街区层",
    "deps": [
     "ui-mapui",
-    "state"
+    "state",
+    "ui-fx"
    ]
   },
   {
@@ -933,7 +934,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9615,
+   "lines": 9677,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -945,11 +946,11 @@
     "gltf",
     "state",
     "fog",
+    "data",
+    "ui-mapui",
     "ui-fx",
     "placement",
     "village",
-    "ui-mapui",
-    "data",
     "camp",
     "ruin",
     "main",
@@ -1678,7 +1679,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 1178,
+   "lines": 1219,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1808,19 +1809,19 @@
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1355,
+   "lines": 1373,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [
     "colony",
     "map3d",
     "ship",
+    "map",
     "ui-fx",
     "data",
-    "map",
     "state",
-    "ui-view",
     "domain",
+    "ui-view",
     "ui-planet",
     "fleet",
     "placement",

@@ -15008,11 +15008,27 @@ import './ui.js';
     ui.renderMapCanvas();
   };
 
+  /* ============================================================
+   * v158.17（老板「参考现有成熟设计完善」③）· 导航按钮**同时搬人**
+   * ------------------------------------------------------------
+   * P0 之前"相机 = 玩家视角"，所以 mapCenterOn 移相机就等于移玩家；
+   * 有了独立位姿之后这条链路断了：镜头到城了、人还在野地，
+   * 下一帧 followAvatar 又把镜头按人的朝向拽回去（实测城格 NDC y = −1.5 出画）。
+   * 三个导航按钮统一补这一步 —— 走 map3d.gotoXY（内部走 setPlayerPose 唯一出口）。
+   * ⚠️ 只给"回主城 / 回本城 / 灰烬城"这三个"回我自己的地方"加，
+   *    `fort-goto`（定位据点）这类"看一眼"的跳转不动人，半步都不动。
+   * ============================================================ */
+  function navMovePerson(x, y, ci) {
+    if (!GAME.map3d || !GAME.map3d.gotoXY) return;
+    try { GAME.map3d.gotoXY(x, y, ci); } catch (e) { }
+  }
+
   ui.mapCenter = function () {
     var pc = GAME.map.playerCity();
     if (!pc) return;
     if (!ui.mapOnActivePlanet()) { ui.toast('地图当前在看别颗星球 —— 回主城需先切回本城所在星球'); return; }
     ui.mapCenterOn(pc.x, pc.y);
+    navMovePerson(pc.x, pc.y, pc.ci);
     ui.toast('已回到主城 ' + GAME.map.coordText(pc.x, pc.y));
   };
 
@@ -15024,12 +15040,14 @@ import './ui.js';
     if (!c) { ui.toast('尚无城市'); return; }
     if (!ui.mapOnActivePlanet()) { ui.toast('本城不在当前地图星球上 —— 回本城需先切回本城所在星球'); return; }
     ui.mapCenterOn(c.x, c.y);
+    navMovePerson(c.x, c.y, c.ci);
     ui.toast('已回到本城（' + (c.name || '') + '）' + GAME.map.coordText(c.x, c.y));
   };
   /* v90.99（老板）：灰烬城（旧都）是**母星专属** —— 地图在看别星时不可回（别星没有灰烬城）。 */
   ui.mapCapitalCity = function () {
     if (!ui.mapOnActivePlanet(1)) { ui.toast('灰烬城在母星 —— 当前地图非母星，不可定位'); return; }
     ui.mapCenterOn(265, 215);
+    navMovePerson(265, 215);          /* 旧都只有格坐标、没有城市档 → 让 setPlayerPose 自己反算格锚 */
     ui.toast('已定位至旧都灰烬城 (265,215)');
   };
 
@@ -16141,6 +16159,12 @@ import './ui.js';
 
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;
+    /* v158.17（老板「参考现有成熟设计完善」⑤）：「生」这种单字在面板里是黑话。
+       地块面板一律用 DATA.RESOURCES 的**全名**（净水/生物质/电能/废钢）；
+       `ui.RES_NAME` 的短名留给密集的排行榜/资源条，别在正文里出现。 */
+    var RES_FULL = {};
+    (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RES_FULL[m.key] = m.name; });
+    function resFull(k) { return RES_FULL[k] || RES_NAME[k] || k; }
     var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
     if (!tile) return;
     /* ⛔ v157.85：前传的「点脚下格 → 行动列表」分派已删（前传整段退役）。 */
@@ -16185,7 +16209,7 @@ import './ui.js';
     var add = GAME.wildAddOf(_terKey139, lv) || {};
     var addStr = '';
     /* v89.152：产出行拆行后不再需要括号包裹，多资源用全角空格分隔 */
-    for (var r in add) addStr += (addStr ? '　' : '') + (RES_NAME[r] || r) + ' +' + Math.round(add[r] * 100) + '%';
+    for (var r in add) addStr += (addStr ? '　' : '') + resFull(r) + ' +' + Math.round(add[r] * 100) + '%';
     /* v55：守军总数**必须与出征时遇到的同一个来源**。
        改前这里读 `GAME.battle.wildGarrison(lv)` —— 那是另一个公式，
        10 级算出来 6.9 万，而 `wildDefenseAt` 的真实守军只有 4560，**差 15 倍**：
@@ -16256,29 +16280,35 @@ import './ui.js';
       if (!rv) return;
       if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;
       /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
-         会读成黑话，这里按 DATA.RESOURCES 取正式名 */
-      var RN2 = {};
-      (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RN2[m.key] = m.name; });
-      var rname = (RN2[rv.res] || rv.res || '');
+         会读成黑话，这里按 DATA.RESOURCES 取正式名（`resFull`，v158.17 提到函数级）。 */
+      var rname = resFull(rv.res || '');
       var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
-      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块</div>';
+      /* v158.17：未勘探时区块标题直接写清状态 —— 「资源地块」四个字看不出"这块地还没查过" */
+      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块' +
+        (rv.scanned ? '' : ' · 未勘探') + '</div>';
       if (!rv.scanned) {
         resBox +=
-          '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未勘探 —— 地形特征推断可能有 ' +
+          '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未知 —— 地形特征推断可能有 ' +
             U.escape(rname) + '</span></div>' +
           '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
-            '">🔍 勘探</button><span class="op-hint">勘探后才能在此建采集场</span></div>';
+            '">🔍 勘探</button><span class="op-hint">勘探不花资源、立刻给出丰度与储量；不勘探不能建采集场</span></div>';
       } else {
         var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通', tone: 'normal' };
         var pct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
         var depleted = rv.reserve <= 0;
+        /* v158.17（老板 ⑤）：「贫瘠 ×0.63」读不成句 —— 丰度与储量是**两个量**
+           （丰度管产量、储量管能采多久），各自带标签，别把档位名和倍率拼成一句黑话。
+           储量也不再并排两个大数字（"1,015,432 / 1,600,000"没人知道谁是谁）：
+           主看剩余百分比，绝对量退到副文本并标清"上限"。 */
         resBox +=
-          '<div class="attr"><span class="k">资源</span><span class="v">' + U.escape(rname) +
-            '　<span style="color:' + (toneCol[tier.tone] || 'var(--text)') + ';">' + tier.name +
-            ' ×' + rv.richness.toFixed(2) + '</span></span></div>' +
+          '<div class="attr"><span class="k">资源</span><span class="v">' + U.escape(rname) + '</span></div>' +
+          '<div class="attr"><span class="k">丰度</span><span class="v">' +
+            '<span style="color:' + (toneCol[tier.tone] || 'var(--text)') + ';">' + tier.name +
+            '</span>　产量 ×' + rv.richness.toFixed(2) + '</span></div>' +
           '<div class="attr"><span class="k">储量</span><span class="v">' +
             '<span style="display:inline-block;width:132px;height:9px;background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:4px;overflow:hidden;vertical-align:-1px;margin-right:6px;"><i style="display:block;height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(180deg,var(--gold-light),var(--gold-dark));"></i></span>' +
-            U.numText(rv.reserve, 0) + ' / ' + U.numText(rv.reserveMax, 0) +
+            '剩 ' + pct.toFixed(0) + '%　<span class="ui-sub">（' + U.numText(rv.reserve, 0) +
+            ' / 上限 ' + U.numText(rv.reserveMax, 0) + '）</span>' +
             (depleted ? '　<span style="color:var(--red-light);">已枯竭（残采 25%）</span>' : '') +
           '</span></div>';
         /* 施工中：队列里有这块地的活就不给"建采集场"按钮 ——
@@ -16294,7 +16324,7 @@ import './ui.js';
             U.escape(eb.name || rv.plant) + ' Lv' + rv.plantLv + '</span></div>';
         } else if (!_qRes) {
           resBox += '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
-            '">🏭 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
+            '">⚒ 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
         }
         if (_qRes) {
           var _qp = _qRes.totalTime > 0 ? Math.min(100, (_qRes.elapsed / _qRes.totalTime) * 100) : 0;
@@ -16312,7 +16342,7 @@ import './ui.js';
         '<div class="op-zone op-zone-eq"><div class="op-zone-t">产出</div>' +
         '<div class="attr"><span class="k">资源</span><span class="v">' +
           (gatherRes
-            ? '<b style="color:var(--gold-light)">' + (RES_NAME[gatherRes] || gatherRes) + '</b>（占领后可派军采集）'
+            ? '<b style="color:var(--gold-light)">' + U.escape(resFull(gatherRes)) + '</b>（占领后可派军采集）'
             : '<span class="ui-sub">无可采之物（平原不可采集）</span>') +
         '</span></div>' +
         '<div class="attr"><span class="k">产量加成</span><span class="v">' +
@@ -16427,7 +16457,7 @@ import './ui.js';
               : '<span style="color:var(--text-dim);">还需 ' + U.dur(gLeftH139 * 3600 / GAME.timeScale()) + ' 现实时间满 1 小时</span>') +
           '</span></div>' +
           '<div class="attr"><span class="k">预计收成</span><span class="v">' +
-            U.numText(gy139.amount, 0) + ' ' + (RES_NAME[gy139.res] || gy139.res || '') +
+            U.numText(gy139.amount, 0) + ' ' + resFull(gy139.res || '') +
             '　<span class="ui-sub">带队 ' + U.escape(gName139) + ' · 负重上限 ' + U.numText(gy139.loadCap || 0, 0) + '</span>' +
           '</span></div>';
       }
@@ -16540,32 +16570,46 @@ import './ui.js';
       if (x && (x.type === 'plant_build' || x.type === 'plant_upgrade') && x.ci === ci) q = x;
     });
 
+    /* v158.17（老板 ⑤）：丰度单独成行并带标签 —— 原来拼在「地块」行里写成
+       「森林 · 生物质　贫瘠 ×0.63」，读起来像"贫瘠却乘 0.63"的自相矛盾句。
+       丰度管产量、储量管能采多久，是两个量，必须分开说。 */
     var head =
       '<div class="attr"><span class="k">地块</span><span class="v">' +
-        U.escape((DATA.TERRAIN[rv.type] || {}).name || rv.type) + ' · ' + (RES_NAME2[rv.res] || rv.res) +
-        '　<span style="color:var(--gold-light);">' + tier.name + ' ×' + rv.richness.toFixed(2) + '</span></span></div>' +
+        U.escape((DATA.TERRAIN[rv.type] || {}).name || rv.type) + ' · ' + U.escape(RES_NAME2[rv.res] || rv.res) +
+        '</span></div>' +
       '<div class="attr"><span class="k">采集场</span><span class="v">' + U.escape(eb.icon || '') + ' ' +
-        U.escape(eb.name) + (curLv ? (' Lv' + curLv) : '') + '</span></div>';
+        U.escape(eb.name) + (curLv ? (' Lv' + curLv) : '') + '</span></div>' +
+      '<div class="attr"><span class="k">丰度</span><span class="v">' +
+        '<span style="color:var(--gold-light);">' + tier.name + '</span>　产量 ×' + rv.richness.toFixed(2) +
+        '　<span class="ui-sub">（这块地肥不肥，管产量、不管能采多久）</span></span></div>';
 
     /* 产量与可采时长（丰度已计入，枯竭后按残采系数） */
     var per = eb.prod[Math.max(0, (curLv || 1) - 1)] || 0;
     var yieldH = per * rv.richness * (rv.reserve > 0 ? 1 : RS.DEPLETE_MULT);
     var hours = yieldH > 0 ? (rv.reserve / yieldH) : 0;           /* 游戏小时 */
     var realH = hours * 3600 / ts / 3600;                          /* 现实小时 */
+    /* v158.17：`1333.3 现实小时` 不是人能读的量 —— 超过两天换"天"，
+       并明说这是**现实**时间（游戏时 ×1 的换算也要有个说法）。 */
+    var realTxt = realH >= 48 ? ((realH / 24).toFixed(1) + ' 天') : (realH.toFixed(1) + ' 小时');
+    var reservePct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
     var body = head +
       '<div class="attr"><span class="k">产量</span><span class="v">' +
         U.numText(yieldH, 0) + ' / 游戏时　<span class="ui-sub">（基础 ' + U.numText(per, 0) +
         ' × 丰度 ' + rv.richness.toFixed(2) + (rv.reserve > 0 ? '' : ' × 残采 ' + RS.DEPLETE_MULT) + '）</span></span></div>' +
       /* v89.212（老板 1）「地块多的存的多」：这座厂的**露天堆场**另加本资源上限
          （= 同级战储仓的 1/6，纯加法不吃加成）—— 迁移到星球后口径不变，只是
-         "地块"从城内堆场格变成了这块地，算式仍走 extStoreCapOneOf 唯一出口。 */
-      '<div class="attr"><span class="k">堆场</span><span class="v">另加' + U.escape(RES_NAME2[rv.res] || '资源') + '上限 +' +
+         "地块"从城内堆场格变成了这块地，算式仍走 extStoreCapOneOf 唯一出口。
+         v158.17：原文明写「另加生物质上限 +1,200（每级另加生物质上限 +200）」，
+         同一个词说两遍 —— 收成「生物质上限 +1,200（每级 +200）」。 */
+      '<div class="attr"><span class="k">堆场</span><span class="v">' +
+        U.escape(RES_NAME2[rv.res] || '资源') + '上限 +' +
         (GAME.extStoreCapOneOf ? U.fmt(GAME.extStoreCapOneOf({ type: eid, lv: Math.max(1, curLv) })) : '—') +
-        '　<span class="ui-sub">（每级另加' + U.escape(RES_NAME2[rv.res] || '资源') + '上限 +' +
+        '　<span class="ui-sub">（每级 +' +
         (GAME.extStoreCapOneOf ? U.fmt(GAME.extStoreCapOneOf({ type: eid, lv: 1 })) : '—') + '）</span></span></div>' +
       '<div class="attr"><span class="k">储量</span><span class="v">' +
-        U.numText(rv.reserve, 0) + ' / ' + U.numText(rv.reserveMax, 0) +
-        '　<span class="ui-sub">按当前产量约可采 ' + realH.toFixed(1) + ' 现实小时</span></span></div>';
+        '剩 ' + reservePct.toFixed(0) + '%　<span class="ui-sub">（' + U.numText(rv.reserve, 0) +
+        ' / 上限 ' + U.numText(rv.reserveMax, 0) + '）</span>' +
+        '　<span class="ui-sub">按当前产量约可采 ' + realTxt + '现实时间</span></span></div>';
 
     var foot = '';
     if (q) {
@@ -16575,14 +16619,17 @@ import './ui.js';
       foot = '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     } else if (!rv.plant) {
       var cost = GAME.buildCostDiscountOf ? GAME.buildCostDiscountOf(GAME.extBuildCost(eid, 0)) : GAME.extBuildCost(eid, 0);
+      /* v158.17：造价与工期拆两行 —— 四种材料 + 工期挤在一行时，
+         后半个「工期」在窄弹窗里会被折行吃掉（老板「造价挤一行」）。 */
       body += '<div class="attr"><span class="k">造价</span><span class="v">' +
         [[cost.grain, 'grain'], [cost.wood, 'wood'], [cost.stone, 'stone'], [cost.iron, 'iron']].filter(function (x) { return x[0]; })
           .map(function (x) { return (RES_NAME2[x[1]] || x[1]) + ' ' + U.numText(x[0], 0); }).join('　') +
-        '　<span class="ui-sub">工期 ' + U.dur(cost.time) + '</span></span></div>';
+        '</span></div>' +
+        '<div class="attr"><span class="k">工期</span><span class="v">' + U.dur(cost.time) + '</span></div>';
       var afford = GAME.canAffordIn ? GAME.canAffordIn(city, cost) : true;
       foot = '<div class="modal-foot">' +
         '<button class="btn gold" data-action="plant-build-do" data-ci="' + ci + '" data-eid="' + eid + '"' +
-          (afford ? '' : ' disabled title="本城资源不足"') + '>🏭 开工建造</button>' +
+          (afford ? '' : ' disabled title="本城资源不足"') + '>' + U.escape(eb.icon || '⚒') + ' 开工建造</button>' +
         '<button class="btn" data-action="close-modal">取消</button></div>';
     } else {
       var costU = GAME.buildCostDiscountOf ? GAME.buildCostDiscountOf(GAME.extBuildCost(eid, curLv)) : GAME.extBuildCost(eid, curLv);
@@ -16599,7 +16646,9 @@ import './ui.js';
     }
 
     ui.openModal(
-      '<div class="gold-heading">🏭 ' + U.escape(eb.name) + '</div>' +
+      /* v158.17：标题图标取建筑自己的（水培温室是 🌱 不是 🏭）——「🏭 水培温室」
+         这种搭配会让人以为建的是工厂。 */
+      '<div class="gold-heading">' + U.escape(eb.icon || '⚒') + ' ' + U.escape(eb.name) + '</div>' +
       '<div class="m-body">' + body + '</div>' + foot,
       { size: 'md', live: function () { ui.openPlantModal(ci); } }
     );
@@ -16789,11 +16838,21 @@ import './ui.js';
       el.id = 'district-hud';
       el.style.cssText = 'position:absolute;right:22px;bottom:88px;z-index:1901;'
         + 'display:none;pointer-events:auto;font-size:14px;';
-      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
+      el.innerHTML = '<span id="district-hud-tip" style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
-        + 'border-radius:8px;padding:8px 12px;margin-right:8px;">WASD / 方向键 走动 · A/D 转向</span>'
+        + 'border-radius:8px;padding:8px 12px;margin-right:8px;">WASD / 方向键 走动 · A/D 转向 · 走出南边即回星球</span>'
         + '<button class="btn" data-action="district-exit" style="font-weight:700;">退出街区（Q）</button>';
       root.appendChild(el);
+    }
+    /* v158.17：出口提示由**这块地有没有墙**决定 —— 有墙是"走出南门"，
+       没墙（城墙还没建）就是"走到南边尽头"。文案跟数据走，不写死。 */
+    if (on) {
+      var _tip = document.getElementById('district-hud-tip');
+      if (_tip) {
+        var _hasWall = !!(GAME.district && GAME.district.plan && GAME.district.plan.wall);
+        _tip.textContent = 'WASD / 方向键 走动 · A/D 转向 · ' +
+          (_hasWall ? '走出南门即回星球' : '走到南边尽头即回星球');
+      }
     }
     el.style.display = on ? 'block' : 'none';
     /* v158.14：街区态由本条**接管**操作说明 —— 左下那条跟随态操作条同时收起，

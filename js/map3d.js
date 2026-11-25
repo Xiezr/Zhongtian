@@ -3169,7 +3169,13 @@ import './gltf.js';
         + ' varying vec3 vWn;\n';
       var _body = '\n'
         + '  float _sunL = clamp(dot(normalize(vWn), normalize(uSunDir)), 0.0, 1.0);\n'
-        + '  gl_FragColor.rgb *= (1.0 - uTerm) + uTerm * (0.35 + 0.65 * _sunL);';
+        /* v158.17（老板「转到城的背面整个星球变暗」）：夜面底数 0.35 → 0.55。
+           原式的夜面是 (1-term)+term*0.35（term=0.45 → 0.7075），**再叠**上地形起伏
+           的归一化系数（夜面 _relV=0 → _relN≈0.75）后只剩 53% —— 实机是
+           "整颗星球糊成一片暗"、地形看不出起伏。
+           改底数只动夜面：_sunL=1 时 0.55+0.45 = 1.0，**日面与以前逐位一致**
+           （不会再度发白），夜面抬到 79.8%（× 起伏 ≈ 60%），昼夜差仍在但不瞎。 */
+        + '  gl_FragColor.rgb *= (1.0 - uTerm) + uTerm * (0.55 + 0.45 * _sunL);';
       if (REL) {
         /* 起伏明暗：用**真地形法线**与太阳夹角，0.70~1.16 的软包裹（无硬阴影）。
            · 只用一次乘，不叠第二套光照；日面仍以 1.0 为基准，不整体提亮。
@@ -6791,9 +6797,17 @@ import './gltf.js';
         GAME.district.tick();
         GAME.district.camera();
       } catch (eDist) { }
-    } else if (M._districtWasActive && GAME.district && GAME.district.resetCam) {
-      GAME.district.resetCam();
-      M._districtWasActive = false;
+      /* v158.17：街区态**整组收起球面小人**。街区的相机已经切到城格局部空间，
+         球面小人却按 p.dir 摆在格心球面上 —— 实机表现是"画面里有个一模一样的人
+         站在 9 米外的空地上，但那不是我"（v158.16 玩家视角走查 figVsMe=9.45）。
+         街区里"我自己"改由 district.js 画在街区 root 上（buildAvatar），同一本账。 */
+      if (figRoot) figRoot.visible = false;
+    } else {
+      if (M._districtWasActive && GAME.district && GAME.district.resetCam) {
+        GAME.district.resetCam();
+        M._districtWasActive = false;
+      }
+      if (figRoot) figRoot.visible = true;
     }
     if (M.DISTRICT && GAME.district && GAME.district.active) M._districtWasActive = true;
     /* v158.6（P5-b 任务链）：观察器 tick —— 轮询 P0~P4 状态、达标推进，
@@ -8274,6 +8288,17 @@ import './gltf.js';
     if (!(_tileCells && _tileCells[ci])) return false;
     if (!GAME.state) return false;
     var d = _tileCells[ci].dir;
+    /* v158.17：**街区态下换格必须先撤街区**。
+       否则会出现"人已经传到野地、街区还亮着"的错位态 —— 相机仍在城格局部空间、
+       D.pos 还是那条街，而位姿已经在几格之外（实测把「回本城」挡成了空操作：
+       gotoXY 看到 D.active && D.ci === ci 以为"我已经在这儿"，其实人早走了）。
+       `snapshot = null` 是为了别让 240ms 后那次"还原旧位姿"把人拽回原处。 */
+    var _D = GAME.district;
+    if (_D && _D.active && _D.ci !== ci && _D.exit) {
+      _D.snapshot = null;
+      _D.exit();
+      if (GAME.ui && GAME.ui.renderDistrictHud) GAME.ui.renderDistrictHud(false);
+    }
     /* v158.0：格锚传送必须同步连续位姿 —— 否则"传送过去人没动"。 */
     M.setPlayerPose({ dir: [d[0], d[1], d[2]], h: M._groundAtUnit(d), yaw: 0, v: [0, 0, 0], ci: ci });
     M._standVer = '';                    /* 强制下一帧重建到新格 */
@@ -9329,6 +9354,43 @@ import './gltf.js';
     camO.quat = null; camO._euler = null; camO.dir = null;
     camO.dist = R * 1.9; _syncZoom();
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+  };
+  /* ============================================================
+   * v158.17（老板「参考现有成熟设计完善」③）· **把人也搬过去**
+   * ------------------------------------------------------------
+   * 病根：底栏「回主城 / 回本城 / 灰烬城」三个按钮从 v50 起只调 `ui.mapCenterOn`
+   * → 只转镜头。P0 之前"相机=玩家视角"，移相机等于移玩家；有了独立位姿之后
+   * 这条链路断了：镜头到了城，人还在野地（v158.16 实测 playerCi 仍是被传送前那格，
+   * 城格 NDC y = −1.5 直接被推出画面 —— 因为下一帧 followAvatar 又把
+   * `camO.dir` 改回**人的朝向**，镜头自然跟着人走）。
+   *
+   * 所以导航必须同时写两样：镜头（mapCenterOn 里已做）+ 位姿（这里）。
+   * 位姿走 P0 唯一出口 `setPlayerPose`，不新开第三个写入口。
+   *   · 给了 ci 就用格锚（teleportTo 同一口径，避免最近格取整差一格）；
+   *   · 没给 ci（如灰烬城这种只有格坐标的）就让 setPlayerPose 自己反算。
+   * 街区态：先撤街区、并**清掉快照**，否则 240ms 后那次"还原 P0 位姿"
+   * 会把刚传过去的人拽回原处（这就是同一个 bug 的另一条路径）。
+   * ============================================================ */
+  M.gotoXY = function (x, y, ci) {
+    if (!GAME.map || !GAME.state) return false;
+    var D = GAME.district;
+    ci = (ci == null || ci === '') ? null : (ci | 0);
+    /* 已经在目标城的街区里 → 什么都不用做（"回家"不该把人从街上踢回城门）。
+       ⚠️ 必须同时核对**人真的在这格**：街区态与位姿有可能脱节（teleportTo 以前
+       不撤街区就会造出这种态），只看 D.ci 会把「回本城」挡成空操作。 */
+    if (D && D.active && ci != null && D.ci === ci && M.playerCi() === ci) return true;
+    if (D && D.active && D.exit) {
+      D.snapshot = null;            /* 不还原旧位姿：人要跟着这次导航走 */
+      D.exit();
+      if (GAME.ui && GAME.ui.renderDistrictHud) GAME.ui.renderDistrictHud(false);
+    }
+    var c = GAME.map.lonlatOf(x, y), d = GAME.map.dirOf(c.lon, c.lat);
+    if (!d || !isFinite(d[0])) return false;
+    var p = { dir: [d[0], d[1], d[2]], h: M._groundAtUnit(d), yaw: 0, v: [0, 0, 0] };
+    if (ci != null) p.ci = ci;
+    M.setPlayerPose(p);
+    M._standVer = '';               /* 强制下一帧把小人物重建到新格（换格只挪不重建会留在旧格） */
+    return true;
   };
   /* v90.68（老板）：**定位光束** —— 从某格**向外射出一道**提示玩家 + 相机对准该格。
      v90.71（老板 7）：远端加**红光持续闪烁**的发光点（醒目好找）；做其他操作后指示线消失。

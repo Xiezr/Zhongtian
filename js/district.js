@@ -32,6 +32,8 @@
   D._from = null;                   /* 进入瞬间的相机姿态，退出时回到它 */
   D._mats = [];
   D._clock = 0;
+  D._out = false;                   /* v158.17：本帧是否走出了南门（→ D.tick 收街区） */
+  D.avatar = null;                  /* v158.17：街区里"我自己"的网格（运行时态，不入档） */
   D.TRANSITION_MS = 240;            /* ≤300ms（计划硬指标），留 60ms 给掉帧 */
   D.STEP_MIN = 1 / 120;
   D.STEP_MAX = 0.05;
@@ -109,6 +111,81 @@
     return m;
   }
 
+  /* ============================================================
+   * v158.17（老板「参考现有成熟设计完善」①）· 街区里画「我自己」
+   * ------------------------------------------------------------
+   * 病根（v158.16 玩家视角走查实测）：`M.followAvatar` 里那句
+   * `placeFigureAtDir(fg, p.dir, …)` 只会把小人摆在**球面坐标系**上，
+   * 而街区的相机已经切到城格局部空间 → 人在画面里（NDC y=-0.04）但
+   * 站在城格球面原点（离我 9.45 米），**不是"我"**。
+   *
+   * 这里照抄项目里已有的成熟做法（`G.vehicle.build` / `G.npc.build`
+   * 都是「往 D.root 上挂、坐标用局部、材质并入 D._mats 一起渐显」），
+   * 不新建场景、不新建坐标系、不碰 figCache：
+   *   · 局部坐标：`D.world()` 那套标架由 root 的四元数一次性摆好，
+   *     所以子节点直接用 (D.pos.x, y, D.pos.z) 就是脚下；
+   *   · 渐显/渐隐白拿（材质进 D._mats，tick 里统一推 opacity）；
+   *   · 退出时随 clearRoot 整组消失，不留幽灵。
+   *
+   * 尺寸：方块人原型高 1.21，×1.42 ≈ 1.72 米真人 —— 与 NPC 1.3 米、
+   * 民房 2.5 米同一把尺子（v158.7 老板「大地图人物比城市还大」的教训：
+   * 别拿球面的 scale 直接套到街区里）。
+   * ============================================================ */
+  D.AVATAR_SCALE = 1.42;
+  function buildAvatar(root) {
+    D.avatar = null;
+    if (!root || typeof THREE === 'undefined') return false;
+    try {
+      /* 与球面金色小人（0xffd76a）同色 —— 走到哪儿都是"这一个我" */
+      var cloth = mat(0xffd76a), dark = mat(0x2a2f38), skin = mat(0xe8c39a), pack = mat(0x8a6d2f);
+      var g = new THREE.Group();
+      g.scale.setScalar(D.AVATAR_SCALE);
+      var body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.26), cloth); body.position.y = 0.62;
+      var head = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.30), skin); head.position.y = 1.06;
+      var legL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.16), dark); legL.position.set(-0.11, 0.16, 0);
+      var legR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.16), dark); legR.position.set(0.11, 0.16, 0);
+      var armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.50, 0.13), cloth); armL.position.set(-0.27, 0.66, 0);
+      var armR = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.50, 0.13), cloth); armR.position.set(0.27, 0.66, 0);
+      /* 背包在 +Z：D.step 的正前方是 (sin yaw, −cos yaw)（yaw=0 即 −Z），
+         相机又站在人的 −forward 侧 → 镜头正好看到背包，一眼能读出"背对着我"。 */
+      var bag = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.30, 0.12), pack); bag.position.set(0, 0.72, 0.18);
+      g.add(body, head, legL, legR, armL, armR, bag);
+      g.position.set(D.pos.x, 0, D.pos.z);
+      g.rotation.y = D.yaw;
+      root.add(g);
+      D.avatar = { grp: g, legL: legL, legR: legR, armL: armL, armR: armR, phase: 0 };
+      return true;
+    } catch (e) {
+      D.avatar = null;
+      return false;
+    }
+  }
+
+  /** 每帧跟位（不重建）：位置/朝向取 D.pos/D.yaw，走路时摆腿摆臂。 */
+  function syncAvatar(dt, moving) {
+    var a = D.avatar;
+    if (!a) return;
+    /* 开车时人不画（人在车里，街区里已有载具模型）—— 与 V.mounted 同一判据。 */
+    var mounted = !!(G.vehicle && G.vehicle.mounted);
+    a.grp.visible = !mounted;
+    if (mounted) return;
+    if (moving) a.phase += dt * 9;
+    var sw = moving ? Math.sin(a.phase) * 0.6 : 0;
+    a.legL.rotation.x = sw; a.legR.rotation.x = -sw;
+    a.armL.rotation.x = -sw * 0.7; a.armR.rotation.x = sw * 0.7;
+    a.grp.position.set(D.pos.x, moving ? Math.abs(Math.sin(a.phase)) * 0.03 : 0, D.pos.z);
+    a.grp.rotation.y = D.yaw;
+  }
+
+  /** 只读出口（探针/调试）：街区主角此刻的局部坐标与可见性，形状对齐 M.figureOf。 */
+  D.avatarOf = function () {
+    var a = D.avatar;
+    if (!a) return null;
+    var p = a.grp.position;
+    return { ci: D.ci, local: [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4)],
+      yaw: +D.yaw.toFixed(4), visible: !!a.grp.visible, scale: D.AVATAR_SCALE };
+  };
+
   function build() {
     clearRoot();
     var plan = D.plan, fr = D.frame;
@@ -124,9 +201,13 @@
     root.position.set(fr.origin[0], fr.origin[1], fr.origin[2]);
 
     var pad = 2.2, W = plan.W + pad * 2, Z = plan.D + pad * 2;
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(W, Z), mat(0x746b58));
+    /* v158.17：地面往南铺到 bounds.z1（门外那条路）—— 老板「走不出去」的另一半是
+       "出了门洞脚下没地"：原来只铺到墙线 hd（= Z/2），门外 2.6 米是悬空的。 */
+    var zBot = -Z / 2 - 0.6;
+    var zTop = ((plan.bounds && plan.bounds.z1) || (Z / 2 + 2.6)) + 0.6;
+    var ground = new THREE.Mesh(new THREE.PlaneGeometry(W, zTop - zBot), mat(0x746b58));
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.06;
+    ground.position.set(0, -0.06, (zTop + zBot) / 2);
     root.add(ground);
     /* 巷道：每格一条浅色带，让"街"能被看见（不是一块色斑） */
     for (var r = 0; r <= plan.rows; r++) {
@@ -161,14 +242,30 @@
     }
     /* 城门柱：wall 的南面缺口在 cityPlan 里已是碰撞体，这里只补可见物 */
     if (plan.wall) {
+      /* v158.17：**墙要画出来**。原来只有两根门柱可见、四周墙全是隐形碰撞 ——
+         玩家往南推走不动，看到的却是空地（这就是「进了街区走不出去」的直接原因）。
+         高度取 1.5 米：第三人称相机在身后 6 米、高 3.3 米俯视，
+         墙顶永远低于视线（实测视线在墙线上约 1.75 米），不会把人挡掉半个身位。 */
+      var WH = 1.5, WT = 0.7, WCOL = 0x8a8072, LCOL = 0x6f675c;
+      var wSpan = plan.W + pad * 2 + 0.8;
+      box(wSpan, WH, WT, 0, WH / 2, -plan.hd, WCOL, root);                 /* 北 */
+      var segL = plan.hw - plan.gateHalf + 0.2;
+      box(segL, WH, WT, -(plan.hw + plan.gateHalf) / 2, WH / 2, plan.hd, WCOL, root);  /* 南·左 */
+      box(segL, WH, WT, (plan.hw + plan.gateHalf) / 2, WH / 2, plan.hd, WCOL, root);   /* 南·右 */
+      box(WT, WH, plan.D + pad * 2, -plan.hw, WH / 2, 0, WCOL, root);      /* 西 */
+      box(WT, WH, plan.D + pad * 2, plan.hw, WH / 2, 0, WCOL, root);       /* 东 */
       box(0.7, 2.6, 0.7, -plan.gateHalf, 1.3, plan.hd, 0x8a8072, root);
       box(0.7, 2.6, 0.7, plan.gateHalf, 1.3, plan.hd, 0x8a8072, root);
+      box(plan.gateHalf * 2 + 0.7, 0.34, 0.8, 0, 2.43, plan.hd, LCOL, root);   /* 门楣：一眼认出"这是门" */
     }
     /* v158.3（P3）：载具画在同一个街区 root 上（与街道同源渐显，不新建场景）。 */
     if (G.vehicle && G.vehicle.build) G.vehicle.build(root, plan);
     /* v158.4（P4）：居民也画在同一个 root 上，材质并入 D._mats 一起渐显；
        不进 nodeList、不碰 D.pos/camO，位置只在 GAME.npc.list 里。 */
     if (G.npc && G.npc.build) G.npc.build(root, plan);
+    /* v158.17：**主角也画在这个 root 上** —— 街区里"我自己"由街区自己画，
+       球面小人（map3d 的 figCache）在街区态整组隐藏，见 map3d 渲染循环。 */
+    buildAvatar(root);
     /* 挂在 map3d 的同一个 scene（scene 出口由 map3d 提供，不自建） */
     var sc = G.map3d && G.map3d._scene && G.map3d._scene();
     if (!sc || !sc.add) return false;
@@ -206,6 +303,7 @@
     D.keys = {};
     D.t = 0;
     D.phase = 'in';
+    D._out = false;                        /* v158.17：上一轮出门的标记不许带进新城 */
     D.active = true;                       /* ← 唯一进入写 */
     D._clock = Date.now();
     D._from = null;                        /* 首帧由 camera() 从当前 cam 采样 */
@@ -259,16 +357,28 @@
         return { done: true };
       }
     } else {
-      /* v158.3（P3）：载具态走 V.step，步行态仍走 D.step（函数本体逐字不动 ——
-         P2 探针直接调 D.step 验撞墙，改它就会翻红）。 */
+      /* v158.3（P3）：载具态走 V.step，步行态仍走 D.step。
+         ⚠️ P2 探针直接调 D.step 验撞墙 —— 撞墙/夹边口径逐字不动，
+         v158.17 只在末尾加了「走过南门洞 → 举 _out 标记」，不改位移。 */
       var V = G.vehicle;
       if (V && V.mounted) V.step(dt, V.keys, D.plan);
       else D.step(dt, D.keys);
+      /* v158.17（老板「进了街区走不出去」）：走穿南门洞 = 离开街区。
+         `_out` 只是 D.step 举的一个标记，**收街区仍走 D.exit 唯一出口**
+         （相位 out → t 归零时才真正 active=false 并还原 P0 位姿）。 */
+      if (D._out) {
+        D._out = false;
+        D.exit();
+        var _hud = (G.ui && G.ui.toast);
+        if (_hud) _hud(D.plan && D.plan.wall ? '🚪 走出城门 —— 回到星球视角' : '🚪 走到城边 —— 回到星球视角');
+      }
       /* v158.4（P4）：NPC 与玩家同帧推进；载具态只关交互提示，不关日程。 */
       if (G.npc && G.npc.tick) G.npc.tick(dt);
     }
     var op = Math.max(0, Math.min(1, D.t));
     for (var i = 0; i < D._mats.length; i++) D._mats[i].opacity = op;
+    /* v158.17：主角每帧跟位（只挪不重建）。载具态收起来，走路时摆腿。 */
+    syncAvatar(dt, !!(D.keys && (D.keys.w || D.keys.s)) && !(G.vehicle && G.vehicle.mounted));
     return { done: false, t: D.t, phase: D.phase };
   };
 
@@ -287,6 +397,18 @@
     if (!D.hitSolid(D.plan, nx, D.pos.z, r)) D.pos.x = nx;
     var nz = Math.max(b.z0, Math.min(b.z1, D.pos.z + dz));
     if (!D.hitSolid(D.plan, D.pos.x, nz, r)) D.pos.z = nz;
+    /* v158.17（老板「进了街区走不出去」）：**走过南门洞 = 出城**。
+       只举标记、不动位姿（收街区仍走 D.exit 唯一出口）。
+       两个判据缺一不可：过了门线（`outZ`，cityPlan 里既有的"门外"标记）
+       + 人确实在门洞里（门柱内侧净宽 gateHalf − 柱半宽）。
+       无墙的城没有门洞，南边界就是出口。 */
+    var _pl = D.plan;
+    if (!_pl.wall) {
+      if (D.pos.z >= b.z1 - 0.45) D._out = true;
+    } else if (D.pos.z >= ((_pl.outZ != null ? _pl.outZ : b.z1) - 0.6)
+      && Math.abs(D.pos.x) <= (_pl.gateHalf || 1.6) - 0.25) {
+      D._out = true;
+    }
     return { x: +D.pos.x.toFixed(4), z: +D.pos.z.toFixed(4), yaw: +D.yaw.toFixed(4), moved: step !== 0 };
   };
 

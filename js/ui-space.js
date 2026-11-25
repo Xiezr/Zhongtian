@@ -1279,11 +1279,27 @@ import './ui.js';
     ui.renderMapCanvas();
   };
 
+  /* ============================================================
+   * v158.17（老板「参考现有成熟设计完善」③）· 导航按钮**同时搬人**
+   * ------------------------------------------------------------
+   * P0 之前"相机 = 玩家视角"，所以 mapCenterOn 移相机就等于移玩家；
+   * 有了独立位姿之后这条链路断了：镜头到城了、人还在野地，
+   * 下一帧 followAvatar 又把镜头按人的朝向拽回去（实测城格 NDC y = −1.5 出画）。
+   * 三个导航按钮统一补这一步 —— 走 map3d.gotoXY（内部走 setPlayerPose 唯一出口）。
+   * ⚠️ 只给"回主城 / 回本城 / 灰烬城"这三个"回我自己的地方"加，
+   *    `fort-goto`（定位据点）这类"看一眼"的跳转不动人，半步都不动。
+   * ============================================================ */
+  function navMovePerson(x, y, ci) {
+    if (!GAME.map3d || !GAME.map3d.gotoXY) return;
+    try { GAME.map3d.gotoXY(x, y, ci); } catch (e) { }
+  }
+
   ui.mapCenter = function () {
     var pc = GAME.map.playerCity();
     if (!pc) return;
     if (!ui.mapOnActivePlanet()) { ui.toast('地图当前在看别颗星球 —— 回主城需先切回本城所在星球'); return; }
     ui.mapCenterOn(pc.x, pc.y);
+    navMovePerson(pc.x, pc.y, pc.ci);
     ui.toast('已回到主城 ' + GAME.map.coordText(pc.x, pc.y));
   };
 
@@ -1295,12 +1311,14 @@ import './ui.js';
     if (!c) { ui.toast('尚无城市'); return; }
     if (!ui.mapOnActivePlanet()) { ui.toast('本城不在当前地图星球上 —— 回本城需先切回本城所在星球'); return; }
     ui.mapCenterOn(c.x, c.y);
+    navMovePerson(c.x, c.y, c.ci);
     ui.toast('已回到本城（' + (c.name || '') + '）' + GAME.map.coordText(c.x, c.y));
   };
   /* v90.99（老板）：灰烬城（旧都）是**母星专属** —— 地图在看别星时不可回（别星没有灰烬城）。 */
   ui.mapCapitalCity = function () {
     if (!ui.mapOnActivePlanet(1)) { ui.toast('灰烬城在母星 —— 当前地图非母星，不可定位'); return; }
     ui.mapCenterOn(265, 215);
+    navMovePerson(265, 215);          /* 旧都只有格坐标、没有城市档 → 让 setPlayerPose 自己反算格锚 */
     ui.toast('已定位至旧都灰烬城 (265,215)');
   };
 

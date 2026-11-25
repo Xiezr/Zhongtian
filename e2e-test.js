@@ -9161,13 +9161,18 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         JSON.stringify(caps212e));
       G.ui.closeAllModals();
       await sleep(120);
-      /* ② 采集场面板：标签按归属资源（forest 厂 → 「另加生物质上限」） */
+      /* ② 采集场面板：标签按归属资源（forest 厂 → 「生物质上限」，v158.17 去掉了重复的"另加…"） */
       const _f212 = _plants212e.filter((p) => p.type === 'forest')[0];
       G.ui.openPlantModal(_f212.ci);
       await sleep(320);
       const extTxt212e = (document.getElementById('modal-root') || document.body).textContent || '';
-      check('§212e② 采集场面板：温室标「另加生物质上限」（按归属资源）',
-        extTxt212e.indexOf('另加生物质上限') >= 0, extTxt212e.slice(0, 90));
+      /* v158.17 规则变更（老板「堆场说两遍」）：原文「另加生物质上限 +X（每级另加生物质上限 +Y）」
+         同一句里"另加…上限"说了两遍，改为「生物质上限 +X（每级 +Y）」。
+         判据按新口径重写：① 归属资源仍标对；② 旧重复文案**必须消失**（反向守卫）。 */
+      check('§212e② 采集场面板：温室标「生物质上限」（按归属资源）· 不再重复"另加…上限"',
+        extTxt212e.indexOf('生物质上限') >= 0
+        && extTxt212e.indexOf('每级 +') >= 0
+        && extTxt212e.indexOf('另加生物质上限') < 0, extTxt212e.slice(0, 90));
       G.ui.closeAllModals();
       await sleep(120);
     } finally {
