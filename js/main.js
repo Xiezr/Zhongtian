@@ -1639,22 +1639,10 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (isB && ui.renderBuildBar) ui.renderBuildBar('item');
         ui.toast(isB ? '🧱 建造模式 · 只认四边形格（悬停选格）' : '🌐 战略模式 · 六边形地块');
       })(); break;
-      /* ============================================================
-       * v158.8（老板「增加第三种视角——人物视角」）：第三人称小人视角入口。
-       * ------------------------------------------------------------
-       * 与「战略 / 建造」并列的第三种视角。本质是切 FOLLOW 跟随态：
-       *   进入 → 相机贴到小人身后（M.setFollow(true)），WASD 走 · E 交互；
-       *   退出 → M.setFollow(false)，回到高空战略视野。
-       * 与 Tab 键（main.js keydown 里 `_avCode === 'Tab'`）是同一开关，按钮只是明面入口。
-       * 若处于建造模式，先进战略模式再跟随（建造模式贴地方格会跟跟随态抢镜头）。 */
-      case 'follow-toggle': (function () {
-        var fM = GAME.map3d;
-        if (!fM || !fM.setFollow) { ui.toast('地图未就绪'); return; }
-        if (fM.mode === fM.MODE_BUILD) fM.setMode(fM.MODE_STRATEGY);
-        /* setFollow 内部已统一同步底栏按钮高亮（Tab 键 / 按钮走同一出口） */
-        var fOn = fM.setFollow(!fM.FOLLOW);
-        ui.toast(fOn ? '🧍 人物视角 · WASD / 方向键 走 · E 交互 · Tab 退出' : '🌐 已退出人物视角');
-      })(); break;
+      /* ⛔ v158.20（老板「去掉人物模式 · 只提示人物位置」）：`case 'follow-toggle'` 整条退役 ——
+         底栏按钮与 Tab 键都已删，没人再触发"进入人物视角"。
+         `setFollow` 本身保留：点城池进街区仍由它做相机接管（自动，不是玩家选的模式），
+         只是地图上不再有"切视角"这个动作 —— 点哪，小人就走过去。 */
       case 'bb-tab': (function () {
         var tb = el.closest ? el.closest('[data-action="bb-tab"]') : el;
         var tab = tb ? (tb.getAttribute('data-bbtab') || 'item') : 'item';
@@ -3794,6 +3782,17 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       var hit = G.pick(t, e.clientX, e.clientY);
       if (hit) {
         /* ⛔ v157.85：前传的「点击 = 君主走路 / 就地动手」分支已删（前传整段退役）。 */
+        /* ============================================================
+         * v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）
+         * ------------------------------------------------------------
+         * `#mapCanvas` 上同时挂着本函数（2D 兜底）与 `map3d` 的 pointerup（3D pickAt）。
+         * 实测点一格时是**本函数先响应**（面板是 openLandModalCi 开的），
+         * 于是 3D 那条 `_openAndWalk` 根本没被走到 —— "点图行走"看着完全没生效。
+         * 所以这里也接同一个 `walkTo` 出口：点哪，小人就真的走过去（重复设同一目标无害）。
+         * ============================================================ */
+        if (GAME.map3d && GAME.map3d.walkTo && hit.ci != null) {
+          try { GAME.map3d.walkTo(hit.ci); } catch (eW) { }
+        }
         if (hit.kind === 'npc') {
           ui.openAttackModal(hit.city);
         } else if (hit.kind === 'player') {
@@ -4112,16 +4111,15 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       if (_tn207 === 'INPUT' || _tn207 === 'TEXTAREA' || _tn207 === 'SELECT') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (ui.modalVisible && ui.modalVisible()) return;
-      /* v158.0（P0 大世界）：Tab 进出第三人称跟随；WASD 只在跟随态生效。
-         键位判定用 e.code（布局无关），状态放 GAME._keys（不入档、不污染 state）。 */
+      /* v158.0（P0 大世界）：WASD 只在街区态生效（战略视角走「点地图 = 小人走过去」）。
+         键位判定用 e.code（布局无关），状态放 GAME._keys（不入档、不污染 state）。
+         ⛔ v158.20（老板「去掉人物模式」）：原来这里还有 Tab 进出跟随态 —— 已整条退役。 */
       var _mkAv = GAME.map3d;
       if (_mkAv && _mkAv.PLAYER_AVATAR && ui.view === 'map') {
         var _avCode = e.code || '';
-        if (_avCode === 'Tab') {
-          _mkAv.setFollow(!_mkAv.FOLLOW);
-          e.preventDefault();
-          return;
-        }
+        /* ⛔ v158.20（老板「去掉人物模式 · 只提示人物位置」）：`Tab → setFollow(!FOLLOW)`
+           整条退役 —— "人物视角"不再是玩家要切的一个模式。现在点地图就让小人真的走过去
+           （map3d.walkTo / stepWalkTo），地图上一直有小人标着位置。 */
         /* v158.2（P2 大世界）：Q = 退出街区（与 HUD 按钮同一出口，不新开状态机）。
            v158.14（老板「我至今没有发现操作选项」）：**同时退出跟随态**。
            球面上的城格画的是堡垒/城墙模型，没有可行走层 —— 只退街区会把人
@@ -4469,7 +4467,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.19';
+  GAME.VERSION = 'v158.20';
   function boot() {
     fitAppSize();
     try {

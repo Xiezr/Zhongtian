@@ -14512,9 +14512,10 @@ import './ui.js';
     /* v90.99（老板）：地图在看别颗星球时，基于「当前城」的导航（回主城/回本城）与母星专属的
        「灰烬城」**断开** —— 挂 .dim + data-why（点击弹原因，走全局受阻机制），比"点了没反应"直观。 */
     var _isBuild = !!(GAME.map3d && GAME.map3d.mode === 'build');
-    /* v158.8（老板「增加第三种视角——人物视角」）：小人第三人称跟随态作为独立视角入口，
-       与「战略 / 建造」并列。FOLLOW 是跟随态开关，不是 MODE —— 这里只读它算按钮高亮。 */
-    var _isFollow = !!(GAME.map3d && GAME.map3d.FOLLOW);
+    /* ⛔ v158.20（老板「去掉人物模式 · 只提示人物位置」）：原 v158.8 的「🧍 人物」按钮整条退役。
+       "人物视角"不该是玩家手动切的一个模式 —— 现在地图上一直有小人（位置提示），
+       点哪它就真的走到哪（map3d.walkTo / stepWalkTo），走过去的同时面板照常打开。
+       不再有"进入/退出人物视角"这个动作。 */
     var _onAct99 = ui.mapOnActivePlanet();
     var _cap99 = ui.mapOnActivePlanet(1);
     function _nav99(cls, act, label, on, why) {
@@ -14552,11 +14553,7 @@ import './ui.js';
         '<button class="btn sm' + (_isBuild ? ' gold' : '') + '" data-action="mode-toggle" title="' +
           (_isBuild ? '回到战略模式（大地图：领地 · 迷雾 · 城市）' : '进入建造模式（四边形建造格 · 物品 / 工具 / 背包）') + '">' +
           (_isBuild ? '🌐 战略' : '🧱 建造') + '</button>' +
-        /* v158.8（老板「增加第三种视角——人物视角」）：第三人称小人视角入口，
-           与「战略 / 建造」并列。点击进入/退出跟随态（WASD 走 · E 交互 · Tab 同键切换）。 */
-        '<button class="btn sm' + (_isFollow ? ' gold' : '') + '" data-action="follow-toggle" title="' +
-          (_isFollow ? '退出人物视角（回到高空战略视野）' : '进入人物视角（第三人称跟随小人 · WASD 走 · E 交互 · Tab 退出）') + '">' +
-          (_isFollow ? '🧍 人物 ✓' : '🧍 人物') + '</button>' +
+        /* ⛔ v158.20：「🧍 人物」模式按钮已退役 —— 见上方墓碑注释（改为点地图行走）。 */
         /* v156.52（老板「提供一个正位按钮（把球体摆正）」）——放在动作区，和回主城/星系同排。
            摆正 = 南北轴竖直 + 视角回初始方位 + 清掉自由视线偏移。 */
         '<button class="btn sm" data-action="map-reset" title="把球体摆正：南北轴竖直、视角复位">◎ 正位</button>' +
@@ -16944,16 +16941,17 @@ import './ui.js';
         + 'display:none;pointer-events:auto;font-size:14px;line-height:1.7;';
       root.appendChild(el);
     }
-    var inWorld = !!(G.map3d && G.map3d.FOLLOW);   /* 跟随态/街区态 = 已在大世界 */
-    var gate = inWorld ? '' :
-      '<button class="btn sm" data-action="follow-toggle" style="margin-left:10px;">🧍 去大世界走走</button>';
-    var sig = hint + '|' + (inWorld ? 'w' : 'c');
+    /* ⛔ v158.20（老板「去掉人物模式 · 只提示人物位置」）：v158.18 加的那枚
+       「🧍 去大世界走走」按钮随 follow-toggle 一起退役 —— 不再有"进入人物视角"这个动作。
+       地图上一直有小人标着位置，点哪它就真的走过去（map3d.walkTo / stepWalkTo）。
+       这条 HUD 现在只做一件事：显示任务链当前该干什么。 */
+    var sig = hint;
     if (el.getAttribute('data-sig') !== sig) {
       el.setAttribute('data-sig', sig);
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:7px 12px;font-weight:700;">'
-        + U.escape(hint) + '</span>' + gate;
+        + U.escape(hint) + '</span>';
     }
     el.style.display = 'block';
     return el;

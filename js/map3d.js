@@ -150,6 +150,19 @@ import './gltf.js';
     }
     return out;
   }
+  /* ============================================================
+   * v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）
+   * ------------------------------------------------------------
+   * 点场景 = 小人**走过去** + 开面板，一次包住。
+   * 为什么包一层、不改 `_openCellPanel`：那个出口还被别处用（面板内跳转、程序化打开），
+   * 那些地方不该让小人跑一趟。只有**玩家点地图**这条路径才走这里。
+   * ============================================================ */
+  function _openAndWalk(ci) {
+    M._openWalkCi = ci;                      /* 可观测标记（探针/调试：证明"点图"确实走了这条路） */
+    M._openWalkErr = null;
+    try { if (M && M.walkTo) M.walkTo(ci); } catch (eW) { M._openWalkErr = String((eW && eW.message) || eW); }
+    return _openCellPanel(ci);
+  }
   /* 那一格**原来的**面板分派（v156.15 从 pickAt 里原样抽出）。
      ⚠️ 分支顺序是 v92 定的语义，一个字别动：
        己方城 → 名城 → 行政城 → 据点 → **营地**（人）→ **村社**（关系）→ **遗迹**（死物）→ 野地兜底。 */
@@ -6791,6 +6804,19 @@ import './gltf.js';
         } catch (eHint) { }
       } catch (eAv) { }
     }
+    /* v158.20（老板「让人物真实走动起来」）：战略视角下点图 → 小人沿球面走过去（相机不动）。
+       到了就把交互交回去（点哪走到哪、到了就看信息）—— 走过去与「场景可交互」同时成立。 */
+    if (M._walkTo >= 0 && !M.FOLLOW) {
+      var _wNow = Date.now();
+      var _wDt = Math.min(0.05, (_wNow - (M._walkClock || _wNow)) / 1000) || 0.016;
+      M._walkClock = _wNow;
+      try {
+        var _wr = M.stepWalkTo(_wDt);
+        if (_wr && _wr.arrived) {
+          try { _openCellPanel(_wr.ci); } catch (eWC) { }
+        }
+      } catch (eWalk) { }
+    }
     /* v158.18（老板「新手玩法」）：任务链常驻提示 —— 内部 sig 去重，
        只在步骤/视图变化时写 DOM（不每帧 innerHTML）。 */
     try { if (GAME.ui && GAME.ui.renderQuestHint) GAME.ui.renderQuestHint(); } catch (eQh) { }
@@ -8255,6 +8281,26 @@ import './gltf.js';
     else g.userData.baseQ = g.quaternion.clone();
     return true;
   }
+  /* ============================================================
+   * v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）
+   * ------------------------------------------------------------
+   * 走路动画**一份**：跟随态（followAvatar）与点击行走（stepWalkTo）共用。
+   * 相位跟速度（步幅 1.5m 慢跑口径）、腿 ±sin*0.6、3cm 颠簸、停下归零。
+   * ============================================================ */
+  function animateFigureWalk(fg, dt, moving) {
+    if (!fg) return;
+    M._figMoving = !!moving;
+    if (moving) M._figPhase = (M._figPhase || 0) + dt * (M.WALK_SPEED / 1.5) * Math.PI;
+    else M._figPhase = 0;
+    var sw = moving ? Math.sin(M._figPhase) * 0.6 : 0;
+    var legs = fg.userData && fg.userData.legs;
+    if (legs && legs.length) {
+      legs[0].rotation.x = sw;
+      if (legs[1]) legs[1].rotation.x = -sw;
+    }
+    if (moving) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
+  }
+
   function buildFigures() {
     if (figRoot) { scene.remove(figRoot); figRoot = null; }
     figCache = {};
@@ -8277,6 +8323,25 @@ import './gltf.js';
       var g = makeFigure(w.color, w.scale, w.actor);
       if (!placeFigure(g, w.ci)) return;
       g.userData.ci = w.ci;                 /* v157.99：拾取时据此反查所在格 */
+      /* ============================================================
+       * v158.20（老板「只提示人物位置」）—— 玩家小人脚下一圈光环。
+       * ------------------------------------------------------------
+       * v157.96 曾给小人"放大 ×3.2 + 青色光环"，v158.7 因为"大地图人物比城市还大"
+       * 把**两样一起**收了 —— 但真正让人"比城还大"的是放大，光环只是标记。
+       * 现在单独把**光环**加回来、模型比例一点不动：战略视角下远远就能找到自己。
+       * ============================================================ */
+      if (w.key === 'stand') {
+        var ring = new THREE.Mesh(
+          new THREE.RingGeometry(0.52, 0.68, 28),
+          new THREE.MeshBasicMaterial({ color: 0xffc94d, transparent: true, opacity: 0.85,
+            side: THREE.DoubleSide, depthWrite: false })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.03;
+        ring.name = 'standRing';
+        ring.userData.noPick = true;        /* 别让光环抢走"点小人"的射线 */
+        g.add(ring);
+      }
       figCache[w.key] = { g: g, ci: w.ci };
       figRoot.add(g);
     });
@@ -8535,6 +8600,77 @@ import './gltf.js';
   };
 
   /* ============================================================
+   * v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）
+   * ------------------------------------------------------------
+   * 点地图 = 小人**真的走过去**：不切视角、不瞬移、不新增"模式"。
+   * 只记一个目标格，渲染循环每帧沿球面弧线推进；到了停、再交回交互。
+   * 相机不动 —— 这是战略视角，镜头由玩家自己缩放平移，不是"人物模式"。
+   * （v151 前传曾有「点地图 = 走路」的玩法，v157.85 前传退役时被删；这里恢复它，
+   *   并把它接到现有的 _openCellPanel 交互上 —— 走过去和看信息同时发生。）
+   * ============================================================ */
+  M._walkTo = -1;
+  M.walkTo = function (ci) {
+    ci = ci | 0;
+    if (!(_tileCells && _tileCells[ci])) return false;
+    if (!GAME.state) return false;
+    if (!GAME.state._avatar) M.teleportTo(ci);      /* 还没有位姿：先落到当前格 */
+    M._walkTo = ci;
+    return true;
+  };
+  M.walkStop = function () { M._walkTo = -1; return true; };
+  M.walkTarget = function () { return M._walkTo; };
+  /** 每帧推进（仅战略视角）：返回 {moved} / {arrived:ci} / null。FOLLOW 态交给 followAvatar。 */
+  M.stepWalkTo = function (dt) {
+    if (M._walkTo < 0 || M.FOLLOW) return null;
+    var p = M.playerPose();
+    var tc = _tileCells && _tileCells[M._walkTo];
+    if (!p || !tc || !tc.dir) { M._walkTo = -1; return null; }
+    dt = Math.max(0, Math.min(0.05, dt || 0.016));
+    var td = tc.dir;
+    var dot = p.dir[0] * td[0] + p.dir[1] * td[1] + p.dir[2] * td[2];
+    dot = Math.max(-1, Math.min(1, dot));
+    var ang = Math.acos(dot);                       /* 球面角距（弧度） */
+    var dist = ang * R;                             /* 球面弧距（米） */
+    if (dist <= 0.6) {                              /* 到达（0.6m 内）→ 锁定到目标格 */
+      var hitCi = M._walkTo; M._walkTo = -1;
+      M.setPlayerPose({ dir: [td[0], td[1], td[2]], h: M._groundAtUnit(td),
+        yaw: (p.yaw || 0), v: [0, 0, 0], ci: hitCi });
+      M._standVer = '';
+      return { arrived: true, ci: hitCi };
+    }
+    var step = Math.min(dist, M.WALK_SPEED * dt);
+    /* v158.20：**球面大圆插值（slerp）**，不是线性插值再归一化 ——
+       后者在夹角大时弧长会明显缩水、极端情况（近对跖）直接退化，
+       实测"点远处那一格"会越走越偏（dot 0.26 / 距目标 392m）。 */
+    var stepAng = Math.min(ang, step / R);
+    var sinA = Math.sin(ang);
+    var nd;
+    if (sinA < 1e-6) {
+      nd = td.slice();                              /* 重合 / 对跖的退化兜底 */
+    } else {
+      var w1 = Math.sin(ang - stepAng) / sinA;
+      var w2 = Math.sin(stepAng) / sinA;
+      nd = [p.dir[0] * w1 + td[0] * w2,
+            p.dir[1] * w1 + td[1] * w2,
+            p.dir[2] * w1 + td[2] * w2];
+      var nL = Math.sqrt(nd[0] * nd[0] + nd[1] * nd[1] + nd[2] * nd[2]) || 1;
+      nd = [nd[0] / nL, nd[1] / nL, nd[2] / nL];
+    }
+    /* 朝向 = 行进方向（与 stepAvatar 的 fwd 同一把尺：yaw=0 → 朝北） */
+    var fr = avatarBasis(p.dir);
+    var tx = td[0] - p.dir[0] * dot, ty = td[1] - p.dir[1] * dot, tz = td[2] - p.dir[2] * dot;
+    var dx = tx * fr.east[0] + ty * fr.east[1] + tz * fr.east[2];
+    var dz = tx * fr.south[0] + ty * fr.south[1] + tz * fr.south[2];
+    var yaw = Math.atan2(dx, -dz);
+    /* 不传 ci：让格锚按 dir 反算（setPlayerPose 有"同格跳过"优化，4 万顶点不会每帧跑）。 */
+    M.setPlayerPose({ dir: nd, h: M._groundAtUnit(nd), yaw: yaw, v: [0, 0, 0] });
+    /* 只挪图元、不重建（重建会闪）；摆腿跟上 */
+    var fg = figCache && figCache['stand'] && figCache['stand'].g;
+    if (fg) { placeFigureAtDir(fg, nd, yaw * 180 / Math.PI); animateFigureWalk(fg, dt, true); }
+    return { moved: +step.toFixed(3), left: +(dist - step).toFixed(1) };
+  };
+
+  /* ============================================================
    * v158.0（P0）：第三人称跟随相机 —— Cinemachine Third Person Follow 的
    * 极简骨架：Origin(角色) → Hand(眼高) → Camera(身后 6m / 俯角 15°)。
    * ⛔ 不写 camO 任何字段：轨迹球真值是 camO.quat，碰它就会让退出跟随
@@ -8677,17 +8813,8 @@ import './gltf.js';
       M._interactHintSig = '';                       /* 退出跟随立刻收提示，不留在屏幕上 */
       GAME.ui.renderInteractHint(null);
     }
-    /* v158.8（老板「增加第三种视角——人物视角」）：同步底栏「人物」按钮高亮。
-       Tab 键和按钮点击都走这条 setFollow 出口，这里统一刷 DOM，避免两处状态不一致。 */
-    try {
-      var _fBtn = (typeof document !== 'undefined') ? document.querySelector('[data-action="follow-toggle"]') : null;
-      if (_fBtn) {
-        _fBtn.classList.toggle('gold', on);
-        _fBtn.textContent = on ? '🧍 人物 ✓' : '🧍 人物';
-        _fBtn.title = on ? '退出人物视角（回到高空战略视野）'
-                         : '进入人物视角（第三人称跟随小人 · WASD / 方向键 走 · E 交互 · Tab 退出）';
-      }
-    } catch (eF) { }
+    /* ⛔ v158.20（老板「去掉人物模式」）：这里原来是"同步底栏「🧍 人物」按钮高亮"，
+       按钮已删 → 整段退役（留着就是孤儿按钮引用，audit 会拦）。 */
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return M.FOLLOW;
   };
@@ -9158,7 +9285,7 @@ import './gltf.js';
         else if (_lo && _lo.parent && _lo.parent.userData && _lo.parent.userData.ci != null) _lci = _lo.parent.userData.ci;
         if (_lci != null) {
           M._cell = _lci;
-          try { _openCellPanel(_lci); } catch (eL1) { }
+          try { _openAndWalk(_lci); } catch (eL1) { }
           return;
         }
       }
@@ -9181,7 +9308,7 @@ import './gltf.js';
         if (_fci != null) {
           M._lastPickKind = 'figure';
           M._cell = _fci;
-          try { _openCellPanel(_fci); } catch (eF1) { }
+          try { _openAndWalk(_fci); } catch (eF1) { }
           if (GAME.ui && GAME.ui.toast) GAME.ui.toast('👤 选中了人物（所在格已打开）');
           return;
         }
@@ -9194,7 +9321,7 @@ import './gltf.js';
         var _pci = pickCiByRay(rc, _plh[0].point);
         if (_pci >= 0) {
           M._cell = _pci;
-          try { _openCellPanel(_pci); } catch (eP1) { }
+          try { _openAndWalk(_pci); } catch (eP1) { }
           if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🧱 选中了放置物（所在格已打开）');
           return;
         }
@@ -9333,6 +9460,16 @@ import './gltf.js';
       if (_ui2.renderMapCanvas) _ui2.renderMapCanvas();
       return;
     }
+    /* ============================================================
+     * v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）
+     * ------------------------------------------------------------
+     * **点哪就走哪 —— 包括未探明的格子**：走过去本身就是探路
+     * （v151 的老玩法就是"点地图 = 走路"，v157.85 前传退役时一并删了）。
+     * 所以 walkTo 必须在迷雾判定**之前**：否则点一块没探明的地只会弹
+     * "派一队过去"，小人一步不动 —— 玩家体感就是"点了没用"。
+     * 放置模式（上一段已 return）不走路：那是施工，不是赶路。
+     * ============================================================ */
+    try { M.walkTo(ci); } catch (eWk2) { }
     /* v92：**未探明的格子点不进去** —— 这是迷雾真正的玩法后果。
        不做成"点开发现是空的"：那只是把信息藏一层，玩家照样能靠点击扫图。
        整片未探明 = 地图上没有这一带，得先派人过去（这里连地形都不给看）。 */
@@ -9361,6 +9498,9 @@ import './gltf.js';
        v157.57 的「🗺 地块操作」中间菜单整条退役 —— 详情面板里本来就有
        侦查 / 掠夺 / 占领 / 经营 / 派遣 / 一键出征，那一层只多一次点击。
        smoke §580② 已翻转为反向守卫：点击不许再经任何中间菜单。 */
+    /* v158.20：走路已在迷雾判定之前统一接上（点哪走哪，含未探明）。
+       这里只负责开面板 —— 走过去与看信息互不等待。用公开出口 M.openCellPanel
+       （与 _openCellPanel 同一函数，§580②/§589af 钉的就是这个出口不被中转）。 */
     M.openCellPanel(ci);
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };

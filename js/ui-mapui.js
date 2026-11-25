@@ -1186,16 +1186,17 @@ import './ui.js';
         + 'display:none;pointer-events:auto;font-size:14px;line-height:1.7;';
       root.appendChild(el);
     }
-    var inWorld = !!(G.map3d && G.map3d.FOLLOW);   /* 跟随态/街区态 = 已在大世界 */
-    var gate = inWorld ? '' :
-      '<button class="btn sm" data-action="follow-toggle" style="margin-left:10px;">🧍 去大世界走走</button>';
-    var sig = hint + '|' + (inWorld ? 'w' : 'c');
+    /* ⛔ v158.20（老板「去掉人物模式 · 只提示人物位置」）：v158.18 加的那枚
+       「🧍 去大世界走走」按钮随 follow-toggle 一起退役 —— 不再有"进入人物视角"这个动作。
+       地图上一直有小人标着位置，点哪它就真的走过去（map3d.walkTo / stepWalkTo）。
+       这条 HUD 现在只做一件事：显示任务链当前该干什么。 */
+    var sig = hint;
     if (el.getAttribute('data-sig') !== sig) {
       el.setAttribute('data-sig', sig);
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:7px 12px;font-weight:700;">'
-        + U.escape(hint) + '</span>' + gate;
+        + U.escape(hint) + '</span>';
     }
     el.style.display = 'block';
     return el;

@@ -49553,13 +49553,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         })(),
         '唯一出口 + placeCamera 纯净');
 
-      check('§589ac 总开关：PLAYER_AVATAR=false 回到点格传送 + 轨道相机（Tab 接线在岗）',
+      check('§589ac 总开关：PLAYER_AVATAR=false 回到点格传送 + 轨道相机（v158.20：Tab 切视角退役，改点图行走）',
         /M\.PLAYER_AVATAR = true/.test(mpC158)
         && /if \(!M\.PLAYER_AVATAR\) on = false;/.test(mpC158)
         && /if \(M\.FOLLOW && M\.PLAYER_AVATAR\)/.test(mpC158)
-        && /_avCode === 'Tab'/.test(mnC158)
+        /* v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）：
+           旧规则是"Tab 进出第三人称跟随"，现在整条退役 —— 反向守卫钉住它不许回来；
+           正向改钉"点地图 = 小人走过去"的唯一出口（walkTo / stepWalkTo）。 */
+        && !/_avCode === 'Tab'/.test(mnC158)
+        && /M\.walkTo = function \(ci\)/.test(mpC158)
+        && /M\.stepWalkTo = function \(dt\)/.test(mpC158)
         && /window\.addEventListener\('blur', function \(\) \{ GAME\._keys = \{\}; \}\)/.test(mnC158),
-        '总开关 + Tab + 失焦清键');
+        '总开关 + 点图行走 + 失焦清键');
 
       /* v158.1（P1）：走近即交互 —— 命中判据 / 提示与分派 / 反向证据。 */
       var umC1581 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui-mapui.js'), 'utf8'));
@@ -50536,12 +50541,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /renderQuestHint\(\)/.test(_m3d608);            /* 渲染循环接线 */
   })());
 
-  check('§608② 城内给「去大世界」入口（原来只在地图页底栏）', (function () {
+  check('§610/§608② v158.20 反转：「去大世界」按钮退役，改点图行走（老板「去掉人物模式」）', (function () {
     var i = _um608.indexOf('ui.renderQuestHint = function');
-    var blk = _um608.slice(i, _um608.indexOf('v158.3（P3 大世界）：载具态 HUD', i));
-    return /data-action="follow-toggle"/.test(blk)
-      && /去大世界走走/.test(blk)
-      && /\.FOLLOW/.test(blk);                           /* 已在大世界就不重复给按钮 */
+    var blk = stripComment(_um608.slice(i, _um608.indexOf('v158.3（P3 大世界）：载具态 HUD', i)));
+    /* 旧规则（城内给一枚 follow-toggle 按钮切人物视角）已被老板推翻 ——
+       反向守卫钉住它不许回来（剥注释：墓碑注释里写着这个旧名字）；
+       正向改钉"点地图 = 小人走过去"三条出口同在岗。 */
+    return !/data-action="follow-toggle"/.test(blk)
+      && !/去大世界走走/.test(blk)
+      && /M\.walkTo = function \(ci\)/.test(_m3d608)
+      && /M\.stepWalkTo = function \(dt\)/.test(_m3d608)
+      && /M\.walkTo\(ci\)/.test(_m3d608);                /* pickAt 里真的调 */
   })());
 
   check('§608③ 创角文案与"新局即有城"一致（v157.85 前传整段退役）', (function () {
@@ -50626,6 +50636,70 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   check('§609⑤ figureOf().walking 如实反映（不再是恒 false）', (function () {
     return /walking: !!M\._figMoving/.test(_m3d608)
       && !/walking: false \}/.test(stripComment(_m3d608));
+  })());
+
+  /* ============================================================
+   * §610 v158.20 · 老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」
+   * ------------------------------------------------------------
+   * 旧规则（玩家手动切「🧍 人物」进入第三人称）被整条推翻：
+   *   ① 不再有 follow-toggle 按钮 / case / Tab 键（反向守卫）；
+   *   ② 点地图 = 小人**真的走过去**（walkTo / stepWalkTo 唯一出口，slerp 大圆插值）；
+   *   ③ 未探明的格子也能走过去（walkTo 必须在 fogHides 之前 —— 走过去就是探路）；
+   *   ④ 脚底光环标位置（只加标记、不改模型比例的那笔旧账）。
+   * ============================================================ */
+  console.log('  --- §610 v158.20 去掉人物模式 / 点图行走 / 位置提示 ---');
+  var _mn610 = _r608('js/main.js');
+  var _um610 = _r608('js/ui-mapui.js');
+  var _mp610 = _m3d608;
+
+  check('§610① 「🧍 人物」模式整条退役（按钮 / case / Tab 三处都不许回来）', (function () {
+    var code = stripComment(_mn610), uicode = stripComment(_um610);
+    return !/case 'follow-toggle'/.test(code)
+      && !/_avCode === 'Tab'/.test(code)
+      && uicode.indexOf('data-action="follow-toggle"') < 0
+      && uicode.indexOf('去大世界走走') < 0;
+  })());
+
+  check('§610② 点图行走唯一出口：walkTo / stepWalkTo / walkStop / walkTarget', (function () {
+    return /M\.walkTo = function \(ci\)/.test(_mp610)
+      && /M\.stepWalkTo = function \(dt\)/.test(_mp610)
+      && /M\.walkStop = function \(\)/.test(_mp610)
+      && /M\.walkTarget = function \(\)/.test(_mp610);
+  })());
+
+  check('§610③ 未探明的格子也能走过去（walkTo 在 fogHides 之前）', (function () {
+    var code = stripComment(_mp610);
+    var iW = code.indexOf("try { M.walkTo(ci); }");
+    var iF = code.indexOf('if (fogHides(ci))');
+    /* 都在 pickAt 里；顺序必须是 walkTo 先于迷雾判定（否则点未探明格一步不动）。 */
+    return iW > 0 && iF > 0 && iW < iF;
+  })());
+
+  check('§610④ 球面大圆插值（slerp）：线性插值在大角度会越走越偏', (function () {
+    var i = _mp610.indexOf('M.stepWalkTo = function');
+    var body = _mp610.slice(i, i + 2600);
+    return /Math\.sin\(ang - stepAng\) \/ sinA/.test(body)
+      && /Math\.sin\(stepAng\) \/ sinA/.test(body)
+      && /var ang = Math\.acos\(dot\)/.test(body);
+  })());
+
+  check('§610⑤ 走路动画一份：跟随态与点图行走共用 animateFigureWalk', (function () {
+    var code = _mp610;
+    var defs = (code.match(/function animateFigureWalk\(fg, dt, moving\)/g) || []).length;
+    var uses = (code.match(/animateFigureWalk\(fg, /g) || []).length;
+    return defs === 1 && uses >= 2;      /* 定义 1 处、调用 ≥2 处（跟随 + 行走） */
+  })());
+
+  check('§610⑥ 脚底光环标位置（只加标记 · 不改模型比例）', (function () {
+    return /name = 'standRing'/.test(_mp610)
+      && /new THREE\.RingGeometry\(0\.52, 0\.68, 28\)/.test(_mp610)
+      && /w\.key === 'stand'/.test(_mp610);
+  })());
+
+  check('§610⑦ 渲染循环推进行走 + 到达后把交互交回', (function () {
+    return /if \(M\._walkTo >= 0 && !M\.FOLLOW\)/.test(_mp610)
+      && /M\.stepWalkTo\(_wDt\)/.test(_mp610)
+      && /_openCellPanel\(_wr\.ci\)/.test(_mp610);
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
