@@ -49657,10 +49657,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /if \(hit\) \{ V\.speed = 0; break; \}/.test(vC1583),
         '同源碰撞 + 子步进上限 + 撞停 + 不新增高度计算');
 
-      check('§589am 反向证据：P0/P1/P2 逐字保留 · 载具键三级隔离 · D.step 本体未改 · 载具态 P1 提示静默',
+      check('§589am 反向证据：P0/P1/P2 逐字保留 · 载具键三级隔离 · D.step 本体未改 · 载具态 P1 提示静默（v158.14 写键统一走 _avKey）',
         /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
         && /if \(_mkAv\.DISTRICT && GAME\.district && GAME\.district\.active\) \{/.test(mnC158)
-        && /GAME\.vehicle\.keys\[_avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(mnC158)
+        /* v158.14：方向键别名后，三级写入统一用归一化后的 _avKey
+           （ArrowUp→w 等），不再各写 _avCode.charAt(3) —— 那正是方向键漏掉的根因。 */
+        && /var _avKey = AV_KEY_ALIAS\[_avCode\] \|\| _avCode\.charAt\(3\)\.toLowerCase\(\)/.test(mnC158)
+        && /GAME\.vehicle\.keys\[_avKey\] = 1/.test(mnC158)
         && /GAME\.vehicle && GAME\.vehicle\.mounted/.test(mpC158)
         && /D\.step = function \(dt, keys\)/.test(dC1582)
         && /if \(V && V\.mounted\) V\.step\(dt, V\.keys, D\.plan\);/.test(dC1582)
@@ -49805,13 +49808,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
     })(), '四重误报关全真才出手 · 战斗一合以上 · 调用 DU.play 恰好 1 次');
 
-    check('§589aq 反向证据：P0~P3 逐字保留 · 提示条独立 · 存档无 npcPos · 不出第四套玩家位姿',
+    check('§589aq 反向证据：P0~P3 逐字保留 · 提示条独立 · 存档无 npcPos · 不出第四套玩家位姿（v158.14 写键统一走 _avKey）',
       /M\.PLAYER_AVATAR = true/.test(mpC158)
       && /M\.INTERACT_RANGE = 1/.test(mpC158)
       && /M\.DISTRICT = true/.test(mpC158)
       && /M\.VEHICLE = true/.test(mpC158)
       && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
-      && /GAME\.vehicle\.keys\[_avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(mnC158)
+      /* v158.14：同 §589am —— 方向键别名统一归一化后再写状态位。 */
+      && /GAME\.vehicle\.keys\[_avKey\] = 1/.test(mnC158)
       && /V\.toggle = function \(\)/.test(vC1583)
       && /D\.step = function \(dt, keys\)/.test(dC1582)
       && /ui\.renderNpcHint = function \(hit\)/.test(umC1584)
@@ -49990,6 +49994,76 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           return r0 === null && r1 && r1.step === 'walk' && s1 === 1 && rOff === null;
         } finally { if (Gq.state) Gq.state().step = svQ || 0; Gq.reset(); }
       })(), 'walk 下限 3m + 关开关不推进（非平凡解）');
+
+    /* ============================================================
+     * v158.14（老板「人物如何走动，我至今没有发现操作选项 / 我键盘的上下左右
+     * 还是什么样」）：**规则变更** —— 旧口径只认 Key[WASD]，方向键在跟随态
+     * 完全落空（玩家凭直觉按 ↑↓←→ 毫无反应，等于没有走动入口）。
+     * 城内旧场景（scene3d）本来就写「WASD / 方向键」同义，星球人物态不该例外。
+     * 守：① 别名表在岗；② keydown 认别名、写同一个 w/a/s/d 状态位（三级共用）；
+     *     ③ keyup 反向归一化（否则按 ↑ 走起来、松手还在往前跑）；
+     *     ④ 跟随态常驻操作条由 setFollow 唯一出口驱动（只有一个开关）；
+     *     ⑤ 反向证据：操作条里不放按钮（不产生孤儿按钮）。
+     * ============================================================ */
+    var umFh15814 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui-mapui.js'), 'utf8'));
+    var mpFh15814 = stripComment(mp);
+    var mnFh15814 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
+    check('§589az 方向键 = WASD 同义：别名表双向归一化 + 跟随态常驻操作条（v158.14 规则变更）',
+      /var AV_KEY_ALIAS = \{ ArrowUp: 'w', ArrowDown: 's', ArrowLeft: 'a', ArrowRight: 'd' \}/.test(mnFh15814)
+      && /AV_KEY_ALIAS\[_avCode\]/.test(mnFh15814)
+      && /var _avKey = AV_KEY_ALIAS\[_avCode\] \|\| _avCode\.charAt\(3\)\.toLowerCase\(\)/.test(mnFh15814)
+      && /GAME\._keys\[_avKey\] = 1/.test(mnFh15814)
+      && /GAME\.district\.keys\[_avKey\] = 1/.test(mnFh15814)
+      && /GAME\.vehicle\.keys\[_avKey\] = 1/.test(mnFh15814)
+      && /AV_KEY_ALIAS\[_c0\] \? \('Key' \+ AV_KEY_ALIAS\[_c0\]\.toUpperCase\(\)\)/.test(mnFh15814)
+      && (mnFh15814.match(/keys\[_avCode\.charAt\(3\)/g) || []).length === 0
+      && /GAME\.ui\.renderFollowHud\(on\)/.test(mpFh15814)
+      && (function () {
+        var i = umFh15814.indexOf('ui.renderFollowHud = function');
+        if (i < 0) return false;
+        var body = umFh15814.slice(i, i + 1400);
+        return /getElementById\('follow-hud'\)/.test(body)
+          && /↑ ↓ ← → 走动/.test(body)
+          && !/data-action=/.test(body);
+      })(),
+      '别名表 + 双向归一化 + 常驻条（无按钮）');
+
+    /* ============================================================
+     * v158.14（续）：让"人物视角"真的能玩 —— 三处规则变更
+     *   ① 站在城格上进人物视角 → 落街区（球面城格是堡垒模型，人进去埋在墙里）；
+     *   ② 退出跟随 → 相机复位到轨道高度（原来只清 FOLLOW，camO.dist 停在地表
+     *      302，实机是"Q 回星球满屏一片蓝"）；
+     *   ③ Q = 回星球 = 退街区 + 退跟随（原来只退街区，人留在城中心的墙里）。
+     * 反向证据：Q 分支不许再自己调 district.exit —— 全部收进 setFollow 单一出口。
+     * ============================================================ */
+    check('§589ba 城格落街区 · 退跟随复位相机 · Q=回星球（v158.14 规则变更）',
+      /M\.AUTO_DISTRICT = true/.test(mpFh15814)
+      && /M\.AUTO_DISTRICT !== false/.test(mpFh15814)
+      && /GAME\.district\.enter\(_adCi, _adCity\)/.test(mpFh15814)
+      && /M\.setPlayerPose\(M\.playerPose\(\)\)/.test(mpFh15814)
+      && /M\.surfaceMode\(false\)/.test(mpFh15814)
+      && /ui\.renderFollowHud\(on\)/.test(mpFh15814)
+      && (mnFh15814.match(/\.setFollow\(false\)/g) || []).length >= 2
+      && (function () {
+        /* Q 块：只调 setFollow(false)，不许再自己 exit（两个出口必然走岔） */
+        var at = mnFh15814.indexOf("_avCode === 'KeyQ'");
+        if (at < 0) return false;
+        var blk = mnFh15814.slice(at, at + 420);
+        return /_mkAv\.setFollow\(false\)/.test(blk) && !/district\.exit/.test(blk);
+      })(),
+      'AUTO_DISTRICT + enter + surfaceMode(false) + Q 单出口');
+
+    /* 街区 HUD 文案也要写方向键；且它接管时跟随条必须让位（一屏两处「WASD 走动」） */
+    check('§589bb 街区 HUD 写方向键 + 接管时跟随条让位（v158.14）',
+      (function () {
+        var i = umFh15814.indexOf('ui.renderDistrictHud = function');
+        if (i < 0) return false;
+        var body = umFh15814.slice(i, i + 1200);
+        return /方向键 走动/.test(body)
+          && /getElementById\('follow-hud'\)/.test(body)
+          && /display = \(!on && GAME\.map3d && GAME\.map3d\.FOLLOW\)/.test(body);
+      })(),
+      '街区条含方向键 + 两条提示互斥');
 
     /* ⑦ 只压暗 + 归一化：这两条是"不许把画面搞暗/搞脏"的结构保证
        · 细节层用 `max(0.0, _relV - _relD)` —— 只压暗，永不提亮（不削顶）

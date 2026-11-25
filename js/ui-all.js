@@ -16709,6 +16709,35 @@ import './ui.js';
      `smoke §580②` 已翻转为反向守卫：点击不许再经任何中间菜单。 */
 
   /* ============================================================
+   * v158.14（老板「人物如何走动，我至今没有发现操作选项」）：跟随态操作条
+   * ------------------------------------------------------------
+   * 旧状：进入人物视角只有一条 2.2 秒就消失的 toast，之后屏幕上再无任何
+   *   操作说明 —— 玩家（含老板本人）按方向键没反应，就判定"没有移动功能"。
+   * 这里给一条**常驻**操作条，跟 district-hud / vehicle-hud 同风格：
+   *   纯文字、pointer-events:none（不放按钮 → 不产生孤儿按钮），
+   *   挂左下角（右下是街区 HUD、中下是交互提示，互不遮挡）。
+   * 显隐由 M.setFollow() 唯一出口驱动，与底栏「🧍 人物」高亮同一个开关。
+   * ============================================================ */
+  ui.renderFollowHud = function (on) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('follow-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'follow-hud';
+      el.style.cssText = 'position:absolute;left:22px;bottom:88px;z-index:1901;'
+        + 'display:none;pointer-events:none;font-size:14px;line-height:1.9;';
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:8px 12px;font-weight:700;">'
+        + 'W / A / S / D 或 ↑ ↓ ← → 走动　·　A / D 转向　·　E 交互　·　Tab 退出</span>';
+      root.appendChild(el);
+    }
+    el.style.display = on ? 'block' : 'none';
+    return el;
+  };
+
+  /* ============================================================
    * v158.1（P1 大世界）：走近交互提示条
    * ------------------------------------------------------------
    * 不是新面板 —— 只是一行跟随态常驻提示；M.nearestInteractable() 出目标，
@@ -16762,11 +16791,16 @@ import './ui.js';
         + 'display:none;pointer-events:auto;font-size:14px;';
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
-        + 'border-radius:8px;padding:8px 12px;margin-right:8px;">WASD 走动 · A/D 转向</span>'
+        + 'border-radius:8px;padding:8px 12px;margin-right:8px;">WASD / 方向键 走动 · A/D 转向</span>'
         + '<button class="btn" data-action="district-exit" style="font-weight:700;">退出街区（Q）</button>';
       root.appendChild(el);
     }
     el.style.display = on ? 'block' : 'none';
+    /* v158.14：街区态由本条**接管**操作说明 —— 左下那条跟随态操作条同时收起，
+       否则一屏两处「WASD 走动」并列（实测啰嗦）。退出街区（Q / 按钮 / 退出跟随）
+       都走本函数 on=false，跟随条随之还原，不会漏。 */
+    var _fh = document.getElementById('follow-hud');
+    if (_fh) _fh.style.display = (!on && GAME.map3d && GAME.map3d.FOLLOW) ? 'block' : 'none';
     return el;
   };
 

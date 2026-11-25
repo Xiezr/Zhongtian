@@ -147,8 +147,14 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         break;
       }
       case 'district-exit': {
-        if (GAME.district && GAME.district.exit) GAME.district.exit();
-        if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+        /* v158.14：与 Q 键同一出口 —— 退街区 + 退跟随（回高空战略视野）。
+           只退街区会把人留在城格球面上（埋在城墙里，等于"点了没反应"）。 */
+        if (GAME.map3d && GAME.map3d.setFollow) {
+          GAME.map3d.setFollow(false);
+        } else {
+          if (GAME.district && GAME.district.exit) GAME.district.exit();
+          if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+        }
         if (GAME._keys) GAME._keys = {};
         break;
       }
@@ -1647,7 +1653,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (fM.mode === fM.MODE_BUILD) fM.setMode(fM.MODE_STRATEGY);
         /* setFollow 内部已统一同步底栏按钮高亮（Tab 键 / 按钮走同一出口） */
         var fOn = fM.setFollow(!fM.FOLLOW);
-        ui.toast(fOn ? '🧍 人物视角 · WASD 走 · E 交互 · Tab 退出' : '🌐 已退出人物视角');
+        ui.toast(fOn ? '🧍 人物视角 · WASD / 方向键 走 · E 交互 · Tab 退出' : '🌐 已退出人物视角');
       })(); break;
       case 'bb-tab': (function () {
         var tb = el.closest ? el.closest('[data-action="bb-tab"]') : el;
@@ -4080,6 +4086,11 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (ui.view === 'city' || ui.view === 'ext' || ui.view === 'map') ui.renderView(ui.view);
       }, 120);
     });
+    /* v158.14（老板「我键盘的上下左右还是什么样」）：方向键 = WASD 同义别名。
+       ★ 必须在下面 keydown / keyup 两个 handler 注册前赋值。
+       城内旧场景（scene3d）本来就是「WASD / 方向键」同义，星球人物态却只认
+       Key[WASD] —— 玩家凭直觉按方向键毫无反应，等于没有走动入口。 */
+    var AV_KEY_ALIAS = { ArrowUp: 'w', ArrowDown: 's', ArrowLeft: 'a', ArrowRight: 'd' };
     /* Esc 关闭当前弹窗（与右上角 × / 底部「关闭」等价）；顺带取消「移动地块」的待选状态 */
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' || e.keyCode === 27) {
@@ -4111,10 +4122,13 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
-        /* v158.2（P2 大世界）：Q = 退出街区（与 HUD 按钮同一出口，不新开状态机）。 */
+        /* v158.2（P2 大世界）：Q = 退出街区（与 HUD 按钮同一出口，不新开状态机）。
+           v158.14（老板「我至今没有发现操作选项」）：**同时退出跟随态**。
+           球面上的城格画的是堡垒/城墙模型，没有可行走层 —— 只退街区会把人
+           丢回城中心的墙里（实测 Q 之后画面又是一堵墙，"回星球"没回成）。
+           退出跟随 = 回高空战略视野，语义与「回星球」一致。 */
         if (_avCode === 'KeyQ' && _mkAv.DISTRICT && GAME.district && GAME.district.active && !e.shiftKey) {
-          GAME.district.exit();
-          if (ui.renderDistrictHud) ui.renderDistrictHud(false);
+          _mkAv.setFollow(false);
           GAME._keys = {};
           e.preventDefault();
           return;
@@ -4157,12 +4171,15 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
-        if (_mkAv.FOLLOW && /^Key[WASD]$/.test(_avCode)) {
+        if (_mkAv.FOLLOW && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])) {
+          /* v158.14：方向键归一化成同一个 w/a/s/d 状态位（三级共用，不新开状态）。
+             旧行为只认 Key[WASD]，方向键落空 → 玩家以为"没有移动功能"。 */
+          var _avKey = AV_KEY_ALIAS[_avCode] || _avCode.charAt(3).toLowerCase();
           /* v158.3（P3）：载具态第三级按键 —— 写 vehicle.keys，不写 D.keys/GAME._keys，
              否则街区步行与球面位姿会同时被推（三级状态互不串线）。 */
           if (_mkAv.VEHICLE !== false && GAME.vehicle && GAME.vehicle.mounted) {
             if (!GAME.vehicle.keys) GAME.vehicle.keys = {};
-            GAME.vehicle.keys[_avCode.charAt(3).toLowerCase()] = 1;
+            GAME.vehicle.keys[_avKey] = 1;
             e.preventDefault();
             return;
           }
@@ -4171,10 +4188,10 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
              退出后"位置不变"就守不住（两级开关键状态互不串线）。 */
           if (_mkAv.DISTRICT && GAME.district && GAME.district.active) {
             if (!GAME.district.keys) GAME.district.keys = {};
-            GAME.district.keys[_avCode.charAt(3).toLowerCase()] = 1;
+            GAME.district.keys[_avKey] = 1;
           } else {
             if (!GAME._keys) GAME._keys = {};
-            GAME._keys[_avCode.charAt(3).toLowerCase()] = 1;
+            GAME._keys[_avKey] = 1;
           }
           e.preventDefault();
           return;
@@ -4211,7 +4228,10 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
     });
     /* v158.0：松键/失焦清移动状态 —— 否则切窗口回来人会一直往前走。 */
     document.addEventListener('keyup', function (e) {
-      var _c = e.code || '';
+      /* v158.14：方向键松键也要清同一位 —— 否则按 ↑ 走起来、松手还在往前跑
+         （keyup 的 e.code 是 ArrowUp，不归一化就清不到 w）。 */
+      var _c0 = e.code || '';
+      var _c = AV_KEY_ALIAS[_c0] ? ('Key' + AV_KEY_ALIAS[_c0].toUpperCase()) : _c0;
       if (/^Key[WASD]$/.test(_c) && GAME._keys) GAME._keys[_c.charAt(3).toLowerCase()] = 0;
       /* v158.2（P2）：街区态按键独立清，不借 GAME._keys —— 两级开关键状态互不串线 */
       if (/^Key[WASD]$/.test(_c) && GAME.district && GAME.district.keys) {
@@ -4449,7 +4469,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.13';
+  GAME.VERSION = 'v158.14';
   function boot() {
     fitAppSize();
     try {

@@ -890,6 +890,13 @@ import './gltf.js';
   /* v158.6（P5-b 大世界）：任务链引导层总开关。关掉后引导链停摆，
      其余照常；不改 P0~P4 任何状态、位置、输入分派。 */
   M.QUEST = true;
+  /* v158.14（老板「人物如何走动，我至今没有发现操作选项」）：
+     站在城市格上进人物视角时，**自动落到街区**（city 层）。
+     原因：球面城格画的是堡垒/城墙模型，不是可行走空间 —— 人站进去是埋在墙里，
+     实测"进了人物视角只看到一堵墙"，自然以为没有移动功能。街区本来就是
+     城里的可行走层（有街道/居民/载具），这里跟面板「🚶 走进街区」走同一个
+     GAME.district.enter 出口，只省掉一次点击。关掉即回到 v158.13 原状。 */
+  M.AUTO_DISTRICT = true;
   M._avatarClock = 0;
   M.spinOn = false;
   M.setSpin = function (on) {
@@ -8622,11 +8629,56 @@ import './gltf.js';
       var d = camO.dir || [0, 1, 0];
       if (!GAME.state || !GAME.state._avatar) {
         M.setPlayerPose({ dir: [d[0], d[1], d[2]], h: M._groundAtUnit(d), yaw: 0, v: [0, 0, 0] });
+      } else {
+        /* v158.14：新开局 migrateAvatar158 早把 _avatar 建好了，上面那条就不会走 ——
+           于是 _standCi 一直是空，playerCi() 恒 -1，"脚下是不是城格"无从判断，
+           下面自动进街区永远触发不了（实测就是这个原因）。这里同出口写回一次
+           （位姿逐位不动），只为让 setPlayerPose 内部按 dir 反算格锚。 */
+        M.setPlayerPose(M.playerPose());
       }
       M.surfaceMode(true);
       M._followPos = null;
+    } else {
+      /* v158.14：退出跟随必须把相机放回轨道高度。只清 FOLLOW 会让 camO.dist
+         停在进地表时写的 302，人走了、镜头还贴在地面上 —— 实机表现是
+         「Q 回星球后满屏一片蓝」（就是贴在球面上看海）。surfaceMode(false)
+         把 dist 复位到 R*2.9，即进地表前的战略视野。 */
+      try { M.surfaceMode(false); } catch (eSm) { }
     }
     M.FOLLOW = on;
+    /* v158.14（老板「我至今没有发现操作选项」）：跟随态常驻操作条。
+       与底栏「🧍 人物」高亮同一个开关，进出都走这一条出口，
+       不在别处单独写 DOM（否则按钮/Tab/退出三条路径会各写一份、状态打架）。 */
+    if (GAME.ui && GAME.ui.renderFollowHud) GAME.ui.renderFollowHud(on);
+    /* v158.14：站在城市格上进人物视角 → 直接落到街区（见 M.AUTO_DISTRICT 说明）。
+       与面板「🚶 走进街区」同一个 enter 出口；失败静默落回纯球面站位。 */
+    if (on && M.AUTO_DISTRICT !== false && M.DISTRICT !== false
+      && GAME.district && GAME.district.enter && !GAME.district.active) {
+      try {
+        var _adCi = M.playerCi(), _adCity = null;
+        var _adCs = (GAME.state && GAME.state.cities) || [];
+        for (var _adi = 0; _adi < _adCs.length; _adi++) {
+          if (_adCs[_adi] && _adCs[_adi].ci === _adCi) { _adCity = _adCs[_adi]; break; }
+        }
+        if (_adCity) {
+          var _adR = GAME.district.enter(_adCi, _adCity);
+          if (_adR && _adR.ok) {
+            if (GAME.ui && GAME.ui.renderDistrictHud) GAME.ui.renderDistrictHud(true);
+            M._districtWasActive = true;
+            if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🚶 已在城内街区 · WASD / 方向键走 · Q 回星球');
+          }
+        }
+      } catch (eAd) { }
+    }
+    /* 退出跟随 = 同时退出街区（否则人留在街道上，球面位姿与街区态打架）。
+       ⚠️ 不在这里清 M._districtWasActive —— 渲染循环的 else 分支靠它调一次
+       D.resetCam()，提前清掉会让街区相机的过渡起点残留（下一轮进街区闪一下）。 */
+    if (!on && GAME.district && GAME.district.active && GAME.district.exit) {
+      try {
+        GAME.district.exit();
+        if (GAME.ui && GAME.ui.renderDistrictHud) GAME.ui.renderDistrictHud(false);
+      } catch (eDx) { }
+    }
     if (!on && GAME.ui && GAME.ui.renderInteractHint) {
       M._interactHintSig = '';                       /* 退出跟随立刻收提示，不留在屏幕上 */
       GAME.ui.renderInteractHint(null);
@@ -8639,7 +8691,7 @@ import './gltf.js';
         _fBtn.classList.toggle('gold', on);
         _fBtn.textContent = on ? '🧍 人物 ✓' : '🧍 人物';
         _fBtn.title = on ? '退出人物视角（回到高空战略视野）'
-                         : '进入人物视角（第三人称跟随小人 · WASD 走 · E 交互 · Tab 退出）';
+                         : '进入人物视角（第三人称跟随小人 · WASD / 方向键 走 · E 交互 · Tab 退出）';
       }
     } catch (eF) { }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();

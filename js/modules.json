@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "a48b3e6cc0f0d1ba",
+ "sourceHash": "7ad51b28dc333d8a",
  "layout": {
   "order": [
    "core",
@@ -855,7 +855,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4511,
+   "lines": 4531,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -864,8 +864,8 @@
     "domain",
     "state",
     "ui-modal",
-    "ui-view",
     "map3d",
+    "ui-view",
     "ui-craft",
     "ui-exped",
     "ui-space",
@@ -933,7 +933,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9610,
+   "lines": 9662,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -945,13 +945,13 @@
     "gltf",
     "state",
     "fog",
-    "placement",
     "ui-fx",
+    "placement",
     "village",
+    "ui-mapui",
     "data",
     "camp",
     "ruin",
-    "ui-mapui",
     "main",
     "ui-exped",
     "belt",
@@ -1678,7 +1678,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 1144,
+   "lines": 1178,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1688,8 +1688,8 @@
     "data",
     "ui-modal",
     "resource",
-    "ui-fx",
     "ui-shell",
+    "ui-fx",
     "ui-craft",
     "sphere",
     "ui",
@@ -1704,7 +1704,8 @@
     "ui-battle",
     "ui-view",
     "trooplv",
-    "battle"
+    "battle",
+    "map3d"
    ]
   },
   {
