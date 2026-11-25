@@ -825,6 +825,29 @@ async function runTests(dom, URL) {
     r18 && r18.msg ? r18.msg : '已入队');
   check('首城队列未受影响', !s.queues.build.some((q) => q.cityId === s.cities[0].id));
   s.queues.build.length = 0;
+
+  /* v158.13 回归（视觉走查当场抓到）：**未占领野地是独立面板分支**（`!owned` 提前
+     return 自己那套 HTML），而「资源地块」区原先写在分支**下面** → 未占领地块从来
+     拿不到勘探入口，而星球上绝大多数工业地块都是未占领的 —— 玩法在正常对局里不可达。
+     修法：把 resBox 提到分支之前，两个分支共用。这里锁住"未占领也有勘探按钮"，
+     防止以后有人往上面再加分支时又被吃掉。 */
+  let _ciU18 = -1;
+  for (let iu = 0; iu < G.sphere.cells.length && _ciU18 < 0; iu++) {
+    const cu = G.sphere.cells[iu];
+    if (!cu) continue;
+    if (!(cu.type === 'forest' || cu.type === 'hill' || cu.type === 'desert')) continue;
+    if (G.map && G.map.wildAt && G.map.wildAt(iu)) continue;      /* 要**未占领**的那条分支 */
+    _ciU18 = iu;
+  }
+  check('（造局）星球上找到一块未占领工业地块', _ciU18 >= 0, 'ci=' + _ciU18);
+  G.ui.openLandModalCi(_ciU18);
+  await sleep(60);
+  const landHtmlU18 = document.querySelector('#modal-root').innerHTML;
+  check('未占领野地的地块面板也有「资源地块」区', landHtmlU18.indexOf('资源地块') >= 0);
+  check('未占领野地可就地勘探（入口不被面板分支顺序吃掉）',
+    landHtmlU18.indexOf('data-action="res-scan"') >= 0);
+  G.ui.closeAllModals();
+  await sleep(40);
   G.ui.setCity(s.cities[0].id);
   G.ui.setView('city');
 

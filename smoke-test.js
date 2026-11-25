@@ -7035,23 +7035,25 @@
     var doSrc142 = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8'));
     return okLen && ringAsc && inCenter && corner && /GAME\.extSlotOrder = function/.test(doSrc142);
   })());
-  check('实测：15 块按中心扩散落位（首块在中心 · 未解锁 81 格是暗格 ext-locked）', (function () {
+  /* v158.13 规则变更：城外 12×8 堆场棋盘（含 ext-locked 暗格 / 政务厅扩格）
+     随「资源移到星球地块」整条退役 —— 现在城外页恒为「采集场总览」，
+     产能与堆场容量挂在具体地块上，不再由政务厅等级决定"有几种多少格"。
+     旧断言（15 块中心扩散 + 81 暗格）已不可能成立，按新口径重写。 */
+  check('实测：城外页 = 采集场总览（旧 12×8 棋盘 / ext-locked 暗格整条退役）', (function () {
     var st = G.state, bkId = G.ui._cityId;
     var tmp = G.makeCity({ id: 'tmpExtCap', name: 'tmpExt', col: 6, row: 6 });
     st.cities.push(tmp);
-    /* 政务厅抬到 2 级 → 上限 15 块 */
+    /* 政务厅抬到 2 级 —— 旧口径会"解锁到 15 块"，新口径不该产生任何格子 */
     tmp.cells.forEach(function (x) { if (x.official && x.build) x.build.lvl = 2; });
     G.ui._cityId = tmp.id;
     var html = G.ui.extHTML();
     G.ui._cityId = bkId;
     st.cities.pop();
-    var M = G.ui.isoMetrics(DATA.EXT_COLS, DATA.EXT_ROWS);
-    var ord = G.extSlotOrder();
-    var want0 = 'left:' + Math.round(M.x(ord[0].col, ord[0].row)) + 'px;top:' + Math.round(M.y(ord[0].col, ord[0].row)) + 'px';
-    var lockedN = (html.match(/iso-tile locked/g) || []).length;
-    return tmp.extGrid.length === 15 && html.indexOf(want0) >= 0
-      && lockedN === DATA.EXT_CAP_MAX - 15
-      && html.indexOf('data-action="ext-locked"') >= 0;
+    return html.indexOf('采集场总览') >= 0
+      && html.indexOf('还没有采集场') >= 0          /* 新城 0 座 → 空态指路 */
+      && html.indexOf('iso-tile') < 0
+      && html.indexOf('data-action="ext-locked"') < 0
+      && html.indexOf('去星球') >= 0;
   })());
 
   /* ---- 需求 8：每座军营一条独立募兵队列 ---- */
@@ -8299,11 +8301,13 @@
   check('renderView 把 city / ext 当同一类场景（侧栏都保留）',
     /var isCity = \(v === 'city' \|\| v === 'ext'\)/.test(uS39));
   check('「城外」有顶栏图标', /'ext'/.test(rd39('js/icons.js')) || /ext: '</.test(rd39('js/icons.js')));
-  check('实测：setView("ext") 渲染出城外棋盘且顶栏高亮跟着走', (function () {
+  check('实测：setView("ext") 渲染出「采集场总览」且顶栏高亮跟着走', (function () {
     var bk = UI.view;
     UI.setView('ext');
     var el = DC['#view-container'];
-    var ok = UI.view === 'ext' && el && /city-iso/.test(el.innerHTML);
+    var html39 = el ? el.innerHTML : '';
+    /* v158.13：城外页不再是棋盘（city-iso），而是采集场总览列表 */
+    var ok = UI.view === 'ext' && /采集场总览/.test(html39) && !/city-iso/.test(html39);
     UI.setView(bk || 'city');
     return ok;
   })());

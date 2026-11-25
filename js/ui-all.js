@@ -16232,6 +16232,81 @@ import './ui.js';
        3.不要显示这行备注：🚩 占领：Lv0 无驻军位（军队打完回城；升到 Lv1+ 才有驻军位）　·　🔥 掠夺：打完直接撤军；
        4.侦察，掠夺，占领（不用占领并驻守）固定放菜单底部」——
        原「此地可采…」单行 note 与"占领/掠夺"备注行整条退役；三键固定弹窗底部。 */
+    /* ============================================================
+     * v158.12（S3 勘探）· 资源地块区块
+     * ------------------------------------------------------------
+     * 老板「资源地块只有近地面勘探后才能建厂生产」——地块面板就是"近地面"
+     * 的定点作业面：走近点这一格，就能看到这块地是什么资源、值不值得开厂。
+     *
+     * 三个刻意的设计（都是老板的交互原则落地）：
+     *   ① **只对有工业价值的地形出这个区块**（森林/山地/荒漠）。平原/草原/湖泊
+     *      也映射净水，但那是遍地都是的基础资源 —— 每块地都挂一段"净水地块"
+     *      纯属噪音（原则 1：复杂留给系统）。
+     *   ② **勘探前不报丰度/储量**。丰度是勘探的回报；提前报出来，勘探这个动作
+     *      就没有意义了。
+     *   ③ 走 `RS.view()`（纯计算不写档）而不是 `RS.at/ensure` —— 打开面板看一眼
+     *      不该在存档里给这一格建档。
+     * ============================================================ */
+    var resBox = '';
+    (function () {
+      var RS = GAME.resource;
+      if (!RS || !RS.view || !RS.ON_MAP) return;
+      var rv = null;
+      try { rv = RS.view(ci); } catch (e0) { rv = null; }
+      if (!rv) return;
+      if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;
+      /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
+         会读成黑话，这里按 DATA.RESOURCES 取正式名 */
+      var RN2 = {};
+      (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RN2[m.key] = m.name; });
+      var rname = (RN2[rv.res] || rv.res || '');
+      var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
+      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块</div>';
+      if (!rv.scanned) {
+        resBox +=
+          '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未勘探 —— 地形特征推断可能有 ' +
+            U.escape(rname) + '</span></div>' +
+          '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
+            '">🔍 勘探</button><span class="op-hint">勘探后才能在此建采集场</span></div>';
+      } else {
+        var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通', tone: 'normal' };
+        var pct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
+        var depleted = rv.reserve <= 0;
+        resBox +=
+          '<div class="attr"><span class="k">资源</span><span class="v">' + U.escape(rname) +
+            '　<span style="color:' + (toneCol[tier.tone] || 'var(--text)') + ';">' + tier.name +
+            ' ×' + rv.richness.toFixed(2) + '</span></span></div>' +
+          '<div class="attr"><span class="k">储量</span><span class="v">' +
+            '<span style="display:inline-block;width:132px;height:9px;background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:4px;overflow:hidden;vertical-align:-1px;margin-right:6px;"><i style="display:block;height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(180deg,var(--gold-light),var(--gold-dark));"></i></span>' +
+            U.numText(rv.reserve, 0) + ' / ' + U.numText(rv.reserveMax, 0) +
+            (depleted ? '　<span style="color:var(--red-light);">已枯竭（残采 25%）</span>' : '') +
+          '</span></div>';
+        /* 施工中：队列里有这块地的活就不给"建采集场"按钮 ——
+           否则点下去只会被 `buildPlant` 回一句"这块地已经在施工了"，
+           面板等于在骗人（视觉走查当场看到按钮还亮着，v158.13 视觉轮补）。 */
+        var _qRes = null;
+        ((GAME.state.queues && GAME.state.queues.build) || []).forEach(function (x) {
+          if (x && x.ci === ci && (x.type === 'plant_build' || x.type === 'plant_upgrade')) _qRes = x;
+        });
+        if (rv.plant) {
+          var eb = (DATA.EXT_BUILDINGS || {})[rv.plant] || {};
+          resBox += '<div class="attr"><span class="k">采集场</span><span class="v">' +
+            U.escape(eb.name || rv.plant) + ' Lv' + rv.plantLv + '</span></div>';
+        } else if (!_qRes) {
+          resBox += '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
+            '">🏭 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
+        }
+        if (_qRes) {
+          var _qp = _qRes.totalTime > 0 ? Math.min(100, (_qRes.elapsed / _qRes.totalTime) * 100) : 0;
+          resBox += '<div class="attr"><span class="k">施工</span><span class="v">' +
+            (_qRes.type === 'plant_build' ? '建造中' : '升级中') + '　<b>' + _qp.toFixed(0) + '%</b>' +
+            '　<span class="ui-sub">' + U.dur(Math.max(0, (_qRes.totalTime || 0) - (_qRes.elapsed || 0)))
+            + ' 后落成</span></span></div>';
+        }
+      }
+      resBox += '</div>';
+    })();
+
     if (!owned) {
       var prodBox =
         '<div class="op-zone op-zone-eq"><div class="op-zone-t">产出</div>' +
@@ -16255,7 +16330,7 @@ import './ui.js';
         '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
           base.toLocaleString() + ' 名</div>' +
-        prodBox +
+        prodBox + resBox +
         (GAME.jianghuWildMounted ? ui.jianghuHTML(ci) : '') +
         /* v89.152（老板 4）：三键固定放菜单底部；文案「占领」（不带"并驻守"） */
         '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
@@ -16324,66 +16399,6 @@ import './ui.js';
           + U.escape(ter.name || '此地') + '没有可采之物）—— 往有树/有矿/有水的地块走</div>') +
       '</div>';
 
-    /* ============================================================
-     * v158.12（S3 勘探）· 资源地块区块
-     * ------------------------------------------------------------
-     * 老板「资源地块只有近地面勘探后才能建厂生产」——地块面板就是"近地面"
-     * 的定点作业面：走近点这一格，就能看到这块地是什么资源、值不值得开厂。
-     *
-     * 三个刻意的设计（都是老板的交互原则落地）：
-     *   ① **只对有工业价值的地形出这个区块**（森林/山地/荒漠）。平原/草原/湖泊
-     *      也映射净水，但那是遍地都是的基础资源 —— 每块地都挂一段"净水地块"
-     *      纯属噪音（原则 1：复杂留给系统）。
-     *   ② **勘探前不报丰度/储量**。丰度是勘探的回报；提前报出来，勘探这个动作
-     *      就没有意义了。
-     *   ③ 走 `RS.view()`（纯计算不写档）而不是 `RS.at/ensure` —— 打开面板看一眼
-     *      不该在存档里给这一格建档。
-     * ============================================================ */
-    var resBox = '';
-    (function () {
-      var RS = GAME.resource;
-      if (!RS || !RS.view || !RS.ON_MAP) return;
-      var rv = null;
-      try { rv = RS.view(ci); } catch (e0) { rv = null; }
-      if (!rv) return;
-      if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;
-      /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
-         会读成黑话，这里按 DATA.RESOURCES 取正式名 */
-      var RN2 = {};
-      (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RN2[m.key] = m.name; });
-      var rname = (RN2[rv.res] || rv.res || '');
-      var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
-      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块</div>';
-      if (!rv.scanned) {
-        resBox +=
-          '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未勘探 —— 地形特征推断可能有 ' +
-            U.escape(rname) + '</span></div>' +
-          '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
-            '">🔍 勘探</button><span class="op-hint">勘探后才能在此建采集场</span></div>';
-      } else {
-        var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通', tone: 'normal' };
-        var pct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
-        var depleted = rv.reserve <= 0;
-        resBox +=
-          '<div class="attr"><span class="k">资源</span><span class="v">' + U.escape(rname) +
-            '　<span style="color:' + (toneCol[tier.tone] || 'var(--text)') + ';">' + tier.name +
-            ' ×' + rv.richness.toFixed(2) + '</span></span></div>' +
-          '<div class="attr"><span class="k">储量</span><span class="v">' +
-            '<span style="display:inline-block;width:132px;height:9px;background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:4px;overflow:hidden;vertical-align:-1px;margin-right:6px;"><i style="display:block;height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(180deg,var(--gold-light),var(--gold-dark));"></i></span>' +
-            U.numText(rv.reserve, 0) + ' / ' + U.numText(rv.reserveMax, 0) +
-            (depleted ? '　<span style="color:var(--red-light);">已枯竭（残采 25%）</span>' : '') +
-          '</span></div>';
-        if (rv.plant) {
-          var eb = (DATA.EXT_BUILDINGS || {})[rv.plant] || {};
-          resBox += '<div class="attr"><span class="k">采集场</span><span class="v">' +
-            U.escape(eb.name || rv.plant) + ' Lv' + rv.plantLv + '</span></div>';
-        } else {
-          resBox += '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
-            '">🏭 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
-        }
-      }
-      resBox += '</div>';
-    })();
 
     /* v89.83（老板「已占领的野地，其入口操作应只保留派驻」）—— 已占野地是「我的地盘」。
        v89.136（老板「'野地采集（0/3队）'这个弹窗界面不需要」+「地块操作界面加一个采集操作」）：
