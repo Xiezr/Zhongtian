@@ -6885,6 +6885,9 @@ import './gltf.js';
       try {
         var _wr = M.stepWalkTo(_wDt);
         if (_wr && _wr.arrived) {
+          /* v158.24：「走过去要做的事」（勘探/建厂提示）已在 `stepWalkTo` 的到达出口执行
+             —— 那是到达的唯一出口，换个驱动（自动化/探针）也不会漏。
+             这里只负责**开面板**：UI 不往下沉到位姿层。 */
           try { _openCellPanel(_wr.ci); } catch (eWC) { }
         }
       } catch (eWalk) { }
@@ -8849,6 +8852,26 @@ import './gltf.js';
       M.setPlayerPose({ dir: [td[0], td[1], td[2]], h: M._groundAtUnit(td),
         yaw: (p.yaw || 0), v: [0, 0, 0], ci: hitCi });
       M._standVer = '';
+      /* ============================================================
+       * v158.24（老板「怎么走近，行为逻辑链真的有吗」）
+       * ------------------------------------------------------------
+       * "走过去之后要做的事"放在**到达的唯一出口**，不放在渲染循环里。
+       * 原因：渲染循环只是驱动者之一（自动化/探针也会直接推 stepWalkTo），
+       *   把业务放在驱动者里，换个驱动就整段失效 —— 实测手动步进时
+       *   `_walkThen` 永远不执行，表现为"走到了却没勘探"。
+       * 这里只做"数据层的到达动作"（勘探免费、立即完成）；
+       * 面板交给外层（`_openCellPanel`）开，UI 不往下沉。
+       * ============================================================ */
+      var _then24 = M._walkThen;
+      if (_then24 && _then24.ci === hitCi) {
+        M._walkThen = null;
+        if (_then24.act === 'scan') {
+          try { if (GAME.resource && GAME.resource.scan) GAME.resource.scan(hitCi); } catch (eWS24) { }
+          if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🔍 到了，已替你勘探');
+        } else if (_then24.act === 'build') {
+          if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🏭 到地块了 —— 可以建采集场');
+        }
+      }
       return { arrived: true, ci: hitCi };
     }
     var step = Math.min(dist, M.WALK_SPEED * dt);

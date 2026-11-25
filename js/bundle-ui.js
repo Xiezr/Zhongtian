@@ -7179,6 +7179,9 @@
       try {
         var _wr = M.stepWalkTo(_wDt);
         if (_wr && _wr.arrived) {
+          /* v158.24：「走过去要做的事」（勘探/建厂提示）已在 `stepWalkTo` 的到达出口执行
+             —— 那是到达的唯一出口，换个驱动（自动化/探针）也不会漏。
+             这里只负责**开面板**：UI 不往下沉到位姿层。 */
           try { _openCellPanel(_wr.ci); } catch (eWC) { }
         }
       } catch (eWalk) { }
@@ -9143,6 +9146,26 @@
       M.setPlayerPose({ dir: [td[0], td[1], td[2]], h: M._groundAtUnit(td),
         yaw: (p.yaw || 0), v: [0, 0, 0], ci: hitCi });
       M._standVer = '';
+      /* ============================================================
+       * v158.24（老板「怎么走近，行为逻辑链真的有吗」）
+       * ------------------------------------------------------------
+       * "走过去之后要做的事"放在**到达的唯一出口**，不放在渲染循环里。
+       * 原因：渲染循环只是驱动者之一（自动化/探针也会直接推 stepWalkTo），
+       *   把业务放在驱动者里，换个驱动就整段失效 —— 实测手动步进时
+       *   `_walkThen` 永远不执行，表现为"走到了却没勘探"。
+       * 这里只做"数据层的到达动作"（勘探免费、立即完成）；
+       * 面板交给外层（`_openCellPanel`）开，UI 不往下沉。
+       * ============================================================ */
+      var _then24 = M._walkThen;
+      if (_then24 && _then24.ci === hitCi) {
+        M._walkThen = null;
+        if (_then24.act === 'scan') {
+          try { if (GAME.resource && GAME.resource.scan) GAME.resource.scan(hitCi); } catch (eWS24) { }
+          if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🔍 到了，已替你勘探');
+        } else if (_then24.act === 'build') {
+          if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🏭 到地块了 —— 可以建采集场');
+        }
+      }
       return { arrived: true, ci: hitCi };
     }
     var step = Math.min(dist, M.WALK_SPEED * dt);
@@ -31632,6 +31655,29 @@ ui.openDuel = function (fid, moveId) {
          现在交给 `RS.RES_OF_TYPE` 自己判断（有资源就给区块），不再另写一份白名单。 */
       /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
          会读成黑话，这里按 DATA.RESOURCES 取正式名（`resFull`，v158.17 提到函数级）。 */
+      /* ============================================================
+       * v158.24（老板「什么叫做走近勘探后才能建，怎么走近，行为逻辑链真的有吗」）
+       * ------------------------------------------------------------
+       * 之前是**假承诺**：文案写「走近勘探后才能建厂」，而 RS.scan(ci) 零距离校验
+       * —— 实测人站在 4.6 格外点一下就勘探成功、人一步没动。玩家读到"走近"就会去找
+       * "怎么走近"，可游戏里根本没有这个动作，链路在玩家心里当场断掉。
+       *
+       * 现在做成真的：离得远**只给"走过去"**，点一次自动走到地块上，
+       * 到达后自动勘探并重开本面板（`M._walkThen`）；近了才给「勘探 / 建厂」。
+       * 阈值 2 格（≈11 米）：站在自己脚下能处理相邻格，再远就得挪步。
+       * ============================================================ */
+      var _nearM = 0, _isNear = true;
+      try {
+        var _M24 = GAME.map3d;
+        var _pci24 = (_M24 && _M24.playerCi) ? _M24.playerCi() : -1;
+        var _cells24 = (_M24 && _M24._collider) ? _M24._collider.cells : null;
+        if (_pci24 >= 0 && _pci24 !== ci && _cells24 && _cells24[_pci24] && _cells24[ci]) {
+          var _a24 = _cells24[_pci24].dir, _b24 = _cells24[ci].dir;
+          var _dot24 = Math.max(-1, Math.min(1, _a24[0] * _b24[0] + _a24[1] * _b24[1] + _a24[2] * _b24[2]));
+          _nearM = Math.acos(_dot24) * (_M24.R || 300);
+          _isNear = _nearM <= 11;
+        }
+      } catch (eNear24) { }
       var rname = resFull(rv.res || '');
       var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
       /* v158.21（老板连问三次「我的建造呢？」）：「资源地块」这四个字读不出"这里能建东西"。
@@ -31642,8 +31688,12 @@ ui.openDuel = function (fid, moveId) {
         resBox +=
           '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未知 —— 地形特征推断可能有 ' +
             U.escape(rname) + '</span></div>' +
-          '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
-            '">🔍 勘探</button><span class="op-hint">勘探不花资源、立刻给出丰度与储量；不勘探不能建采集场</span></div>';
+          (_isNear
+            ? '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
+              '">🔍 勘探</button><span class="op-hint">勘探不花资源、立刻给出丰度与储量；不勘探不能建采集场</span></div>'
+            : '<div class="op-row"><button class="btn gold" data-action="res-go-scan" data-ci="' + ci +
+              '">🚶 走过去勘探（约 ' + Math.round(_nearM) + ' 米）</button>' +
+              '<span class="op-hint">走到地块上才能勘探、建厂（点一下自动走过去）</span></div>');
       } else {
         var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通', tone: 'normal' };
         var pct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
@@ -31675,8 +31725,12 @@ ui.openDuel = function (fid, moveId) {
           resBox += '<div class="attr"><span class="k">采集场</span><span class="v">' +
             U.escape(eb.name || rv.plant) + ' Lv' + rv.plantLv + '</span></div>';
         } else if (!_qRes) {
-          resBox += '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
-            '">⚒ 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
+          resBox += (_isNear
+            ? '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
+              '">⚒ 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>'
+            : '<div class="op-row"><button class="btn gold" data-action="res-go-build" data-ci="' + ci +
+              '">🚶 走过去建厂（约 ' + Math.round(_nearM) + ' 米）</button>' +
+              '<span class="op-hint">走到地块上才能建采集场（点一下自动走过去）</span></div>');
         }
         if (_qRes) {
           var _qp = _qRes.totalTime > 0 ? Math.min(100, (_qRes.elapsed / _qRes.totalTime) * 100) : 0;
@@ -32236,6 +32290,27 @@ ui.openDuel = function (fid, moveId) {
     if (!root || !root.appendChild) return null;
     var G = GAME;
     var hint = (G.questline && G.questline.hint) ? G.questline.hint() : '';
+    /* ============================================================
+     * v158.24（老板「怎么走近」）：走动中**优先显示行程**。
+     * 没有这条时，玩家点完「走过去勘探」会盯着一个不动的画面等 20 秒
+     * —— 那正是"点了没反应"的另一种形态。
+     * ============================================================ */
+    var _wt24 = (G.map3d && G.map3d.walkTarget) ? G.map3d.walkTarget() : -1;
+    if (_wt24 >= 0) {
+      var _left24 = 0;
+      try {
+        var _M24b = G.map3d, _pp24 = _M24b.playerPose();
+        var _cl24 = _M24b._collider && _M24b._collider.cells;
+        if (_pp24 && _cl24 && _cl24[_wt24]) {
+          var _t24 = _cl24[_wt24].dir;
+          var _d24 = Math.max(-1, Math.min(1, _pp24.dir[0] * _t24[0] + _pp24.dir[1] * _t24[1] + _pp24.dir[2] * _t24[2]));
+          _left24 = Math.acos(_d24) * (_M24b.R || 300);
+        }
+      } catch (eWT24) { }
+      hint = _left24 > 1.5
+        ? ('🚶 正在走过去…还剩 ' + Math.round(_left24) + ' 米（点别处可改目标）')
+        : '🚶 快到了…';
+    }
     var el = document.getElementById('quest-hint');
     if (!hint || !G.state) {                      /* 任务链走完 / 没开局 → 收起 */
       if (el) { el.style.display = 'none'; el.innerHTML = ''; el.removeAttribute('data-sig'); }
@@ -40592,6 +40667,33 @@ ui.openDuel = function (fid, moveId) {
        * 成功后**就地重开地块面板**：玩家不必关窗再点一次，能立刻看到刚探出的
        * 丰度与储量（交互原则：不要让用户为一次动作重复劳动）。
        * ============================================================ */
+      /* ============================================================
+       * v158.24（老板「怎么走近，行为逻辑链真的有吗」）
+       * ------------------------------------------------------------
+       * 面板在"离得远"时只给这一枚按钮：点一次自动走到地块上，
+       * 到达后由渲染循环执行 `M._walkThen`（勘探 → 自动探完并重开面板；
+       * 建厂 → 只重开面板，建筑要玩家自己选）。
+       * 为什么关面板：走动期间面板挡住路，玩家看不到自己走过去。
+       * ============================================================ */
+      case 'res-go-scan':
+      case 'res-go-build': {
+        var _gci = Number(el.dataset.ci);
+        var _gM = GAME.map3d;
+        if (!_gM || !_gM.walkTo) { if (ui.toast) ui.toast('地图未就绪'); break; }
+        var _gAct = (name === 'res-go-build') ? 'build' : 'scan';
+        try { if (ui.closeAllModals) ui.closeAllModals(); else if (ui.closeModal) ui.closeModal(); } catch (eG0) { }
+        _gM._walkThen = { ci: _gci, act: _gAct };
+        if (!_gM.walkTo(_gci)) {
+          _gM._walkThen = null;
+          if (ui.toast) ui.toast('走不过去（目标格不可达）');
+          break;
+        }
+        if (ui.toast) ui.toast('🚶 正在走过去…到了就' + (_gAct === 'build' ? '能建采集场' : '自动勘探'));
+        /* v158.24：立刻刷一次常驻提示 —— 否则要等下一帧渲染循环才变成"还剩 N 米"，
+           玩家点完这一秒看到的是旧的任务链文案（实测 headless 下永远不刷）。 */
+        try { if (ui.renderQuestHint) ui.renderQuestHint(); } catch (eQH24) { }
+        break;
+      }
       case 'res-scan': {
         var _rci = Number(el.dataset.ci);
         var RSs = GAME.resource;
@@ -42990,7 +43092,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.23';
+  GAME.VERSION = 'v158.24';
   function boot() {
     fitAppSize();
     try {

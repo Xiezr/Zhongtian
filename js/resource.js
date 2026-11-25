@@ -246,7 +246,10 @@
     var want = (DATA.EXT_BUILDINGS[eid] || {}).res;
     if (!want) return { ok: false, msg: '未知采集场' };
     if (want !== rec.res) return { ok: false, msg: '采集场与资源不匹配（需' + (DATA.EXT_BUILDINGS[eid].name) + '→' + resName(rec.res) + '）' };
-    if (!rec.scanned) return { ok: false, msg: '尚未勘探（走近勘探后才能建厂）' };
+    /* v158.24：原文案「走近勘探后才能建厂」是**假承诺** —— 这一层从来没有距离校验，
+       实测人站在 4.6 格外点一下就勘探成功。数据层只该说"还没勘探"，
+       "怎么勘探"（就近点 / 走过去）是 UI 层的事（见 ui-mapui 的 resBox）。 */
+    if (!rec.scanned) return { ok: false, msg: '尚未勘探（先勘探这块地）' };
     if (rec.plant) return { ok: false, msg: '此地已建采集场' };
     return { ok: true, res: rec.res, plant: eid };
   };

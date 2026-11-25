@@ -848,8 +848,13 @@ async function runTests(dom, URL) {
      （这才是本条要守的回归）+ 下面那条 res-scan 入口断言不动。 */
   check('未占领野地的地块面板也有「🏭 采集场」区（v158.21 由「资源地块」更名）',
     landHtmlU18.indexOf('🏭 采集场') >= 0 || landHtmlU18.indexOf('采集场') >= 0);
-  check('未占领野地可就地勘探（入口不被面板分支顺序吃掉）',
-    landHtmlU18.indexOf('data-action="res-scan"') >= 0);
+  /* 规则变更（v158.24 · 老板「怎么走近，行为逻辑链真的有吗」）：
+     勘探/建厂入口按**距离**分两种形态 —— 近处 `res-scan`，远处 `res-go-scan`
+     （点一次自动走过去，到达后自动勘探）。本条要守的是"入口没被面板分支顺序吃掉"，
+     所以两种形态都算数；把 res-scan 当唯一样式会把这次改动误判成回归。 */
+  check('未占领野地有勘探入口（近处就地勘探 / 远处走过去勘探，都不被分支顺序吃掉）',
+    landHtmlU18.indexOf('data-action="res-scan"') >= 0
+    || landHtmlU18.indexOf('data-action="res-go-scan"') >= 0);
   G.ui.closeAllModals();
   await sleep(40);
   G.ui.setCity(s.cities[0].id);

@@ -50570,6 +50570,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   var _m3d608 = _r608('js/map3d.js');
   var _html608 = _r608('index.html');
   var _st608 = _r608('js/state.js');
+  var _rs613 = _r608('js/resource.js');
   var _mn608 = _r608('js/main.js');
 
   check('§608① 任务链提示接到可见 HUD（Q.hint 有值就必须有人显示）', (function () {
@@ -50751,6 +50752,51 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })());
 
 
+
+
+  /* ============================================================
+   * §613 v158.24 · 「走近勘探」从假承诺变成真机制
+   * ------------------------------------------------------------
+   * 老板：「城外地块怎么建资源建筑，什么叫做走近勘探后才能建，怎么走近，行为逻辑链真的有吗」
+   * 病根：`RS.scan(ci)` 零距离校验，文案却写「走近勘探后才能建厂」——
+   *   实测人站在 4.6 格外点一下就勘探成功、人一步没动。
+   * 规则变更：远（>2 格≈11m）只给「走过去」，点一次自动走到、到达自动勘探并重开面板。
+   * ============================================================ */
+  check('§613① 面板按距离分两种入口：远处「走过去」/ 近处「就地」', (function () {
+    return /data-action="res-go-scan"/.test(_um608)
+      && /data-action="res-go-build"/.test(_um608)
+      && /_nearM <= 11/.test(_um608)
+      /* 反向：两种入口都得在，缺一种就会出现"近处也要走/远处假就地" */
+      && /data-action="res-scan"/.test(_um608)
+      && /data-action="res-build-open"/.test(_um608);
+  })());
+
+  check('§613② 数据层不再提 UI 概念「走近」（它从来没有距离校验）', (function () {
+    /* ⚠️ 判据必须**剥注释**：这段源码的注释里写着旧文案（说明为什么改），
+       裸正则会把"已改"误判成"还在"（本条第一版就是这么红的）。 */
+    var code = _rs613.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    return !/走近勘探后才能建厂/.test(code)
+      && /尚未勘探（先勘探这块地）/.test(code);
+  })());
+
+  check('§613③ 到达后自动勘探写在 stepWalkTo 的唯一到达出口（不靠渲染循环）', (function () {
+    /* 取 stepWalkTo 的到达分支（`dist <= 0.6` 到 `return { arrived: true`） */
+    var i = _m3d608.indexOf('if (dist <= 0.6)');
+    if (i < 0) return false;
+    var j = _m3d608.indexOf('return { arrived: true', i);
+    if (j < 0) return false;
+    var blk = _m3d608.slice(i, j);
+    return /M\._walkThen/.test(blk)
+      && /GAME\.resource\.scan\(hitCi\)/.test(blk);
+  })());
+
+  check('§613④ 点「走过去」后立刻刷 HUD（否则玩家看不到"还剩多少米"）', (function () {
+    var i = _mn608.indexOf("case 'res-go-scan'");
+    if (i < 0) return false;
+    var blk = _mn608.slice(i, i + 1400);
+    return /ui\.renderQuestHint\(\)/.test(blk)
+      && /M\._walkThen = \{ ci: _gci, act: _gAct \}/.test(blk);
+  })());
 
   /* ============================================================
    * §612 v158.23 · 「星球固定，相机视角自由连续到达任何角度」

@@ -594,6 +594,29 @@ import './ui.js';
          现在交给 `RS.RES_OF_TYPE` 自己判断（有资源就给区块），不再另写一份白名单。 */
       /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
          会读成黑话，这里按 DATA.RESOURCES 取正式名（`resFull`，v158.17 提到函数级）。 */
+      /* ============================================================
+       * v158.24（老板「什么叫做走近勘探后才能建，怎么走近，行为逻辑链真的有吗」）
+       * ------------------------------------------------------------
+       * 之前是**假承诺**：文案写「走近勘探后才能建厂」，而 RS.scan(ci) 零距离校验
+       * —— 实测人站在 4.6 格外点一下就勘探成功、人一步没动。玩家读到"走近"就会去找
+       * "怎么走近"，可游戏里根本没有这个动作，链路在玩家心里当场断掉。
+       *
+       * 现在做成真的：离得远**只给"走过去"**，点一次自动走到地块上，
+       * 到达后自动勘探并重开本面板（`M._walkThen`）；近了才给「勘探 / 建厂」。
+       * 阈值 2 格（≈11 米）：站在自己脚下能处理相邻格，再远就得挪步。
+       * ============================================================ */
+      var _nearM = 0, _isNear = true;
+      try {
+        var _M24 = GAME.map3d;
+        var _pci24 = (_M24 && _M24.playerCi) ? _M24.playerCi() : -1;
+        var _cells24 = (_M24 && _M24._collider) ? _M24._collider.cells : null;
+        if (_pci24 >= 0 && _pci24 !== ci && _cells24 && _cells24[_pci24] && _cells24[ci]) {
+          var _a24 = _cells24[_pci24].dir, _b24 = _cells24[ci].dir;
+          var _dot24 = Math.max(-1, Math.min(1, _a24[0] * _b24[0] + _a24[1] * _b24[1] + _a24[2] * _b24[2]));
+          _nearM = Math.acos(_dot24) * (_M24.R || 300);
+          _isNear = _nearM <= 11;
+        }
+      } catch (eNear24) { }
       var rname = resFull(rv.res || '');
       var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
       /* v158.21（老板连问三次「我的建造呢？」）：「资源地块」这四个字读不出"这里能建东西"。
@@ -604,8 +627,12 @@ import './ui.js';
         resBox +=
           '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未知 —— 地形特征推断可能有 ' +
             U.escape(rname) + '</span></div>' +
-          '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
-            '">🔍 勘探</button><span class="op-hint">勘探不花资源、立刻给出丰度与储量；不勘探不能建采集场</span></div>';
+          (_isNear
+            ? '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
+              '">🔍 勘探</button><span class="op-hint">勘探不花资源、立刻给出丰度与储量；不勘探不能建采集场</span></div>'
+            : '<div class="op-row"><button class="btn gold" data-action="res-go-scan" data-ci="' + ci +
+              '">🚶 走过去勘探（约 ' + Math.round(_nearM) + ' 米）</button>' +
+              '<span class="op-hint">走到地块上才能勘探、建厂（点一下自动走过去）</span></div>');
       } else {
         var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通', tone: 'normal' };
         var pct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
@@ -637,8 +664,12 @@ import './ui.js';
           resBox += '<div class="attr"><span class="k">采集场</span><span class="v">' +
             U.escape(eb.name || rv.plant) + ' Lv' + rv.plantLv + '</span></div>';
         } else if (!_qRes) {
-          resBox += '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
-            '">⚒ 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
+          resBox += (_isNear
+            ? '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
+              '">⚒ 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>'
+            : '<div class="op-row"><button class="btn gold" data-action="res-go-build" data-ci="' + ci +
+              '">🚶 走过去建厂（约 ' + Math.round(_nearM) + ' 米）</button>' +
+              '<span class="op-hint">走到地块上才能建采集场（点一下自动走过去）</span></div>');
         }
         if (_qRes) {
           var _qp = _qRes.totalTime > 0 ? Math.min(100, (_qRes.elapsed / _qRes.totalTime) * 100) : 0;
@@ -1198,6 +1229,27 @@ import './ui.js';
     if (!root || !root.appendChild) return null;
     var G = GAME;
     var hint = (G.questline && G.questline.hint) ? G.questline.hint() : '';
+    /* ============================================================
+     * v158.24（老板「怎么走近」）：走动中**优先显示行程**。
+     * 没有这条时，玩家点完「走过去勘探」会盯着一个不动的画面等 20 秒
+     * —— 那正是"点了没反应"的另一种形态。
+     * ============================================================ */
+    var _wt24 = (G.map3d && G.map3d.walkTarget) ? G.map3d.walkTarget() : -1;
+    if (_wt24 >= 0) {
+      var _left24 = 0;
+      try {
+        var _M24b = G.map3d, _pp24 = _M24b.playerPose();
+        var _cl24 = _M24b._collider && _M24b._collider.cells;
+        if (_pp24 && _cl24 && _cl24[_wt24]) {
+          var _t24 = _cl24[_wt24].dir;
+          var _d24 = Math.max(-1, Math.min(1, _pp24.dir[0] * _t24[0] + _pp24.dir[1] * _t24[1] + _pp24.dir[2] * _t24[2]));
+          _left24 = Math.acos(_d24) * (_M24b.R || 300);
+        }
+      } catch (eWT24) { }
+      hint = _left24 > 1.5
+        ? ('🚶 正在走过去…还剩 ' + Math.round(_left24) + ' 米（点别处可改目标）')
+        : '🚶 快到了…';
+    }
     var el = document.getElementById('quest-hint');
     if (!hint || !G.state) {                      /* 任务链走完 / 没开局 → 收起 */
       if (el) { el.style.display = 'none'; el.innerHTML = ''; el.removeAttribute('data-sig'); }

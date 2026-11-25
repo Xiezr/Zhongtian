@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "3a7fc40786f23d21",
+ "sourceHash": "3294fd3e2572ee59",
  "layout": {
   "order": [
    "core",
@@ -856,7 +856,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4529,
+   "lines": 4556,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -934,7 +934,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 10072,
+   "lines": 10095,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -946,9 +946,9 @@
     "gltf",
     "state",
     "fog",
+    "ui-fx",
     "ui-mapui",
     "data",
-    "ui-fx",
     "placement",
     "village",
     "camp",
@@ -958,9 +958,9 @@
     "belt",
     "faction",
     "ui-delve",
+    "resource",
     "memorial",
     "ui-shell",
-    "resource",
     "ui-config",
     "ui-view"
    ]
@@ -1119,7 +1119,7 @@
   {
    "name": "resource",
    "file": "js/resource.js",
-   "lines": 494,
+   "lines": 497,
    "bundle": "core",
    "duty": "resource.js — 星球大地图资源地块引擎（核心玩法：资源多层级）",
    "deps": [
@@ -1679,7 +1679,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 1288,
+   "lines": 1340,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1694,6 +1694,7 @@
     "ui-craft",
     "ui",
     "sphere",
+    "map3d",
     "growth",
     "taint",
     "convoy",
@@ -1705,8 +1706,7 @@
     "ui-battle",
     "ui-view",
     "trooplv",
-    "battle",
-    "map3d"
+    "battle"
    ]
   },
   {

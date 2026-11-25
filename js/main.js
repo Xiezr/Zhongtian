@@ -2069,6 +2069,33 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
        * 成功后**就地重开地块面板**：玩家不必关窗再点一次，能立刻看到刚探出的
        * 丰度与储量（交互原则：不要让用户为一次动作重复劳动）。
        * ============================================================ */
+      /* ============================================================
+       * v158.24（老板「怎么走近，行为逻辑链真的有吗」）
+       * ------------------------------------------------------------
+       * 面板在"离得远"时只给这一枚按钮：点一次自动走到地块上，
+       * 到达后由渲染循环执行 `M._walkThen`（勘探 → 自动探完并重开面板；
+       * 建厂 → 只重开面板，建筑要玩家自己选）。
+       * 为什么关面板：走动期间面板挡住路，玩家看不到自己走过去。
+       * ============================================================ */
+      case 'res-go-scan':
+      case 'res-go-build': {
+        var _gci = Number(el.dataset.ci);
+        var _gM = GAME.map3d;
+        if (!_gM || !_gM.walkTo) { if (ui.toast) ui.toast('地图未就绪'); break; }
+        var _gAct = (name === 'res-go-build') ? 'build' : 'scan';
+        try { if (ui.closeAllModals) ui.closeAllModals(); else if (ui.closeModal) ui.closeModal(); } catch (eG0) { }
+        _gM._walkThen = { ci: _gci, act: _gAct };
+        if (!_gM.walkTo(_gci)) {
+          _gM._walkThen = null;
+          if (ui.toast) ui.toast('走不过去（目标格不可达）');
+          break;
+        }
+        if (ui.toast) ui.toast('🚶 正在走过去…到了就' + (_gAct === 'build' ? '能建采集场' : '自动勘探'));
+        /* v158.24：立刻刷一次常驻提示 —— 否则要等下一帧渲染循环才变成"还剩 N 米"，
+           玩家点完这一秒看到的是旧的任务链文案（实测 headless 下永远不刷）。 */
+        try { if (ui.renderQuestHint) ui.renderQuestHint(); } catch (eQH24) { }
+        break;
+      }
       case 'res-scan': {
         var _rci = Number(el.dataset.ci);
         var RSs = GAME.resource;
@@ -4467,7 +4494,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.23';
+  GAME.VERSION = 'v158.24';
   function boot() {
     fitAppSize();
     try {
