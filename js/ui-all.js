@@ -14438,6 +14438,9 @@ import './ui.js';
     /* v90.99（老板）：地图在看别颗星球时，基于「当前城」的导航（回主城/回本城）与母星专属的
        「灰烬城」**断开** —— 挂 .dim + data-why（点击弹原因，走全局受阻机制），比"点了没反应"直观。 */
     var _isBuild = !!(GAME.map3d && GAME.map3d.mode === 'build');
+    /* v158.8（老板「增加第三种视角——人物视角」）：小人第三人称跟随态作为独立视角入口，
+       与「战略 / 建造」并列。FOLLOW 是跟随态开关，不是 MODE —— 这里只读它算按钮高亮。 */
+    var _isFollow = !!(GAME.map3d && GAME.map3d.FOLLOW);
     var _onAct99 = ui.mapOnActivePlanet();
     var _cap99 = ui.mapOnActivePlanet(1);
     function _nav99(cls, act, label, on, why) {
@@ -14475,6 +14478,11 @@ import './ui.js';
         '<button class="btn sm' + (_isBuild ? ' gold' : '') + '" data-action="mode-toggle" title="' +
           (_isBuild ? '回到战略模式（大地图：领地 · 迷雾 · 城市）' : '进入建造模式（四边形建造格 · 物品 / 工具 / 背包）') + '">' +
           (_isBuild ? '🌐 战略' : '🧱 建造') + '</button>' +
+        /* v158.8（老板「增加第三种视角——人物视角」）：第三人称小人视角入口，
+           与「战略 / 建造」并列。点击进入/退出跟随态（WASD 走 · E 交互 · Tab 同键切换）。 */
+        '<button class="btn sm' + (_isFollow ? ' gold' : '') + '" data-action="follow-toggle" title="' +
+          (_isFollow ? '退出人物视角（回到高空战略视野）' : '进入人物视角（第三人称跟随小人 · WASD 走 · E 交互 · Tab 退出）') + '">' +
+          (_isFollow ? '🧍 人物 ✓' : '🧍 人物') + '</button>' +
         /* v156.52（老板「提供一个正位按钮（把球体摆正）」）——放在动作区，和回主城/星系同排。
            摆正 = 南北轴竖直 + 视角回初始方位 + 清掉自由视线偏移。 */
         '<button class="btn sm" data-action="map-reset" title="把球体摆正：南北轴竖直、视角复位">◎ 正位</button>' +

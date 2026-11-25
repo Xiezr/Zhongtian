@@ -784,10 +784,17 @@ import './gltf.js';
             c0[2] + (c1[2] - c0[2]) * t];
   }
 
-  function sphBiome(e, dy, d, soft) {
+  /* v158.8：sphBiome 每次调用把「实际用到的最近格」写到这里，
+     _surfTerrainGeo 读它回写增量缓存，避免未命中时重复 nearestCell。 */
+  var _lastBiomeCi = -1;
+  function sphBiome(e, dy, d, soft, ciHint) {
     var s = seed3(), P = SP.PLANET || {};
     var t = 'lake';
-    var ci = (SP.nearestCell && d) ? SP.nearestCell(d) : -1;
+    /* v158.8：`ciHint` 是调用方提供的「上一顶点最近格」缓存命中值。
+       命中时跳过 `SP.nearestCell` 全查（规则网格增量缓存的关键）。 */
+    var ci = (ciHint != null && ciHint >= 0) ? ciHint
+           : ((SP.nearestCell && d) ? SP.nearestCell(d) : -1);
+    _lastBiomeCi = ci;
     try {
       if (ci >= 0 && SP.cells && SP.cells[ci] && SP.cells[ci].type) t = SP.cells[ci].type;
       /* v157.92d：**按高程纠正"水格却在水面之上"的配色**
@@ -1317,6 +1324,23 @@ import './gltf.js';
   /* 近景地形：切平面 (u,v) → 球面方向 → sphElev → 位置。
      ⚠️ 必须"先定向、再定高"：直接把切平面点当位置会丢掉球面曲率
         （46 米外下陷 46²/2R ≈ 3.5 米，整片地会像被掀起来一样）。 */
+  /* ============================================================
+   * v158.8（老板「近地面每次卡一下」）：**规则网格最近格增量缓存**
+   * ------------------------------------------------------------
+   * 病根：`_surfTerrainGeo` 的 1.4 米采样网格有 67×67 ≈ 4489 个顶点，
+   *   每个顶点都调一次 `sphBiome` → `SP.nearestCell`（空间哈希壳层扫描）
+   *   + `M.cellColorOf`（版本字符串校验）+ `fbm3`（高频噪声）。
+   *   虽然 nearestCell 已有空间哈希，但 4489 次「哈希键 + 壳层扫描 + 点积」
+   *   累加仍要 ~66ms（实测 4 帧卡顿）。
+   *
+   * 关键事实：采样是**规则网格**，相邻顶点方向连续变化，最近格**几乎不变**
+   *   （一格约 1.7 米，步长 1.4 米，最多跨一两格）。所以用一个「上一顶点
+   *   最近格」做种子：新顶点先与该格方向点积，若仍 ≥ 相邻格边界阈值（cos 半角），
+   *   直接复用格号，跳过 nearestCell 全查；只有越界时才真正 nearestCell 重查。
+   *
+   * 正确性：nearestCell 是「方向→最近格」的纯函数（只依赖当前星球 SP 状态），
+   *   增量缓存不改变结果，只是把「逐顶点全查」换成「点积命中 + 偶发重查」。
+   * ============================================================ */
   function _surfTerrainGeo(n, t1, t2, innerR) {
     var half = M.SURF_R, step = M.SURF_STEP;
     var N = Math.round(half * 2 / step) + 1;
@@ -1329,6 +1353,11 @@ import './gltf.js';
        台面抬起后下面不能是洞，而 1 米采样的地形正好充当台地的崖壁。 */
     var _terrFlag = new Uint8Array(nvtx);
     var _PLn = (M.SURF_PLIFT == null ? 0.4 : M.SURF_PLIFT) / HSC;
+    /* v158.8 增量缓存状态：_ciSeen = 上次最近格号，_ciDot = 上次「方向·格方向」点积。
+       复用阈值取 cos(一格视角半径)。格视角半径 ≈ 弧长/球半径，一格约 1.7 米世界单位
+       （cellW），球半径 R 归一化 ≈ 1，故半角 ≈ cellW/(2·R·HSC) 很小；
+       这里用保守的 0.9999（约 0.81°）—— 只会复用「确实同格」的顶点。 */
+    var _ciSeen = -1, _ciDir = null, _ciDotThr = 0.9999;
     for (var j = 0; j < N; j++) {
       var v = -half + j * step;
       for (var i = 0; i < N; i++) {
@@ -1343,7 +1372,20 @@ import './gltf.js';
         else { e = groundHAt(d); vtx = 0; }
         var rr = R + Math.max(0, e) * HSC + 0.03;
         pos[k] = d[0] * rr; pos[k + 1] = d[1] * rr; pos[k + 2] = d[2] * rr;
-        var c = sphBiome(e, d[1], d);
+        /* v158.8：最近格增量缓存 —— 点积命中则跳过 nearestCell 全查 */
+        var ciHit = -1;
+        if (_ciSeen >= 0 && _ciDir) {
+          var _dotSeen = _ciDir[0] * d[0] + _ciDir[1] * d[1] + _ciDir[2] * d[2];
+          if (_dotSeen >= _ciDotThr) ciHit = _ciSeen;
+        }
+        var c = sphBiome(e, d[1], d, false, ciHit);
+        /* v158.8：回写缓存 —— 直接读 sphBiome 写出的实际 ci（命中=缓存值，
+           未命中=sphBiome 内部已 nearestCell 的结果），零重复查询。 */
+        if (_lastBiomeCi >= 0) {
+          _ciSeen = _lastBiomeCi;
+          _ciDir = (SP.cells && SP.cells[_ciSeen] && SP.cells[_ciSeen].dir)
+            ? SP.cells[_ciSeen].dir : null;
+        }
         col[k] = c[0] / 255; col[k + 1] = c[1] / 255; col[k + 2] = c[2] / 255;
         uv[ku] = i / (N - 1); uv[ku + 1] = j / (N - 1);
         if (vtx) _terrFlag[(k / 3) | 0] = 1;
@@ -8573,6 +8615,17 @@ import './gltf.js';
       M._interactHintSig = '';                       /* 退出跟随立刻收提示，不留在屏幕上 */
       GAME.ui.renderInteractHint(null);
     }
+    /* v158.8（老板「增加第三种视角——人物视角」）：同步底栏「人物」按钮高亮。
+       Tab 键和按钮点击都走这条 setFollow 出口，这里统一刷 DOM，避免两处状态不一致。 */
+    try {
+      var _fBtn = (typeof document !== 'undefined') ? document.querySelector('[data-action="follow-toggle"]') : null;
+      if (_fBtn) {
+        _fBtn.classList.toggle('gold', on);
+        _fBtn.textContent = on ? '🧍 人物 ✓' : '🧍 人物';
+        _fBtn.title = on ? '退出人物视角（回到高空战略视野）'
+                         : '进入人物视角（第三人称跟随小人 · WASD 走 · E 交互 · Tab 退出）';
+      }
+    } catch (eF) { }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return M.FOLLOW;
   };

@@ -1640,6 +1640,22 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (isB && ui.renderBuildBar) ui.renderBuildBar('item');
         ui.toast(isB ? '🧱 建造模式 · 只认四边形格（悬停选格）' : '🌐 战略模式 · 六边形地块');
       })(); break;
+      /* ============================================================
+       * v158.8（老板「增加第三种视角——人物视角」）：第三人称小人视角入口。
+       * ------------------------------------------------------------
+       * 与「战略 / 建造」并列的第三种视角。本质是切 FOLLOW 跟随态：
+       *   进入 → 相机贴到小人身后（M.setFollow(true)），WASD 走 · E 交互；
+       *   退出 → M.setFollow(false)，回到高空战略视野。
+       * 与 Tab 键（main.js keydown 里 `_avCode === 'Tab'`）是同一开关，按钮只是明面入口。
+       * 若处于建造模式，先进战略模式再跟随（建造模式贴地方格会跟跟随态抢镜头）。 */
+      case 'follow-toggle': (function () {
+        var fM = GAME.map3d;
+        if (!fM || !fM.setFollow) { ui.toast('地图未就绪'); return; }
+        if (fM.mode === fM.MODE_BUILD) fM.setMode(fM.MODE_STRATEGY);
+        /* setFollow 内部已统一同步底栏按钮高亮（Tab 键 / 按钮走同一出口） */
+        var fOn = fM.setFollow(!fM.FOLLOW);
+        ui.toast(fOn ? '🧍 人物视角 · WASD 走 · E 交互 · Tab 退出' : '🌐 已退出人物视角');
+      })(); break;
       case 'bb-tab': (function () {
         var tb = el.closest ? el.closest('[data-action="bb-tab"]') : el;
         var tab = tb ? (tb.getAttribute('data-bbtab') || 'item') : 'item';
