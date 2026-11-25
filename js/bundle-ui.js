@@ -8552,29 +8552,13 @@
     var pc = GAME.currentCity && GAME.currentCity();
     if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
     var stc = (GAME.state && GAME.state._standCi);
-    /* v157.96：玩家小人（传送目标）**放大 + 加光环/光柱** —— 老板说从没看见过，
-       根因是"只有当前城那一格有小人"，城在球背面就永远看不到。 */
-    if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xffd76a, scale: sc * 3.2, key: 'stand', beacon: true });
+    /* v158.7：玩家小人（待机格）回到**真实比例**（与城市小人同 scale）。
+       原 v157.96 为「老板说从没看见过小人」而放大 ×3.2 + 加青色光环；
+       现老板反馈「大地图人物比城市还大」，收回放大与光环，只留金色小人本身。 */
+    if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xffd76a, scale: sc, key: 'stand' });
     who.forEach(function (w) {
       var g = makeFigure(w.color, w.scale, w.actor);
       if (!placeFigure(g, w.ci)) return;
-      if (w.beacon) {
-        /* 基座光环：俯视时一眼看到"人在这一格" */
-        try {
-          var ring = new THREE.Mesh(
-            new THREE.RingGeometry(0.78, 1.05, 32),
-            new THREE.MeshBasicMaterial({ color: 0x2fe0ff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false })
-          );
-          ring.rotation.x = -Math.PI / 2;
-          ring.position.y = 0.35;
-          ring.renderOrder = 3;
-          g.add(ring);
-          /* v157.96d：**不再加头顶标记** —— 实测正上方俯视时它正好把人盖住（老板要的是"看见人"）。
-             只留脚下光环：俯视 = 一圈金环锁定这一格；斜视 = 人站在环中央。
-             要更醒目就调 RingGeometry 与 scale，不要往上叠东西。 */
-          g.userData.beacon = { ring: ring };
-        } catch (eB) { }
-      }
       g.userData.ci = w.ci;                 /* v157.99：拾取时据此反查所在格 */
       figCache[w.key] = { g: g, ci: w.ci };
       figRoot.add(g);

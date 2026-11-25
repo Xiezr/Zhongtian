@@ -49204,12 +49204,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ⑭ 地块传送 + 小人可见（v157.96 · 老板「说好有个小人可以在地图上走，我从来没看见过」）
        根因：小人只画在"当前城那一格"，城在球背面就永远看不到；`_standCi` 那条路没有任何 UI 写入。
-       做法：teleportTo 写入玩家格 + 面板「⤓ 传送」按钮（点完自动关弹窗）+ 玩家小人放大并加光环。*/
-    check('§589n 地块传送：teleportTo / playerCi 在岗 · 面板有 cell-teleport · 玩家小人带光环',
+       做法：teleportTo 写入玩家格 + 面板「⤓ 传送」按钮（点完自动关弹窗）。
+       ⛔ 规则变更（v158.7 · 老板「大地图人物比城市还大」）：原 v157.96 为醒目把玩家小人
+       scale 放大 ×3.2 并加青色光环，现收回——玩家小人回到真实比例（scale: sc，与城市小人同），
+       光环退役。因此这里删掉 `RingGeometry(0.78,1.05,32)` 与 `beacon: true` 两条旧锁定，
+       新增「scale: sc 且非 ×3.2」的真调锁定（防再被放大）。*/
+    check('§589n 地块传送：teleportTo / playerCi 在岗 · 面板有 cell-teleport · 玩家小人真实比例（无光环）',
       /M\.teleportTo = function/.test(mp)
       && /M\.playerCi = function/.test(mp)
-      && /RingGeometry\(0\.78, 1\.05, 32\)/.test(mp)
-      && /key: 'stand', beacon: true/.test(mp)
+      && /key: 'stand' \}/.test(mp)
+      && /scale: sc, key: 'stand'/.test(mp)
+      && !/scale: sc \* 3\.2/.test(mp)
+      && !/RingGeometry\(0\.78, 1\.05, 32\)/.test(mp)
+      && !/beacon: true/.test(mp)
       && (function () {
         try {
           var fs2 = require('fs'), p2 = require('path');
@@ -49218,7 +49225,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           return /data-action="cell-teleport"/.test(um) && /case 'cell-teleport'/.test(mn);
         } catch (e) { return false; }
       })(),
-      '传送接口 + 面板按钮 + 动作 + 光环');
+      '传送接口 + 面板按钮 + 动作 + 真实比例小人（无光环）');
 
     /* ⑮ 人物/放置物可选中（v157.99 · 老板「为什么人物不可选中，地图上的 3D 资产不可选中」）
        病根：`pickAt` 的射线只打「奇观 → 陨石 → 地标 → 碰撞球」，小人与放置物**不在射线集合里**，
