@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "f1e60933f5c4f7c5",
+ "sourceHash": "401a3d9a68c508d7",
  "layout": {
   "order": [
    "core",
@@ -934,7 +934,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9910,
+   "lines": 10059,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -1249,7 +1249,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6610,
+   "lines": 6674,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [

@@ -1474,6 +1474,11 @@
       /* v157e：压暗已并入 globe 顶点色，不再有独立图层要开关。
          落地后地形由地表层（不压暗）呈现，globe 只剩远景，压暗与否都不影响近处观感。 */
       if (M._surf) {
+        /* v158.22：进地表重置跟随相机的水平基准 —— 换一片地方后
+           "北"必须按新位置的切平面重算，否则镜头会歪着看人。 */
+        M._surfCamE1 = null;
+        M._surfOrbitYaw = 0;
+        M.SURF_CAM_EL = 1.0;
         /* v157.18（推翻 v157.17 的"延后到 45 米"）：**就在进入这一刻建**。
            那时候 fade 还是 0（55 米 = SURF_FADE_FAR，地表层全透明），
            构建的卡顿发生在"画面里还没有地面"的时候 —— 玩家感知不到。
@@ -6658,6 +6663,33 @@
       if (Math.abs(_zoomTarget - nAgl) < 0.01) nAgl = _zoomTarget;
       camO.dist = R + Math.max(0.6, nAgl);
     })();
+    /* ============================================================
+     * v158.22（老板「操控一小人走在地面上」）：地表态把轨道朝向**对齐玩家**
+     * ------------------------------------------------------------
+     * 地表层（地形/地块/景物）是以 `camO.dir` 为中心、超过半格就重建的
+     * （见下方 `_sdd < Math.cos(_halfCell)` 那段）。
+     * 镜头现在跟着人走，如果 camO.dir 还停在"玩家的滚动落点"，
+     * 人走两步地面就不跟了 —— 表现为"走出一片虚空"。
+     * 所以地表期间每帧把 camO 对齐 player 的 dir，让重建中心 = 玩家脚下。
+     * 退出地表后 camO 自然回到玩家拖过的朝向（这里不改 dist）。
+     * ============================================================ */
+    if (M._surf && M.SURF_AVATAR !== false) {
+      try {
+        var _fc22 = M.playerCi();
+        if (_fc22 >= 0) {
+          var _fp22 = M.playerPose();
+          if (_fp22 && _fp22.dir) {
+            camO.yaw = Math.atan2(_fp22.dir[0], _fp22.dir[2]);
+            camO.pitch = Math.max(-1.35, Math.min(1.35,
+              Math.asin(Math.max(-1, Math.min(1, _fp22.dir[1])))));
+            camO.quat = null; camO._euler = null;
+            /* 视线（_surfDir）不在这里清：贴地分支还要用它算基向量，
+               而且最终机位由 _surfAvatarCam 覆盖，留着不会影响画面。
+               每次进地表时由 _applySurf(true) 重置一次即可。 */
+          }
+        }
+      } catch (eAim22) { }
+    }
     var _yaw = camO.yaw, _pitch = camO.pitch;
     /* v157.101：轨迹球模式下 quat 是**真值**，不许从 yaw/pitch 重建
        （重建会把 roll 与"越过极点"的信息一起抹掉 —— 那就退回转台了）。*/
@@ -6921,6 +6953,19 @@
         cam.position.y + _d0.y * 24,
         cam.position.z + _d0.z * 24
       );
+      /* ============================================================
+       * v158.22（老板「操控一小人走在地面上」）：星露谷式跟随接管
+       * ------------------------------------------------------------
+       * 上面那套是"第一人称站在地上自己看"，玩家看不到自己。
+       * 老板要的是星露谷：**镜头在角色斜上方、看着角色**。
+       * 所以这里最后覆盖机位（position / up / lookAt），
+       * 轨道与地表的其余逻辑一个字不改 —— 失败就落回原来的第一人称。
+       * ============================================================ */
+      if (M.SURF_AVATAR !== false) {
+        try {
+          if (M._surfAvatarCam()) { cam.updateMatrixWorld(); return; }
+        } catch (eSC22) { }
+      }
       cam.updateMatrixWorld();
       return;
     }
@@ -7090,14 +7135,21 @@
     placeCamera();
     /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
        （让地表 patch 跟着人走），绝不碰 quat/dist/lookPitch —— 退出跟随零跳变。 */
-    if (M.FOLLOW && M.PLAYER_AVATAR) {
+    if ((M.FOLLOW || M._surf) && M.PLAYER_AVATAR) {
       var _avNow = Date.now();
       var _avDt = Math.min(0.05, (_avNow - (M._avatarClock || _avNow)) / 1000) || 0.016;
       M._avatarClock = _avNow;
       try {
         /* v158.19：把 stepAvatar 的返回交给 followAvatar —— 摆腿要知道"这一帧到底走没走"。 */
         var _avOut = M.stepAvatar(_avDt, (GAME && GAME._keys) || null);
-        M.followAvatar(_avDt, _avOut);
+        /* v158.22：把这一帧的"走没走 / 步长"留到 syncFigures **之后**再用 ——
+           syncFigures 跨格会重建小人到格心，必须在它之后再摆回连续位姿。 */
+        M._lastAvOut = _avOut; M._lastAvDt = _avDt;
+        /* v158.22（老板「操控一小人走在地面上」）：**地表也走位姿** ——
+           WASD 归 stepAvatar，镜头由 placeCamera 的 _surfAvatarCam 接管。
+           followAvatar 是 v158.0 的贴脸第三人称，只服务街区自动落位，
+           地表不能调它（那正是"像老年痴呆"的原因）。 */
+        if (M.FOLLOW) M.followAvatar(_avDt, _avOut);
         var _pp = M.playerPose();
         if (_pp && Array.isArray(_pp.dir)) camO.dir = _pp.dir.slice();
         /* v158.1（P1）：走近提示挂在跟随态里，且只在目标变化时写 DOM ——
@@ -7206,6 +7258,16 @@
     if (_mkVer !== M._mkVer) { M._mkVer = _mkVer; buildMarkers(); buildTowns(); }
     /* v153：地表上的 3D 小人（君主 / 当前城 / 指认格）—— 每帧同步，换格只挪不重建 */
     try { syncFigures(); } catch (eFig) { if (typeof console !== 'undefined' && console.warn) console.warn('[figures]', eFig && eFig.message); }
+    /* ============================================================
+     * v158.22（老板「操控一小人走在地面上」）
+     * ------------------------------------------------------------
+     * 地表跟随相机只管镜头；小人模型必须**每帧摆到连续位姿**，
+     * 否则只在跨格时被 syncFigures 重建到格心 —— 近看是一格一跳（5.25 米）。
+     * 放在 syncFigures 之后：重建与摆位谁先谁后，最后写的必须是连续位姿。
+     * ============================================================ */
+    if (M._surf && M.SURF_AVATAR !== false) {
+      try { M.syncAvatarFigure(M._lastAvDt || 0.016, M._lastAvOut || null); } catch (eSync22) { }
+    }
     /* v91.05（老板）：己方**据点/野地插旗** —— 归属随占/放/迁变，同款"坐标拼版本号"触发重建。 */
     var _flVer = M._flVerOf();
     if (_flVer !== M._flVer) { M._flVer = _flVer; buildFlags(); }
@@ -7956,6 +8018,25 @@
        * 现在贴地时左键也走"环视"这条唯一出口（与右键 lookDrag 同一套数学），
        * 拖动 = 绕站立者转视线：左右环视 / 抬头低头，任何方向都有回应。
        * ============================================================ */
+      if (M._surf && drag && !lookDrag && M.SURF_AVATAR !== false) {
+        var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
+        if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
+        lx = e.clientX; ly = e.clientY;
+        if (Math.abs(_sdx2) + Math.abs(_sdy2) > 3) M._rmbMoved = true;
+        /* ============================================================
+         * v158.22（老板「星露谷不就是场景样板吗」）—— 贴地拖拽改成**绕着角色转**。
+         * ------------------------------------------------------------
+         * v158.21 让贴地拖拽改 `_surfDir`（第一人称环视）；但现在镜头被
+         * `_surfAvatarCam` 每帧覆盖，改视线等于白改。
+         * 星露谷的做法本来就是"镜头绕角色、不是眼睛转"：
+         *   左右拖 = 绕过角色一圈（_surfOrbitYaw）
+         *   上下拖 = 抬高/压低俯角（SURF_CAM_EL，夹 14°~77°）
+         * 这样「能拖」和「看得见自己」不再互斥。
+         * ============================================================ */
+        if (_sdx2) M._surfOrbitYaw -= _sdx2 * 0.006;
+        if (_sdy2) M.SURF_CAM_EL = Math.max(0.25, Math.min(1.35, M.SURF_CAM_EL + _sdy2 * 0.004));
+        touch(); redraw(); return;
+      }
       if (M._surf && drag && !lookDrag) {
         var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
         if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
@@ -8673,7 +8754,7 @@
     /* ⛔ v157.85：前传的「金色君主人偶」分支已删 —— 现在一律画当前城市。 */
     var pc = GAME.currentCity && GAME.currentCity();
     if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
-    var stc = (GAME.state && GAME.state._standCi);
+    var stc = M.playerCi();                    /* v158.22：唯一位姿出口（含开局补锚） */
     /* v158.7：玩家小人（待机格）回到**真实比例**（与城市小人同 scale）。
        原 v157.96 为「老板说从没看见过小人」而放大 ×3.2 + 加青色光环；
        现老板反馈「大地图人物比城市还大」，收回放大与光环，只留金色小人本身。 */
@@ -8733,7 +8814,61 @@
     return true;
   };
   M.playerCi = function () {
-    return (GAME.state && GAME.state._standCi != null) ? GAME.state._standCi : -1;
+    var st = GAME.state;
+    if (!st) return -1;
+    /* v158.22：读侧也走一次迁移 —— 开局 `_avatar`/`_standCi` 都是空的，
+       而这里过去只读不补，真实玩家 `playerCi` 恒 -1（图上没有人）。
+       迁移本身幂等（`_avatar` 齐了就直接返回 0）。 */
+    if (GAME.migrateAvatar158) { try { GAME.migrateAvatar158(st); } catch (eMg) { } }
+    return (st._standCi != null) ? st._standCi : -1;
+  };
+
+  /* ============================================================
+   * v158.22（老板「星露谷不就是场景样板吗，操控一小人走在地面上这么难？」）
+   * 地表跟随相机 —— 星露谷角度
+   * ------------------------------------------------------------
+   * 为什么不复用 followAvatar：
+   *   那套是 v158.0 的"贴脸第三人称"（FOLLOW_DIST=6 · 俯角 15°），老板连说两轮
+   *   "像老年痴呆 / 莫名其妙"，v158.20 已把它的玩家入口退役。
+   *   星露谷那套不是"眼睛长在脑后"，而是**镜头站在角色斜上方、看着角色**：
+   *     距离 28 米 · 仰角 ≈ 50° —— 自己看得见，周围能点的地也看得见。
+   *
+   * 只读位姿（M.playerPose / M.playerCi），一个字段都不写。
+   * 平台层以 `camO.dir` 为中心重建，所以 placeCamera 开头会把 camO 对齐玩家；
+   * 这里只负责把"最终机位"摆到玩家斜上方。
+   * ============================================================ */
+  M.SURF_CAM_DIST = 26;        /* 相机到角色的距离（米）——格子 5.25 米，26 米约看 6 格宽 */
+  M.SURF_CAM_EL = 1.0;         /* 仰角（弧度）≈ 57°：更俯视，能看进楼群/林间，不被墙挡 */
+  M._surfOrbitYaw = 0;         /* 绕过角色一圈（左键拖） */
+  M._surfCamE1 = null;         /* 水平基准，进地表定一次、之后固定（走动时画面不旋转） */
+  M._surfAvatarCam = function () {
+    var ci = M.playerCi();
+    if (ci < 0) return false;
+    var pp = M.playerPose();
+    if (!pp || !pp.dir) return false;
+    var d = pp.dir;
+    var R2 = M.R + (isFinite(pp.h) ? pp.h : 0) + 0.05;
+    var P = new THREE.Vector3(d[0] * R2, d[1] * R2, d[2] * R2);
+    var up = new THREE.Vector3(d[0], d[1], d[2]);
+    if (!M._surfCamE1) {
+      var e0 = new THREE.Vector3(0, 1, 0).cross(up);
+      if (e0.lengthSq() < 1e-6) e0.set(1, 0, 0);
+      M._surfCamE1 = e0.normalize();
+    }
+    /* 投影回切平面（换地方后 up 变了，e1 必须重新正交化） */
+    var e1 = M._surfCamE1.clone().addScaledVector(up, -M._surfCamE1.dot(up));
+    if (e1.lengthSq() < 1e-9) e1.set(1, 0, 0).addScaledVector(up, -up.x);
+    e1.normalize();
+    var e2 = new THREE.Vector3().crossVectors(up, e1).normalize();
+    var el = Math.max(0.25, Math.min(1.35, M.SURF_CAM_EL));
+    var ay = M._surfOrbitYaw;
+    var dirCam = up.clone().multiplyScalar(Math.sin(el))
+      .addScaledVector(e1, Math.cos(el) * Math.cos(ay))
+      .addScaledVector(e2, Math.cos(el) * Math.sin(ay));
+    cam.position.copy(P).addScaledVector(dirCam, M.SURF_CAM_DIST);
+    cam.up.copy(up);
+    cam.lookAt(P.x, P.y, P.z);
+    return true;
   };
 
   /* ============================================================
@@ -9040,6 +9175,37 @@
   M.FOLLOW_DAMP = 0.15;
   M._followPos = null;
 
+  /* ============================================================
+   * v158.22（老板「操控一小人走在地面上」）：**把小人摆到连续位姿 + 摆腿**
+   * ------------------------------------------------------------
+   * 从 followAvatar 里抽出来的公用出口，两个相机共用：
+   *   · followAvatar（街区自动落位 / 旧第三人称）
+   *   · 地表跟随相机（_surfAvatarCam，星露谷视角）—— 那套只管镜头，不管模型，
+   *     过去地表时小人停在格心、腿也不动，近看就是"人贴地滑行"。
+   * 只读位姿；相位跟速度（步幅 1.5m 口径），一停立刻归零。
+   * ============================================================ */
+  M.syncAvatarFigure = function (dt, avOut) {
+    var p = M.playerPose();
+    if (!p) return null;
+    dt = Math.max(0, Math.min(0.05, dt || 0.016));
+    var fg = (figCache && figCache['stand']) ? figCache['stand'].g : null;
+    if (!fg) return null;
+    placeFigureAtDir(fg, p.dir, (p.yaw || 0) * 180 / Math.PI);
+    var _mv = !!(avOut && avOut.moved);
+    M._figMoving = _mv;                            /* v158.19：figureOf().walking 读它 */
+    if (_mv) M._figPhase = (M._figPhase || 0) + dt * (M.WALK_SPEED / 1.5) * Math.PI;
+    else M._figPhase = 0;
+    var _sw = _mv ? Math.sin(M._figPhase) * 0.6 : 0;
+    var _legs = fg.userData && fg.userData.legs;
+    if (_legs && _legs.length) {
+      _legs[0].rotation.x = _sw;
+      if (_legs[1]) _legs[1].rotation.x = -_sw;
+    }
+    /* 3cm 上下颠簸（与街区同一口径）：纯滑行最大的观感破绽是"身体高度完全不抖"。 */
+    if (_mv) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
+    return fg;
+  };
+
   M.followAvatar = function (dt, avOut) {
     var p = M.playerPose();
     if (!p) return null;
@@ -9076,27 +9242,8 @@
     cam.up.set(fr.up[0], fr.up[1], fr.up[2]);
     cam.lookAt(P[0], P[1], P[2]);
     cam.updateMatrixWorld();
-    /* 小人只挪不重建（buildFigures 每帧可能整组重建，必须在它之后驱动）。 */
-    var fg = (figCache && figCache['stand']) ? figCache['stand'].g : null;
-    if (fg) {
-      placeFigureAtDir(fg, p.dir, yaw * 180 / Math.PI);
-      /* v158.19（老板「走的好像老年痴呆一样」）：球面跟随态原来**只摆位置、腿一动不动** ——
-         实机就是"人贴在地上滑行"，这是"痴呆感"的第一来源。
-         照街区 syncAvatar 的成熟公式补上摆腿 + 上下颠簸；相位跟速度走
-         （步幅 1.5m 的慢跑口径 —— 与街区同一把尺），一停立刻归零（不留"惯性抖腿"）。 */
-      var _mv = !!(avOut && avOut.moved);
-      M._figMoving = _mv;                            /* v158.19：figureOf().walking 读它 */
-      if (_mv) M._figPhase = (M._figPhase || 0) + dt * (M.WALK_SPEED / 1.5) * Math.PI;
-      else M._figPhase = 0;
-      var _sw = _mv ? Math.sin(M._figPhase) * 0.6 : 0;
-      var _legs = fg.userData && fg.userData.legs;
-      if (_legs && _legs.length) {
-        _legs[0].rotation.x = _sw;
-        if (_legs[1]) _legs[1].rotation.x = -_sw;
-      }
-      /* 3cm 上下颠簸（与街区同一口径）：纯滑行最大的观感破绽是"身体高度完全不抖"。 */
-      if (_mv) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
-    }
+    /* v158.22：摆人 + 摆腿走公用出口（地表跟随相机也调它，近看不许滑行）。 */
+    M.syncAvatarFigure(dt, avOut);
     var dx = M._followPos[0] - P[0], dy = M._followPos[1] - P[1], dz = M._followPos[2] - P[2];
     var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     var horiz = Math.sqrt(dx * dx + dz * dz);
@@ -9563,8 +9710,10 @@
       return;
     }
     /* ⛔ v157.85：原「① 正在走的那一个：沿地表弧线插值」整段删除（前传退役）。 */
-    /* ② 谁该站在哪 —— 版本变化才重建（换格只挪） */
-    var ver = ((GAME.state && GAME.state._standCi) || '')
+    /* ② 谁该站在哪 —— 版本变化才重建（换格只挪）
+       v158.22：格锚走 `M.playerCi()` 唯一出口（它会触发开局位姿迁移）；
+       直读 `state._standCi` 会让"开局从无到有"这一步不触发重建。 */
+    var ver = (M.playerCi() >= 0 ? M.playerCi() : '')
       + '|' + (GAME.currentCity && GAME.currentCity() ? (GAME.currentCity().ci || '') : '')
       + '|' + ((_tileCells || []).length);
     if (ver !== M._standVer) {
@@ -42530,7 +42679,7 @@ ui.openDuel = function (fid, moveId) {
           e.preventDefault();
           return;
         }
-        if (_mkAv.FOLLOW && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])) {
+        if ((_mkAv.FOLLOW || _mkAv._surf) && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])) {
           /* v158.14：方向键归一化成同一个 w/a/s/d 状态位（三级共用，不新开状态）。
              旧行为只认 Key[WASD]，方向键落空 → 玩家以为"没有移动功能"。 */
           var _avKey = AV_KEY_ALIAS[_avCode] || _avCode.charAt(3).toLowerCase();
@@ -42828,7 +42977,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.21';
+  GAME.VERSION = 'v158.22';
   function boot() {
     fitAppSize();
     try {

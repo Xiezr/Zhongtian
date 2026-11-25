@@ -4169,7 +4169,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
-        if (_mkAv.FOLLOW && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])) {
+        if ((_mkAv.FOLLOW || _mkAv._surf) && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])) {
           /* v158.14：方向键归一化成同一个 w/a/s/d 状态位（三级共用，不新开状态）。
              旧行为只认 Key[WASD]，方向键落空 → 玩家以为"没有移动功能"。 */
           var _avKey = AV_KEY_ALIAS[_avCode] || _avCode.charAt(3).toLowerCase();
@@ -4467,7 +4467,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.21';
+  GAME.VERSION = 'v158.22';
   function boot() {
     fitAppSize();
     try {

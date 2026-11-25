@@ -31707,9 +31707,35 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§193②（v89.207 口径 · v89.218 更新）静默补偿：队列推完 · 生成「离线纪要」（via=online）· 不设 _offlineSec（真调 · 沙坑）', (function () {
       var bk = G.state, bkRep = G._offlineReport, bkSec = G._offlineSec;
       try {
-        G.newGame({ name: 'gap193', region: '烬环' });
+        /* v158.22：**注入固定地图种子** —— `newGame` 不传 mapSeed 时走 `U.now()%100000`，
+           每次 run 都是另一颗星球（守将武力/城位置全变）。本断言实测在随机图上
+           2 小时只练出 232/300（上一次同样是随机，恰好 300）。测试要确定，不要运气。 */
+        G.newGame({ name: 'gap193', region: '烬环', mapSeed: 61803 });
         G.state.world.weather = 'clear';
         var c = G.state.cities[0], bIdx = -1;
+        /* 守将武力参与训练加速（`guardBonus().train = 武力×0.5%`，上限 1.5 倍）——
+           钉死，让「2 小时练完 300」这条下限只由队列逻辑决定。 */
+        (function () {
+          var gs = G.state.generals || [], gd = null;
+          for (var gi = 0; gi < gs.length; gi++) { if (gs[gi] && gs[gi].cityId === c.id) { gd = gs[gi]; break; } }
+          if (!gd && gs.length) gd = gs[0];
+          if (gd) { gd.cityId = c.id; gd.status = 'guard'; gd.yw = 400; }
+          /* 再给一层"募兵整训"buff（产品里真实存在），把总时长压到确定可完成 */
+          G.state.buffs = G.state.buffs || {};
+          G.state.buffs.trainRed = { until: U.now() + 86400000, eff: 0.5 };
+        })();
+        /* ============================================================
+         * v158.22（出生点不许落水）：本州首府附近若无平原，出生城会**换一格**
+         * （原来落进湖里）。城换位置后守将属性随种子浮动，而守将武力参与训练加速
+         * （`guardBonus().train = 武力×0.5%`）—— 实测同样 2 小时只练出 232/300。
+         * 本断言测的是「离线补训练 + 归集报告」，不是随机守将：
+         * 把守将武力钉死，让判据回到确定口径（**不是放宽 300 这个下限**）。 */
+        (function () {
+          var gs = G.state.generals || [], gd = null;
+          for (var i = 0; i < gs.length; i++) { if (gs[i] && gs[i].cityId === c.id) { gd = gs[i]; break; } }
+          if (!gd && gs.length) gd = gs[0];
+          if (gd) { gd.cityId = c.id; gd.status = 'guard'; gd.yw = 400; }
+        })();
         for (var i = 0; i < c.cells.length; i++) {
           var cl = c.cells[i];
           if (cl && !cl.build && !cl.pending && !cl.official) { cl.build = { id: 'junying', lvl: 3 }; bIdx = i; break; }
@@ -49560,7 +49586,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§589ac 总开关：PLAYER_AVATAR=false 回到点格传送 + 轨道相机（v158.20：Tab 切视角退役，改点图行走）',
         /M\.PLAYER_AVATAR = true/.test(mpC158)
         && /if \(!M\.PLAYER_AVATAR\) on = false;/.test(mpC158)
-        && /if \(M\.FOLLOW && M\.PLAYER_AVATAR\)/.test(mpC158)
+        /* v158.22（老板「操控一小人走在地面上」）规则变更：
+           渲染循环的位姿推进从「只在 FOLLOW」扩到「FOLLOW 或 地表」——
+           地表不是第二套坐标系，是同一套 stepAvatar 换个相机。
+           反向守卫：地表**不许**调 followAvatar（那是 v158.0 的贴脸第三人称，
+           老板连说两轮"像老年痴呆"），镜头由 _surfAvatarCam 接管。 */
+        && /if \(\(M\.FOLLOW \|\| M\._surf\) && M\.PLAYER_AVATAR\)/.test(mpC158)
+        && /if \(M\.FOLLOW\) M\.followAvatar\(_avDt, _avOut\);/.test(mpC158)
         /* v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）：
            旧规则是"Tab 进出第三人称跟随"，现在整条退役 —— 反向守卫钉住它不许回来；
            正向改钉"点地图 = 小人走过去"的唯一出口（walkTo / stepWalkTo）。 */
@@ -49638,7 +49670,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         '按钮 + HUD + case + 键盘出口');
 
       check('§589aj 反向证据：P0/P1 与旧 3D 入口逐字保留 · 街区键不写 GAME._keys',
-        /if \(M\.FOLLOW && M\.PLAYER_AVATAR\)/.test(mpC158)
+        /* v158.22：位姿推进条件扩到「FOLLOW 或 地表」，其余 P0/P1 语义逐字不动 */
+        /if \(\(M\.FOLLOW \|\| M\._surf\) && M\.PLAYER_AVATAR\)/.test(mpC158)
         && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
         && /case 'city-enter-3d'/.test(mnC158)
         && /case 'city-enter'/.test(mnC158)
@@ -50536,6 +50569,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   var _vw608 = _r608('js/ui-view.js');
   var _m3d608 = _r608('js/map3d.js');
   var _html608 = _r608('index.html');
+  var _st608 = _r608('js/state.js');
+  var _mn608 = _r608('js/main.js');
 
   check('§608① 任务链提示接到可见 HUD（Q.hint 有值就必须有人显示）', (function () {
     /* 定义：读 questline.hint、挂 layerRoot 唯一挂载点、有独立 id；
@@ -50615,13 +50650,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   var _di609 = _r608('js/district.js');
 
   check('§609① 球面小人走路摆腿（读 avOut.moved · 相位跟速度 · 腿真有 rotation）', (function () {
-    var i = _m3d608.indexOf('M.followAvatar = function');
-    var blk = _m3d608.slice(i, i + 4600);
-    return /M\.followAvatar = function \(dt, avOut\)/.test(_m3d608)
+    /* v158.22（老板「操控一小人走在地面上」）规则变更：摆人+摆腿从 followAvatar
+       抽成公用出口 `M.syncAvatarFigure` —— 地表跟随相机不调 followAvatar（贴脸第三人称），
+       但同样必须摆腿，否则近看是"人贴地滑行"。
+       断言因此改为钉**公用出口**本体，并要求两个调用方都在岗。 */
+    var i = _m3d608.indexOf('M.syncAvatarFigure = function');
+    var blk = i >= 0 ? _m3d608.slice(i, i + 1800) : '';
+    return /M\.syncAvatarFigure = function \(dt, avOut\)/.test(_m3d608)
       && /M\._figPhase/.test(blk)
       && /userData\.legs/.test(blk)
       && /legs\[0\]\.rotation\.x = _sw/.test(blk)
-      && /M\.WALK_SPEED \/ 1\.5/.test(blk);          /* 相位跟速度，不是写死 */
+      && /M\.WALK_SPEED \/ 1\.5/.test(blk)            /* 相位跟速度，不是写死 */
+      && /M\.syncAvatarFigure\(dt, avOut\)/.test(_m3d608)          /* followAvatar 调它 */
+      && /M\.syncAvatarFigure\(M\._lastAvDt/.test(_m3d608);        /* 地表渲染循环也调它 */
   })());
 
   check('§609② 渲染循环把 stepAvatar 的返回交给 followAvatar（否则"走没走"无从判断）', (function () {
@@ -50707,6 +50748,63 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return /if \(M\._walkTo >= 0 && !M\.FOLLOW\)/.test(_mp610)
       && /M\.stepWalkTo\(_wDt\)/.test(_mp610)
       && /_openCellPanel\(_wr\.ci\)/.test(_mp610);
+  })());
+
+
+  /* ============================================================
+   * §611 v158.22 · 「操控一小人走在地面上」（老板：星露谷不就是场景样板吗）
+   * ------------------------------------------------------------
+   * 这一轮全部是**规则变更**，每条都钉两件事：新规则在岗 + 旧病根不许回来。
+   * ============================================================ */
+  check('§611① 开局就有位姿与格锚（真实玩家不再"图上没有人"）', (function () {
+    /* 病根：`migrateAvatar158` 只补 `_avatar` 不回写 `_standCi`，
+       而 buildFigures 的建人条件是 `_standCi >= 0`、playerCi 也只读它
+       —— 实测真实开局 playerCi=-1、滚轮拉到地表 figPos=null。 */
+    return /if \(ci >= 0\) st\._standCi = ci;/.test(_st608)
+      && /M\.playerCi = function/.test(_m3d608)
+      && /if \(GAME\.migrateAvatar158\) \{ try \{ GAME\.migrateAvatar158\(st\); \} catch \(eMg\) \{ \} \}/.test(_m3d608);
+  })());
+
+  check('§611② 出生点不许落在水面（湖/沼泽一律就近换陆地）', (function () {
+    /* 病根：第四轮兜底把"本州任意地形"当备胎 → 出生点在湖中央，
+       周围 40 米 155 格全是水，玩家一睁眼是"蓝色虚空"。 */
+    return /var _land = function \(x, y\)/.test(_st608)
+      && /GAME\._isWaterTerrain\(SPx\.cells\[ci\]\.type\)/.test(_st608)
+      && /GAME\._nearestLandCi\(SPx, ci, \{\}\)/.test(_st608)
+      /* 所有 return 都必须经过闸门：出现裸 return { x: ... } 就是漏网 */
+      && !/return \{ x: (\w+)\.x, y: \1\.y, state: name \};/.test(
+           _st608.slice(_st608.indexOf('GAME.pickStartPos = function'),
+                        _st608.indexOf('GAME.makeLordGeneral = function')));
+  })());
+
+  check('§611③ 开局站位不压城格（城楼会把人埋掉 · 挪 2 环外空地）', (function () {
+    return /_cityCi0\[cc0\.ci \| 0\] = 1/.test(_st608)
+      && /hopsWithin\(ci, 2\)/.test(_st608);
+  })());
+
+  check('§611④ 地表跟随相机：只读位姿、站在角色斜上方、不碰 camO.dist', (function () {
+    /* 只取**函数体**：连带后面的注释块会把「位姿唯一写入口：M.setPlayerPose」
+       这行说明框进来，误判成镜头函数在写位姿。 */
+    var _m611 = _m3d608.match(/M\._surfAvatarCam = function[\s\S]*?\n  \};/);
+    var blk = _m611 ? _m611[0] : '';
+    return /M\._surfAvatarCam = function/.test(_m3d608)
+      && /M\.SURF_CAM_DIST = 26/.test(_m3d608)
+      && /M\.SURF_CAM_EL = 1\.0/.test(_m3d608)
+      && /M\.playerPose\(\)/.test(blk)
+      && /cam\.lookAt\(P\.x, P\.y, P\.z\)/.test(blk)
+      /* 反向守卫：镜头函数里**不许**写位姿/改 camO.dist（那是另一本账） */
+      && !/setPlayerPose/.test(blk) && !/camO\.dist\s*=/.test(blk);
+  })());
+
+  check('§611⑤ 地表 WASD 归位姿（FOLLOW 不再是唯一开关）', (function () {
+    return /\(_mkAv\.FOLLOW \|\| _mkAv\._surf\) && \(\/\^Key\[WASD\]\$\//.test(_mn608);
+  })());
+
+  check('§611⑥ 地表每帧把小人摆到连续位姿（不给"一格一跳"）', (function () {
+    /* syncFigures 跨格会把小人重建到格心，必须在其后再摆回连续位姿。 */
+    var i = _m3d608.indexOf('try { syncFigures(); }');
+    var blk = i >= 0 ? _m3d608.slice(i, i + 900) : '';
+    return /M\.syncAvatarFigure\(M\._lastAvDt/.test(blk);
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

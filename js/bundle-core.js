@@ -9034,12 +9034,34 @@ window.GAME = window.GAME || {};
       if (strict) return GAME.stateOfCity({ x: x, y: y }) === name;
       return true;
     };
+    /* ============================================================
+     * v158.22（老板「星露谷不就是场景样板吗，操控一小人走在地面上这么难？」）
+     * ------------------------------------------------------------
+     * 病根：下面第四轮兜底会把「本州任意地形」当备胎（`_other`），
+     *       于是出生点可能落进**湖里**。实测 seed 61126 / 碎垣州：
+     *       城格 ci=24006 是 `lake`，周边 40 米内 155 格**全是水**——
+     *       玩家一进游戏站在湖中央，地表层染的全是湖水深蓝 (34,65,130)，
+     *       看上去就是"没有地面、只有蓝色虚空"。
+     *
+     * 修法：**所有 return 收口到 `_land()`**，出水即就近换陆地。
+     *       这是硬闸，不依赖某一轮的判据写没写对。
+     * ============================================================ */
+    var _land = function (x, y) {
+      var SPx = GAME.sphere;
+      if (!SPx || !SPx.ciOfXY || !SPx.cells) return { x: x, y: y, state: name };
+      var ci = SPx.ciOfXY(x, y);
+      if (ci < 0 || !SPx.cells[ci]) return { x: x, y: y, state: name };
+      if (!GAME._isWaterTerrain(SPx.cells[ci].type)) return { x: x, y: y, state: name };
+      var nc = GAME._nearestLandCi(SPx, ci, {});
+      if (nc < 0 || !SPx.cells[nc]) return { x: x, y: y, state: name };
+      return { x: SPx.cells[nc].x, y: SPx.cells[nc].y, state: name };
+    };
     /* 第一轮：环带内 + 地形是平原 + 归属该区 */
     for (var i = 0; i < 240; i++) {
       var ang = rand() * Math.PI * 2, rad = 3 + rand() * 5;
       var x = Math.round(anchor.x + Math.cos(ang) * rad);
       var y = Math.round(anchor.y + Math.sin(ang) * rad);
-      if (free(x, y, true)) return { x: x, y: y, state: name };
+      if (free(x, y, true)) return _land(x, y);
     }
     /* 第二轮：自锚点向外扫描（地形是平原即可，归属放宽） */
     for (var r = 3; r <= 26; r++) {
@@ -9047,7 +9069,7 @@ window.GAME = window.GAME || {};
         for (var dy = -r; dy <= r; dy++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           var bx = anchor.x + dx, by = anchor.y + dy;
-          if (free(bx, by, false)) return { x: bx, y: by, state: name };
+          if (free(bx, by, false)) return _land(bx, by);
         }
       }
     }
@@ -9074,7 +9096,7 @@ window.GAME = window.GAME || {};
         for (var k3 = 0; k3 < cand3.length && k3 < 240; k3++) {
           var e3 = cand3[k3];
           if (GAME.stateOfCity({ x: e3[1], y: e3[2], ci: e3[3] }) !== name) continue;
-          return { x: e3[1], y: e3[2], state: name };
+          return _land(e3[1], e3[2]);
         }
       }
     } catch (ePS3) { }
@@ -9105,14 +9127,14 @@ window.GAME = window.GAME || {};
             if (_tried >= 400) { _stop = true; break; }
             _tried++;
             if (GAME.stateOfCity({ x: c2.x, y: c2.y, ci: ring[k2] }) !== name) continue;
-            if (c2.type === 'plain') return { x: c2.x, y: c2.y, state: name };
+            if (c2.type === 'plain') return _land(c2.x, c2.y);
             if (!_other) _other = { x: c2.x, y: c2.y };   /* 本州但非平原：备胎 */
           }
         }
-        if (_other) return { x: _other.x, y: _other.y, state: name };
+        if (_other) return _land(_other.x, _other.y);
       }
     } catch (ePS) { }
-    return { x: DATA.START_POS.x, y: DATA.START_POS.y, state: name };
+    return _land(DATA.START_POS.x, DATA.START_POS.y);
   };
 
   GAME.makeLordGeneral = function (rulerOpts, seed, cityId) {
@@ -9979,6 +10001,36 @@ window.GAME = window.GAME || {};
       || !isFinite(a.h) || !isFinite(a.yaw)) {
       var ci = (st._standCi != null && st._standCi >= 0) ? (st._standCi | 0)
         : ((st.cities && st.cities[0] && st.cities[0].ci != null) ? (st.cities[0].ci | 0) : -1);
+      /* ============================================================
+       * v158.22（老板「操控一小人走在地面上这么难？」）
+       * ------------------------------------------------------------
+       * 城格在地表是一坨三层楼 —— 人站在格心，**从任何角度都被自己的城挡住**
+       * （实机：只看到城堡，找不到自己）。星露谷那套是"人站在开阔地上"。
+       * 所以站姿落在**城旁边的空地**（城门外的野地），城仍在身边、人看得见。
+       * 只影响"站哪儿"，不动城的位置；走进城格仍会触发进街区（P2 原逻辑）。
+       * ============================================================ */
+      try {
+        var _SP0 = GAME.mapSphere || GAME.sphere;
+        /* ⚠️ 玩家城的格**地形类型仍是 plain**（"city" 只标 NPC 城），
+           所以判据必须查 `state.cities` 的 ci 表，不能看 type。 */
+        var _cityCi0 = {};
+        (st.cities || []).forEach(function (cc0) { if (cc0 && cc0.ci != null) _cityCi0[cc0.ci | 0] = 1; });
+        if (ci >= 0 && _cityCi0[ci] && _SP0 && _SP0.cells && _SP0.hopsWithin && GAME._landRank) {
+          /* 2 环：1 环只有 5.25 米，8 米高的城楼仍会挡住人（57° 俯角刚好卡边缘）。 */
+          var _ring0 = _SP0.hopsWithin(ci, 2) || [];
+          var _bs = -1, _br = 99;
+          for (var _k0 = 0; _k0 < _ring0.length; _k0++) {
+            var _rci0 = _ring0[_k0];
+            if (_cityCi0[_rci0]) continue;
+            var _c0 = _SP0.cells[_rci0];
+            if (!_c0) continue;
+            var _rk0 = GAME._landRank(_c0.type);      /* 平原 > 草原 > 森林 > 荒漠；水/山不合格 */
+            if (_rk0 < 0) continue;
+            if (_rk0 < _br) { _br = _rk0; _bs = _rci0; }
+          }
+          if (_bs >= 0) ci = _bs;
+        }
+      } catch (eStand0) { }
       var d = null;
       if (ci >= 0 && GAME.mapSphere && GAME.mapSphere.cells && GAME.mapSphere.cells[ci]) {
         var src = GAME.mapSphere.cells[ci].dir;
@@ -9987,6 +10039,18 @@ window.GAME = window.GAME || {};
       if (!d) d = [0, 1, 0];
       var L = Math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) || 1;
       st._avatar = { dir: [d[0] / L, d[1] / L, d[2] / L], h: 0, yaw: 0, v: [0, 0, 0] };
+      /* ============================================================
+       * v158.22（老板「星露谷不就是场景样板吗，操控一小人走在地面上这么难？」）
+       * ------------------------------------------------------------
+       * 病根：这里只补了 `_avatar`（连续位姿），**却没回写格锚 `_standCi`**。
+       * 而渲染侧 `buildFigures` 的建人条件是 `_standCi >= 0`、
+       * `M.playerCi()` 也只读 `_standCi` —— 于是真实开局玩家
+       * `playerCi` 恒为 -1、**地图上连个小人都没有**（实测：
+       * 滚轮拉到地表 eyeAbove=5.7 时 figPos=null）。
+       * 之前所有"小人在画面里"的验证，都是探针先 teleportTo 造出来的假象。
+       * 格锚由 dir 派生，这一步必须一起落，否则位姿与格锚两本账。
+       * ============================================================ */
+      if (ci >= 0) st._standCi = ci;
       return 1;
     }
     /* 读档后的瞬时动量不恢复（position 恢复，velocity 不恢复） */
