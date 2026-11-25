@@ -3804,6 +3804,10 @@ import './data.js';
         while (c.extGrid.length < eCap) c.extGrid.push({ id: 'e' + (c.extGrid.length + 1), type: null, lv: 0 });
       });
       delete st.extGrid;
+      /* v158.10（老板「资源地块转移大地图」）：老档 extGrid 清零 + 返还已投入资源。
+         resource.js 的 RS.migrateExt 幂等（st.resMigrated 标记），只迁一次；迁完
+         extGrid 全空（type:null），采集场改走大地图资源地块。 */
+      if (GAME.resource && GAME.resource.migrateExt) GAME.resource.migrateExt(st);
       /* v12 补字段：累计统计、随机任务池、材料背包 */
       if (!st.stats) st.stats = { buildDone: 0, techDone: 0, trained: 0, forgedCount: 0, recruited: 0, trades: 0, wins: 0, conquer: 0, itemsUsed: 0 };
       /* v90.92：任务系统退役 —— quests.pool/poolDay/log 老档补字段已无意义 */

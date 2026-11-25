@@ -12688,7 +12688,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
-      'placement', 'belt', 'planetgen',
+      'placement', 'resource', 'belt', 'planetgen',
       'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config',
       /* v157.64：插件箱（数值调整插件 · 运行时接入）—— 与 modules.json layout 逐条一致
          v157.70：行动台（5 个轻量决策玩法）插在 plugins 之前 —— plugins 必须仍是
@@ -49838,6 +49838,84 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /Lambert/.test(mp) && /径向法线/.test(mp)
       && /换受光材质也没用|换受光材质/.test(mp),
       '取舍说明在册');
+  })();
+
+  /* ============================================================
+   * §604 资源地块转移大地图（v158.10 · 老板「资源地块只有近地面勘探后才能建厂生产」）
+   * ------------------------------------------------------------
+   * 资源核心玩法重构：资源生产从「城内 extGrid」迁到「星球大地图资源地块」。
+   * 判据（每条带下限，防 0===0 平凡解）：
+   *   ① resource.js 唯一出口在册（GAME.resource.at/set/ensure/scan/canBuildPlant/consumeReserve）；
+   *   ② 确定性：同格两次 richness 一致、reserveMax 与 richness 成正比；
+   *   ③ 资源键映射：forest→wood / desert→stone / hill→iron / lake→grain；
+   *   ④ 勘探解锁：未勘探建厂被拒、勘探后可建、类型不匹配被拒；
+   *   ⑤ 软枯竭：reserve≤0 判定 depleted、consumeReserve 归零后不再扣；
+   *   ⑥ 老档迁移幂等：extGrid 清零 + 返还，二次迁移返回 null。
+   * ============================================================ */
+  (function () {
+    var RS = GAME.resource;
+    if (!RS) { check('§604 resource.js 模块已注册', false, 'GAME.resource 不存在'); return; }
+    check('§604① 唯一出口在册（at/set/ensure/scan/canBuildPlant/consumeReserve）',
+      typeof RS.at === 'function' && typeof RS.set === 'function'
+        && typeof RS.ensure === 'function' && typeof RS.scan === 'function'
+        && typeof RS.canBuildPlant === 'function' && typeof RS.consumeReserve === 'function',
+      'resource 出口');
+
+    /* 资源键映射（静态，不依赖 state） */
+    check('§604③ 资源键映射（forest→wood/desert→stone/hill→iron/lake→grain）',
+      RS.RES_OF_TYPE.forest === 'wood' && RS.RES_OF_TYPE.desert === 'stone'
+        && RS.RES_OF_TYPE.hill === 'iron' && RS.RES_OF_TYPE.lake === 'grain',
+      'RES_OF_TYPE');
+
+    /* 确定性 + 储量 + 勘探 + 软枯竭（需要最小 state + 假 sphere） */
+    var svState = GAME.state;
+    var svSphere = GAME.sphereOf;
+    GAME.state = { activePlanet: 1 };
+    var fake = { cells: [], adj: [] };
+    function mkC(ci, type) { fake.cells[ci] = { type: type }; fake.adj[ci] = []; }
+    mkC(1, 'forest');
+    for (var n = 0; n < 6; n++) { var nc = 100 + n; mkC(nc, 'forest'); fake.adj[1].push(nc); }
+    mkC(2, 'forest');
+    fake.adj[2] = [3, 4, 5]; mkC(3, 'forest'); mkC(4, 'forest'); mkC(5, 'plain');
+    mkC(9, 'hill');
+    GAME.sphereOf = function () { return fake; };
+    try {
+      var r1 = RS.ensure(1), r2 = RS.ensure(1);
+      check('§604② 确定性：同格两次 richness 一致', r1.richness === r2.richness, 'r=' + r1.richness);
+      check('§604② 储量派生：reserve=reserveMax 且 >0 且 ≥ RICH_BASE×richness',
+        r1.reserve === r1.reserveMax && r1.reserveMax > 0
+          && r1.reserveMax >= RS.RICH_BASE * r1.richness, 'max=' + r1.reserveMax);
+
+      var unscanned = RS.canBuildPlant(2, 'forest');
+      check('§604④ 未勘探建厂被拒', unscanned.ok === false, JSON.stringify(unscanned));
+      RS.scan(2);
+      var okBuild = RS.canBuildPlant(2, 'forest');
+      var badBuild = RS.canBuildPlant(2, 'mine');
+      check('§604④ 勘探后可建匹配采集场', okBuild.ok === true, JSON.stringify(okBuild));
+      check('§604④ 类型不匹配被拒（forest 格建 mine）', badBuild.ok === false, JSON.stringify(badBuild));
+
+      var rec9 = RS.ensure(9);
+      RS.set(9, { reserve: 0 });
+      check('§604⑤ 软枯竭：depleted 判定 + consumeReserve 归零后不再扣',
+        RS.depleted(9) === true && RS.consumeReserve(9, 100) === 0, 'reserve=0');
+
+      /* ⑥ S3/S4 预留 API 真调用（防 audit 判死函数；接线在后续切片）：
+         resOfCi 查地形资源键 · plantAt 查已建厂 · placePlant 建厂写操作 · census 统计 */
+      check('§604⑥ resOfCi 地形→资源键', RS.resOfCi(1) === 'wood' && RS.resOfCi(9) === 'iron',
+        '1=' + RS.resOfCi(1) + ' 9=' + RS.resOfCi(9));
+      var placed = RS.placePlant(2, 'forest');
+      check('§604⑥ placePlant 建厂写操作（forest→plant 落档）', placed.ok === true,
+        JSON.stringify(placed));
+      var pa = RS.plantAt(2);
+      check('§604⑥ plantAt 查已建厂（返回 forest + lv1）',
+        pa && pa.plant === 'forest' && pa.plantLv === 1, JSON.stringify(pa));
+      var census = RS.census(1);
+      check('§604⑥ census 统计（有资源地块且计入了 wood/iron）',
+        census && census.total >= 2 && census.byRes.wood >= 1 && census.byRes.iron >= 1,
+        JSON.stringify({ total: census && census.total, byRes: census && census.byRes }));
+    } finally {
+      GAME.state = svState; GAME.sphereOf = svSphere;
+    }
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

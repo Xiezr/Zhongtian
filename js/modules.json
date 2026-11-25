@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "811cc128901d04cb",
+ "sourceHash": "d5db400412bad69c",
  "layout": {
   "order": [
    "core",
@@ -74,6 +74,7 @@
    "bitmaps",
    "portraits",
    "placement",
+   "resource",
    "belt",
    "planetgen",
    "story",
@@ -203,6 +204,7 @@
   "bitmaps",
   "portraits",
   "placement",
+  "resource",
   "belt",
   "planetgen",
   "story",
@@ -287,6 +289,7 @@
    "npc",
    "quest",
    "placement",
+   "resource",
    "belt",
    "planetgen"
   ],
@@ -1110,6 +1113,18 @@
    ]
   },
   {
+   "name": "resource",
+   "file": "js/resource.js",
+   "lines": 299,
+   "bundle": "core",
+   "duty": "resource.js — 星球大地图资源地块引擎（核心玩法：资源多层级）",
+   "deps": [
+    "state",
+    "data",
+    "cities"
+   ]
+  },
+  {
    "name": "risk",
    "file": "js/risk.js",
    "lines": 127,
@@ -1230,7 +1245,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6562,
+   "lines": 6566,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [
@@ -1261,6 +1276,7 @@
     "ending",
     "ui-modal",
     "planetgen",
+    "resource",
     "placement",
     "camp",
     "ruin",
