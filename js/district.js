@@ -169,7 +169,10 @@
     var mounted = !!(G.vehicle && G.vehicle.mounted);
     a.grp.visible = !mounted;
     if (mounted) return;
-    if (moving) a.phase += dt * 9;
+    /* v158.19（老板「走的好像老年痴呆一样」）：步频**跟速度走**（步幅 1.5m 的慢跑口径）——
+       原来写死 `dt * 9`，一旦改 M.WALK_SPEED 就会滑步。4.5 m/s 时 = 9.42 rad/s（旧观感基本不变），
+       但从此与大世界同一把尺。 */
+    if (moving) a.phase += dt * (((G.map3d && G.map3d.WALK_SPEED) || 4.5) / 1.5) * Math.PI;
     var sw = moving ? Math.sin(a.phase) * 0.6 : 0;
     a.legL.rotation.x = sw; a.legR.rotation.x = -sw;
     a.armL.rotation.x = -sw * 0.7; a.armR.rotation.x = sw * 0.7;
@@ -389,7 +392,8 @@
     var M = G.map3d;
     var turn = ((keys && keys.d) ? 1 : 0) - ((keys && keys.a) ? 1 : 0);
     var move = ((keys && keys.w) ? 1 : 0) - ((keys && keys.s) ? 1 : 0);
-    if (turn) D.yaw += turn * 1.8 * dt;
+    /* v158.19（老板「走的好像老年痴呆一样」）：与大世界同一把尺 —— 1.8 → 3.0 rad/s（约 0.52s 转 90°）。 */
+    if (turn) D.yaw += turn * 3.0 * dt;
     var step = move * ((M && M.WALK_SPEED) || 4.5) * dt;
     var dx = Math.sin(D.yaw) * step, dz = -Math.cos(D.yaw) * step;
     var b = D.plan.bounds, r = (M && M.CAPSULE_R) || 0.3;

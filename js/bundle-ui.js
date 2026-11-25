@@ -7062,8 +7062,9 @@
       var _avDt = Math.min(0.05, (_avNow - (M._avatarClock || _avNow)) / 1000) || 0.016;
       M._avatarClock = _avNow;
       try {
-        M.stepAvatar(_avDt, (GAME && GAME._keys) || null);
-        M.followAvatar(_avDt);
+        /* v158.19：把 stepAvatar 的返回交给 followAvatar —— 摆腿要知道"这一帧到底走没走"。 */
+        var _avOut = M.stepAvatar(_avDt, (GAME && GAME._keys) || null);
+        M.followAvatar(_avDt, _avOut);
         var _pp = M.playerPose();
         if (_pp && Array.isArray(_pp.dir)) camO.dir = _pp.dir.slice();
         /* v158.1（P1）：走近提示挂在跟随态里，且只在目标变化时写 DOM ——
@@ -8783,7 +8784,10 @@
     var turn = ((keys && keys.d) ? 1 : 0) - ((keys && keys.a) ? 1 : 0);
     var move = ((keys && keys.w) ? 1 : 0) - ((keys && keys.s) ? 1 : 0);
     var out = { moved: 0, slide: 0, slope: 0, blocked: 0, ground: 0, gap: 0 };
-    if (turn) yaw += turn * 1.8 * dt;             // 转向 103°/s，不靠 body 平移
+    /* v158.19（老板「走的好像老年痴呆一样」）：转向 1.8 → 3.0 rad/s。
+       原来 103°/s，转 90° 要 0.87 秒（真人快速转身约 0.5 秒）—— 按下 A/D 像"磨"，
+       是"痴呆感"的第二来源。3.0 rad/s = 172°/s，转 90° 约 0.52 秒。 */
+    if (turn) yaw += turn * 3.0 * dt;
     var step = move * M.WALK_SPEED * dt;
     if (Math.abs(step) > 1e-9) {
       var nd = [
@@ -8835,7 +8839,7 @@
   M.FOLLOW_DAMP = 0.15;
   M._followPos = null;
 
-  M.followAvatar = function (dt) {
+  M.followAvatar = function (dt, avOut) {
     var p = M.playerPose();
     if (!p) return null;
     dt = Math.max(0, Math.min(0.05, dt || 0.016));
@@ -8873,7 +8877,25 @@
     cam.updateMatrixWorld();
     /* 小人只挪不重建（buildFigures 每帧可能整组重建，必须在它之后驱动）。 */
     var fg = (figCache && figCache['stand']) ? figCache['stand'].g : null;
-    if (fg) placeFigureAtDir(fg, p.dir, yaw * 180 / Math.PI);
+    if (fg) {
+      placeFigureAtDir(fg, p.dir, yaw * 180 / Math.PI);
+      /* v158.19（老板「走的好像老年痴呆一样」）：球面跟随态原来**只摆位置、腿一动不动** ——
+         实机就是"人贴在地上滑行"，这是"痴呆感"的第一来源。
+         照街区 syncAvatar 的成熟公式补上摆腿 + 上下颠簸；相位跟速度走
+         （步幅 1.5m 的慢跑口径 —— 与街区同一把尺），一停立刻归零（不留"惯性抖腿"）。 */
+      var _mv = !!(avOut && avOut.moved);
+      M._figMoving = _mv;                            /* v158.19：figureOf().walking 读它 */
+      if (_mv) M._figPhase = (M._figPhase || 0) + dt * (M.WALK_SPEED / 1.5) * Math.PI;
+      else M._figPhase = 0;
+      var _sw = _mv ? Math.sin(M._figPhase) * 0.6 : 0;
+      var _legs = fg.userData && fg.userData.legs;
+      if (_legs && _legs.length) {
+        _legs[0].rotation.x = _sw;
+        if (_legs[1]) _legs[1].rotation.x = -_sw;
+      }
+      /* 3cm 上下颠簸（与街区同一口径）：纯滑行最大的观感破绽是"身体高度完全不抖"。 */
+      if (_mv) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
+    }
     var dx = M._followPos[0] - P[0], dy = M._followPos[1] - P[1], dz = M._followPos[2] - P[2];
     var dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     var horiz = Math.sqrt(dx * dx + dz * dz);
@@ -9382,7 +9404,10 @@
   M.figureOf = function (key) {
     var f = figCache[key || 'lord'];
     if (!f || !f.g) return null;
-    return { ci: f.ci, pos: [f.g.position.x, f.g.position.y, f.g.position.z], walking: false };  /* v157.85：前传行走插值已退役，该字段恒 false（保留读取兼容） */
+    /* v158.19（老板「走的好像老年痴呆一样」）：`walking` 不再恒 false ——
+       球面小人的摆腿相位由 followAvatar 逐帧推进，这里如实反映"这一刻在不在走"
+       （探针 / 调试要能读到；前传的行走插值仍不恢复）。 */
+    return { ci: f.ci, pos: [f.g.position.x, f.g.position.y, f.g.position.z], walking: !!M._figMoving };
   };
 
   /* 点击拾取：Raycaster 打到地块填充 → 取格类型/等级 → 存为选中（画在画布上）*/
@@ -42578,7 +42603,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.18';
+  GAME.VERSION = 'v158.19';
   function boot() {
     fitAppSize();
     try {

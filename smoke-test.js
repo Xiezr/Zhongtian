@@ -50585,6 +50585,49 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /<span class="lbl">民心 \/ 民怨<\/span>/.test(_uc608);   /* 内层原样保留 */
   })());
 
+  /* ============================================================
+   * §609 v158.19 · 手感（老板「走的好像老年痴呆一样」）
+   * ------------------------------------------------------------
+   * 实测（探针 p_walk.js）暴露三条：
+   *   ① 球面跟随态小人**只摆位置、腿一动不动** → 纯滑行（"痴呆感"主因）；
+   *   ② 转向 103°/s，转 90° 要 0.87s（真人约 0.5s）→ 按 A/D 像在"磨"；
+   *   ③ 街区步频写死 `dt*9`，一旦改速度就滑步 → 改成跟速度（步幅 1.5m 口径）。
+   * 另修 `figureOf().walking` 恒 false 的遗留（v157.85 前传插值退役后一直没人接）。
+   * ============================================================ */
+  console.log('  --- §609 v158.19 手感（摆腿/转向/步频） ---');
+  var _di609 = _r608('js/district.js');
+
+  check('§609① 球面小人走路摆腿（读 avOut.moved · 相位跟速度 · 腿真有 rotation）', (function () {
+    var i = _m3d608.indexOf('M.followAvatar = function');
+    var blk = _m3d608.slice(i, i + 4600);
+    return /M\.followAvatar = function \(dt, avOut\)/.test(_m3d608)
+      && /M\._figPhase/.test(blk)
+      && /userData\.legs/.test(blk)
+      && /legs\[0\]\.rotation\.x = _sw/.test(blk)
+      && /M\.WALK_SPEED \/ 1\.5/.test(blk);          /* 相位跟速度，不是写死 */
+  })());
+
+  check('§609② 渲染循环把 stepAvatar 的返回交给 followAvatar（否则"走没走"无从判断）', (function () {
+    return /var _avOut = M\.stepAvatar\(_avDt/.test(_m3d608)
+      && /M\.followAvatar\(_avDt, _avOut\)/.test(_m3d608);
+  })());
+
+  check('§609③ 转向 3.0 rad/s（≈172°/s，90° 约 0.52s；大世界与街区同一把尺）', (function () {
+    return /yaw \+= turn \* 3\.0 \* dt/.test(stripComment(_m3d608))
+      && /D\.yaw \+= turn \* 3\.0 \* dt/.test(stripComment(_di609));
+  })());
+
+  check('§609④ 街区步频跟速度（不再写死 dt*9）', (function () {
+    var code = stripComment(_di609);
+    return /a\.phase \+= dt \* \(\(\(G\.map3d && G\.map3d\.WALK_SPEED\) \|\| 4\.5\) \/ 1\.5\) \* Math\.PI/.test(code)
+      && code.indexOf('a.phase += dt * 9;') < 0;
+  })());
+
+  check('§609⑤ figureOf().walking 如实反映（不再是恒 false）', (function () {
+    return /walking: !!M\._figMoving/.test(_m3d608)
+      && !/walking: false \}/.test(stripComment(_m3d608));
+  })());
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));
