@@ -1514,8 +1514,6 @@
         camO.quat = null; camO._euler = null;
         _syncZoom();
         M.BUILD_GRID = true;
-        M._hiCi = -1;
-        try { M.surfHighlight(-1); } catch (eH) { }
       } else {
         try { M.gridHighlight(null); } catch (eG) { }
         M._hoverCell = null;
@@ -1616,9 +1614,9 @@
     } catch (eL) { }
     M._sr = null;          /* ⚠️ 对外暴露的那份引用也要清 —— 只清闭包里的 SR，
                               外部读 M._sr 仍是旧对象（实测"已升空但 hasSR 还是 true"）*/
-    /* v157.56：悬停高亮(surfHi) 直接加进 scene（非 SR.root，destroySurf 的 traverse 清不到），
-       退地表必须显式清，否则亮格会赖在场景里（实测退地表后亮格残留）。 */
-    try { if (surfHi) { scene.remove(surfHi); surfHi = null; surfHiCi = -1; M._hiCi = -1; } } catch (eSH) { }
+    /* v158.15（老板「六边形地块碍事」）：地表悬停高亮整条退役 —— 原先挂在这里的
+       surfHi 清理逻辑随之删除（surfHi/surfHiCi/M._hiCi 都不存在了，见 2367 行墓碑）。
+       退地表不再需要"清亮格"。 */
   }
   M.destroySurf = destroySurf;
 
@@ -2245,9 +2243,10 @@
 
   M.BUILD_GRID = true;
   M.BUILD_MODE = 'grid';
-  /* v157.56（老板 2026-11-14「线条太杂，不要边线了，只留悬停亮色」）：
+  /* v157.56（老板「线条太杂，不要边线了」）+ v158.15（连悬停亮色一起退）：
      地表常驻线总开关。false = 不画方形建造网格(surfBuildGrid) 与 六边形平台边线(surfPlateLine)，
-     地表只留地形 + 悬停高亮（surfHighlight 复用）。要回退「极淡网格」置 true。 */
+     地表只剩地形本身（悬停高亮已于 v158.15 整条退役，见 2367 行墓碑）。
+     要回退「极淡网格」置 true。 */
   M.SURF_LINES = false;
   /* v157.56（老板「线条太杂，不要边线」）：太空六边形线框总开关。false = 彻底隐藏 tiles 星球线框
      （地表本就隐藏）；区划边界是独立图层（见 v157p 注释），不受影响。置 true 才显示（峰值 0.16 极淡）。 */
@@ -2659,76 +2658,21 @@
     return true;
   }
   /* ============================================================
-   * v157：地表格子的**悬停/选中高亮**
+   * 【墓碑】v158.15：地表格子悬停高亮（surfHighlight）整条退役
    * ------------------------------------------------------------
-   * 建设的最小交互入口：手上没有格子，就没有"在这建东西"这件事。
-   * 做法取最省的一档：一个六边形（5~6 顶点）随选中格重建，
-   * 面用低透明亮色、边用亮黄 —— 不遮挡地砖本身，只标出"这一格"。
+   * 老板 2026-11-25「六边形地块有点有点碍事儿了，就作为一个可操作项来看」→ 拍板「近地面全退」。
+   * 退役前形态：地表模式鼠标一动，就在指着的那一格铺一个**整格六边形**
+   *   （填充 #9fe8ff 透明度 0.20 + 亮边 #bdf2ff 0.95；边线 depthTest:false → 无视地形遮挡）。
+   * 实机取证（v158.15 探针）：格径 ≈3.6 米、跟随相机在身后 6 米 →
+   *   脚下整片草地被染青、占屏宽约 90%，且**不输出任何文字**
+   *   （为了它把近地面的地块简报也 tipHide 掉了）= 纯装饰、零信息、还长得像"选中框"。
+   * 历史（同一件事被判了三次）：v157.37 老板「近地面不应该再出现六边形地块的操作」→ 删；
+   *   v157.56「只留悬停亮色」→ 恢复；v158.15 第二次判定碍事 → 整条退场。
+   * 退役范围：M.surfHighlight / _surfHiBuild / _surfHiAt / surfHi / surfHiCi / surfHiSel
+   *   / M._hiCi 全部删除。**不留可调开关** —— 要复活必须重写，不许留半套。
+   * 现在近地面"我在哪一格"由地砖本身表达，"能交互什么"由底栏 E 提示表达；
+   *   建造模式仍走四边形 gridHighlight（v157.12 老板拍板的另一套坐标语言，不受影响）。
    * ============================================================ */
-  var surfHi = null, surfHiCi = -1, surfHiSel = -1;
-  function _surfHiAt(p, lift) {
-    var L = _hyp(p[0], p[1], p[2]) || 1;
-    var d = [p[0] / L, p[1] / L, p[2] / L];
-    var e = sphElev(d);
-    var rr = R + Math.max(0, e) * HSC + lift;
-    return [d[0] * rr, d[1] * rr, d[2] * rr];
-  }
-  function _surfHiBuild(ci, isSel) {
-    var c = SP.cells && SP.cells[ci];
-    if (!c || !c.rim || !c.nt) return false;
-    if (surfHi) {
-      scene.remove(surfHi);
-      surfHi.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
-      surfHi = null;
-    }
-    var lift = (M.SURF_PLIFT == null ? 0.4 : M.SURF_PLIFT) + 0.06;
-    var ctr = _surfHiAt(c.pos, lift), pts = [];
-    var pos = [ctr[0], ctr[1], ctr[2]], idx = [], lp = [];
-    for (var t = 0; t < c.nt; t++) {
-      var q = _surfHiAt(c.rim[t], lift);
-      pts.push(q);
-      pos.push(q[0], q[1], q[2]);
-    }
-    for (var t2 = 0; t2 < c.nt; t2++) idx.push(0, 1 + t2, 1 + (t2 + 1) % c.nt);
-    for (var t3 = 0; t3 < c.nt; t3++) {
-      var a = pts[t3], b = pts[(t3 + 1) % c.nt];
-      lp.push(a[0], a[1], a[2], b[0], b[1], b[2]);
-    }
-    var g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setIndex(idx);
-    var grp = new THREE.Group();
-    var fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-      color: isSel ? 0xffd76a : 0x9fe8ff, transparent: true,
-      opacity: isSel ? 0.34 : 0.20, depthWrite: false,
-      side: THREE.DoubleSide, polygonOffset: true,
-      polygonOffsetFactor: -6, polygonOffsetUnits: -12
-    }));
-    fill.renderOrder = 8;
-    grp.add(fill);
-    var lg = new THREE.BufferGeometry();
-    lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
-    var line = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
-      color: isSel ? 0xffe9a8 : 0xbdf2ff, transparent: true, opacity: 0.95,
-      depthWrite: false, depthTest: false
-    }));
-    line.renderOrder = 9;
-    grp.add(line);
-    scene.add(grp);
-    surfHi = grp;
-    return true;
-  }
-  M.surfHighlight = function (ci, sel) {
-    if (!M._surf) return;
-    if (ci == null || ci < 0) {
-      if (surfHi) { scene.remove(surfHi); surfHiCi = -1; }
-      M._hiCi = -1;
-      return;
-    }
-    var isSel = !!sel;
-    if (ci === surfHiCi && isSel === (surfHiSel === ci)) return;
-    if (_surfHiBuild(ci, isSel)) { surfHiCi = ci; surfHiSel = isSel ? ci : -1; M._hiCi = ci; }
-  };
 
   /* ============================================================
    * v157v：**四边形拾取**（建造模式唯一入口）
@@ -7923,10 +7867,11 @@
          地表的地块身份由 **地砖（方形）+ 地块涂色** 表达，六边形高亮全部退场。
          建造模式走上面的 gridHighlight 分支，不经过这里。 */
       if (M._surf) {
-        /* v157.56（老板）：地表悬停改为「正对格子亮色微提」—— 复用 surfHighlight 画六边形地块高亮
-           （青色填充 op0.20 + 亮边），作为唯一指示，不再清掉（v157.37 当年为去「怪斑」而清）。
-           地表本就是六边形瓦片，六边形高亮 = 自然的地块指示，非操作入口。 */
-        if (ci1 >= 0) M.surfHighlight(ci1); else M.surfHighlight(-1);
+        /* v158.15（老板「六边形地块碍事」→ 选「近地面全退」）：这里原来会点亮**整格六边形**，
+           实测 6 米跟随视角下约占屏宽 90%、把脚下草地整片染青，且不输出任何信息。
+           现在**什么都不画** —— 悬停高亮已整条退役（见 2367 行墓碑）。
+           近地面"指着哪一格"由地砖本身表达；"能交互什么"由底栏 E 提示表达。
+           保留 tipHide：地表不弹地图浮签的口径不变（与 v157.56「线条太杂」同源）。 */
         ui2.tipHide(); return;
       }
       if (ci1 === _hovCi) { ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY); return; }
@@ -7935,7 +7880,6 @@
     });
     canvas.addEventListener('mouseleave', function () {
       if (M.mode === M.MODE_BUILD) { M.gridHighlight(null); M._hoverCell = null; }
-      if (M._surf) M.surfHighlight(-1);
       _hovCi = -1;
       if (GAME.ui && GAME.ui.tipHide) GAME.ui.tipHide();
     });
@@ -42403,7 +42347,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.14';
+  GAME.VERSION = 'v158.15';
   function boot() {
     fitAppSize();
     try {

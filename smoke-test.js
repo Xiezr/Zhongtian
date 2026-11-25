@@ -36598,17 +36598,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && !/M\.SURF_FADE_FAR = 55/.test(m243));
 
       /* v157.37（老板：「战略只出现六边形、建造只显示方形，现在全混到一起」）：
-         三态必须互斥，锁两条反向证据：
-           ① 近地面不许再出现**六边形操作**（悬停不得高亮六边形格）；
-           ② 六边形图层（_markers 色块 / _flags 符号）在地表必须退场 ——
-              它们是几十米一格的面片，叠在 2 米地砖上就是"方形格线上浮着六边形色块"。
-         ── v157.56 修正 ── 老板 2026-11-14 明确「只留鼠标悬停时正对格子亮色」，
-         反向了 ① 的悬停子规则：地表悬停恢复**被动**六边形高亮（surfHighlight 仅作亮度提示，
-         复用既有机制），但**仍不得触发六边形地块操作**（认领/建造工具）—— 这才是 v157.37 真正要守住的底线。 */
-      c243('§243①i 地表悬停显示被动高亮（v157.56 反向 v157.37 · 老板「只留悬停亮色」），且不得触发六边形操作',
-        /if \(M\._surf\) \{[\s\S]{0,600}?M\.surfHighlight\(ci1\)/.test(m243)
-        && !/M\._surf\) \{ M\.surfHighlight\(-1\); ui2\.tipHide\(\); return; \}/.test(m243)
-        && !/M\.gridHighlight\(_gc\.i, _gc\.j, true\)/.test(m243));
+         三态必须互斥。其中 ② 六边形图层（_markers 色块 / _flags 符号）在地表退场的口径不变，
+         见下一条 §243①j。
+         ── v158.15 规则变更（老板 2026-11-25「六边形地块有点有点碍事儿了，就作为一个可操作项来看」
+            → 拍板「近地面全退」）── **推翻 v157.56「只留悬停亮色」**：
+         实测地表悬停点亮的是**整格六边形**（格径≈3.6m，跟随相机在身后 6m → 占屏宽约 90%，
+         脚下草地整片染青；边线 depthTest:false 还无视地形遮挡），且地表 tipHide 不输出任何文字
+         —— 纯装饰、零信息，却长得像"选中框"。
+         现规则：近地面**不画任何悬停高亮**，六边形地块既不是操作入口、也不再是指示。
+         守卫三层：① 机制彻底不存在（剥注释后不许再有 surfHighlight/_surfHiBuild/_surfHiAt/_hiCi）；
+                   ② 地表分支仍是"不画 + 不弹浮签"（tipHide; return，不许改回先清后画）；
+                   ③ 出口面：GAME.map3d 上不得再有 surfHighlight（防"换个名字留着"）。 */
+      var m243c = stripComment(m243);
+      c243('§243①i 地表悬停不画任何高亮（v158.15 退役六边形 · 老板「近地面全退」）',
+        !/surfHighlight|_surfHiBuild|_surfHiAt|_hiCi/.test(m243c)
+        && /if \(M\._surf\) \{[\s\S]{0,700}?ui2\.tipHide\(\); return;/.test(m243c)
+        && (!G.map3d || typeof G.map3d.surfHighlight === 'undefined'));
       c243('§243①j 六边形图层在地表退场（v157.37 · _markers 仍是 !M._surf）',
         /if \(M\._markers\) M\._markers\.visible = !M\._surf;/.test(m243)
         && !/if \(M\._markers\) M\._markers\.visible = true;/.test(m243));
