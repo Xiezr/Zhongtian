@@ -39778,6 +39778,7 @@ ui.openDuel = function (fid, moveId) {
       }
       case 'save': GAME.doSave(); break;
       case 'new-game': GAME.doNewGame(); break;
+      case 'new-game-do': GAME.doNewGameCommit(); break;
       default:
         /* ============================================================
          * v100：**注册表分发**（可插拔）
@@ -41303,7 +41304,18 @@ ui.openDuel = function (fid, moveId) {
     else ui.toast('保存失败');
   };
   GAME.doNewGame = function () {
-    if (!confirm('确定要重新开始吗？当前存档将被清除！')) return;
+    /* v158.9（老板「复杂留给系统·处处一样」）：原生 confirm 换成项目自建确认弹窗。
+       清档是高危不可逆操作，必须走 ui.openModal 同一套（可主题化、可读屏），
+       并写明代价（当前进度将被清除、无法撤销），红键一击执行 + 取消。 */
+    var html = '<div class="gold-heading">重新开始</div>';
+    html += '<div class="attr"><span class="k">影响</span><span class="v" style="color:var(--red-light)">当前进度将被清除</span></div>';
+    html += '<div class="note">此操作<b>不可撤销</b>：当前存档（城市、英雄、兵力、进度）将全部清除，从零开始。</div>';
+    html += '<div class="panel-foot">'
+      + '<button class="btn red" data-action="new-game-do">确定重新开始</button>'
+      + '<button class="btn" data-action="close-modal">取消</button></div>';
+    ui.openModal(html);
+  };
+  GAME.doNewGameCommit = function () {
     GAME.clearSave();
     GAME.state = null;
     location.reload();

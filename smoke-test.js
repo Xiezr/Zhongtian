@@ -36868,8 +36868,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /\.wild-drop:active, \.city-select:active \{ transform: scale\(\.97\); \}/.test(h246));
       c246('§246③ 补漏 cursor:pointer（页签 / 底栏按钮 / bt-sel）',
         /\.topnav \.tab, \.bb-label-toggle, \.bb-war, \.bb-planet, \.bt-sel \{ cursor: pointer; \}/.test(h246));
-      c246('§246④ 按压族 transition 含 transform（平滑回弹）',
-        /transition: transform \.09s ease-out/.test(h246));
+      c246('§246④ 按压族 transition 含 transform（平滑回弹 · v158.9 动效 token 化：裸 .09s ease-out → var(--dur-instant) var(--ease-out)）',
+        /transition: transform var\(--dur-instant\) var\(--ease-out\)/.test(h246)
+        && /--dur-instant: 90ms/.test(h246));
       c246('§246⑤ 负向：base 带 transform 的 .exp-tac-link 不入按压族（缩放会破居中）',
         h246.indexOf('.exp-tac-link:active') < 0);
     } catch (e246) {
