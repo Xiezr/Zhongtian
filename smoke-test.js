@@ -266,8 +266,39 @@
     'gicons=' + typeof global.GICONS + ' bitmaps=' + typeof global.BITMAPS);
 
   /* v14：外城地块按城市独立（state.extGrid → city.extGrid）。
-     extOf(state) 取该 state 首城的外城网格，让既有断言继续可用。 */
+     extOf(state) 取该 state 首城的外城网格，让既有断言继续可用。
+     ⚠️ v158.13（S4）：迁移态下它返回的是**只读投影**（每次现算），
+     往里 push/改字段都不落档 —— 要造局请用下面的 mkPlants()。 */
   function extOf(st) { return G.extGridOf(st.cities[0]); }
+
+  /* ============================================================
+   * v158.13（S4）造局助手：在某座城名下的星球地块上真建采集场
+   * ------------------------------------------------------------
+   * 资源建筑迁到大地图后，`city.extGrid` 不再是产地（extGridOf 只投影星球上
+   * 已建的厂）。凡是要验"产量 / 露天容量 / 分账 / 自动升级"的用例，造局必须
+   * **真写星球地块**（RS.placePlant 是唯一落档出口），不能往投影数组上塞对象。
+   * spec: [['farm', 1], ['mine', 12], ...] —— [采集场 id, 等级]
+   * 返回成功落地的座数（用例可据此判"够不够造局"）。
+   * ============================================================ */
+  function mkPlants(city, spec) {
+    var RS = G.resource, pid = G.pidOf(city), made = 0;
+    (spec || []).forEach(function (it) {
+      var eid = it[0], lv = it[1] || 1;
+      var want = (DATA.EXT_BUILDINGS[eid] || {}).res;
+      for (var i = 0; i < G.sphere.cells.length; i++) {
+        var t = G.sphere.cells[i] && G.sphere.cells[i].type;
+        if (!t || RS.RES_OF_TYPE[t] !== want) continue;
+        if (RS.plantAt(i, pid)) continue;
+        RS.scan(i);
+        var r = RS.placePlant(i, eid, pid, city.id);
+        if (!r || !r.ok) continue;
+        if (lv > 1) RS.set(i, { plantLv: lv }, pid);
+        made++;
+        break;
+      }
+    });
+    return made;
+  }
 
   /* v68（逐步探索）：把城的政务厅设为"该城满级"（12 + 档位加成）——
      让"建筑应能自由升满"的老测试段不受政务厅总闸影响。
@@ -501,7 +532,15 @@
   check('城内 48 格（8 列 × 6 行 · 政务厅居中4格）', s.cities[0].cells.length === 48 && s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'guanfu'; }).length === 4);
   check('可建格 44', s.cities[0].cells.filter(function (c) { return !c.official; }).length === 44);
   check('初始居所28座（固定栏位：居所槽预建 · 功能建筑槽预留为空）', s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'minfang'; }).length === 28);
-  check('外城 12 块地(2田1木1石1铁占5)', extOf(s).length === 12 && extOf(s).filter(function (e) { return e.type === 'farm'; }).length === 2 && extOf(s).filter(function (e) { return e.type; }).length === 5);
+  /* v158.13（S4）**规则变更**：老板「现有城外资源建筑清零，返还资源」+「资源建筑从城外
+     转移到大地图」—— 城内 extGrid 已退役（恒空），开局 5 座厂改为**落在星球地块上**。
+     DATA.INITIAL_EXT 不变（仍是 2 田 1 木 1 石 1 铁），但载体从"堆场格子"变成"星球格"：
+     extOf() 走 extGridOf 的投影，所以看到的还是 5 座厂，只是每座都带 ci。
+     原断言「外城 12 块地(2田1木1石1铁占5)」测的是已退役的 12 格堆场，按新口径重写。 */
+  check('开局 5 座采集场落在星球地块上（2 田 1 木 1 石 1 铁 · 旧「外城 12 块地」随 v158.13 迁移退役）',
+    extOf(s).length === 5
+    && extOf(s).filter(function (e) { return e.type === 'farm'; }).length === 2
+    && extOf(s).every(function (e) { return e.ci != null && e.ci >= 0; }));
   check('初始英雄陆沉', s.generals[0].name === '陆沉');
   check('初始宝物', s.items.shennongchu === 1 && s.items.bengzhu === 5);   /* v89.152：初始珠宝 = 珍珠 */
 
@@ -515,31 +554,59 @@
     s.hearts === 50 && G.heartsOf() === 50);
   check('旧币产出>0', s.res.gold >= 0);
 
-  console.log('\n===== 4. 城外地块建造/升级（含 pending 状态机）=====');
-  var emptyIdx = extOf(s).findIndex(function (e) { return !e.type && !e.pending; });
-  var r = G.buildExt(emptyIdx, 'farm');
-  check('空地建净化厂', r.ok === true, r.msg);
-  check('建造中 pending 置位', extOf(s)[emptyIdx].pending === 'farm');
-  for (var i2 = 0; i2 < 60; i2++) G.tickOnce(); // v89.128：曲线后建造需 8.7 游戏分 → 60 tick@30× 足够
-  check('净化厂地块+1', extOf(s)[emptyIdx].type === 'farm');
-  check('建造完成 pending 清除', extOf(s)[emptyIdx].pending === null);
-  check('进度查询返回空', G.buildPct('ext', emptyIdx) === '');
-  /* v89.235（老板）规则变更：城外资源建筑等级 ≤ 政务厅等级 ——
-     本用例验的是**城外地块升级状态机**，先抬政务厅到 Lv2 解锁（闸门本体由 §235 专测）。 */
+  console.log('\n===== 4. 星球采集场建造/升级（含施工状态机）=====');
+  /* ============================================================
+   * v158.13（S4）**规则变更**：老板「现有城外资源建筑清零，返还资源」+
+   *   「资源建筑从城外转移到大地图」+「资源地块只有近地面勘探后才能建厂生产」。
+   * ------------------------------------------------------------
+   * 旧口径（本段原文）是"城内堆场 12 块地 + G.buildExt/upgradeExt + 地块上的
+   * pending 字段"。现在：extGrid 恒空（extGridOf 改成投影已建厂地块），
+   * 建造入口换成 G.buildPlant / upgradePlant / dismantlePlant，
+   * 且**未勘探的地块一律拒绝建厂**（这是"近地面勘探"那条要求的落点）。
+   * 本节按新口径重写，覆盖同等内容：建厂 → 施工中 → 落成 → 升级 → 已占不可重建。
+   * ⚠️ 「施工中」标记现在在**建造队列**里（q.type='plant_build'），不在投影数组上 ——
+   *    投影数组是每次现算的只读快照，往它上面写字段不会落档（下面有一条专测这个）。
+   * ============================================================ */
+  var _SP4 = G.sphere, _ciB = -1;
+  for (var _i4 = 0; _i4 < _SP4.cells.length && _ciB < 0; _i4++) {
+    var _c4 = _SP4.cells[_i4];
+    if (_c4 && _c4.type === 'desert' && !G.resource.plantAt(_i4)) _ciB = _i4;
+  }
+  check('地图上能找到可建的荒漠格（发电站地块）', _ciB >= 0, 'ci=' + _ciB);
+  var rUnscan = G.buildPlant(_ciB, 'quarry');
+  check('未勘探的地块拒绝建厂（近地面勘探是前置）', rUnscan.ok === false, rUnscan.msg);
+  G.resource.scan(_ciB);
+  var r = G.buildPlant(_ciB, 'quarry');
+  check('星球地块建发电站', r.ok === true, r.msg);
+  check('施工中：建造队列登记 plant_build（旧 extGrid 的 pending 字段随迁移退役）',
+    (s.queues.build || []).some(function (q) { return q && q.type === 'plant_build' && q.ci === _ciB; }));
+  for (var i2 = 0; i2 < 200 && (s.queues.build || []).length; i2++) G.tickOnce();
+  check('发电站落成（plantAt 有厂）', !!G.resource.plantAt(_ciB));
+  check('落成后投影数组含该厂', extOf(s).some(function (e) { return e.ci === _ciB; }));
+  /* 投影只读：写投影数组不许改到存档（这是 extGridOf 改成"现算投影"后最容易踩的坑） */
+  check('extGridOf 投影是只读快照（写它不改存档）', (function () {
+    var g = extOf(s), t = g.filter(function (e) { return e.ci === _ciB; })[0];
+    if (!t) return false;
+    t.lv = 99;
+    var rec = G.resource.at(_ciB);
+    return !!rec && rec.plantLv === 1;
+  })());
+  /* v89.235（老板）规则变更：资源建筑等级 ≤ 政务厅等级 ——
+     本用例验的是**施工状态机**，先抬政务厅到 Lv2 解锁（闸门本体由 §235 专测）。 */
   ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { s.res[k] += 500000; });
   var _gi235 = s.cities[0].cells.findIndex(function (cc) { return cc.build && cc.build.id === 'guanfu'; });
   var _ru235 = G.upgradeAt(s.cities[0].id, _gi235);
   check('（§235 造局）政务厅升至 Lv2', _ru235.ok === true, _ru235.msg);
   for (var _iq235 = 0; _iq235 < 120 && s.queues.build.length; _iq235++) G.tickOnce();
   check('（§235 造局）政务厅到位 Lv2', G.buildingLevel(s.cities[0], 'guanfu') >= 2);
-  var r2 = G.upgradeExt(emptyIdx);
-  check('升级净化厂地块', r2.ok === true, r2.msg);
-  check('升级中 pending 置位', extOf(s)[emptyIdx].pending === 'farm');
-  for (var i3 = 0; i3 < 60; i3++) G.tickOnce();   // v89.128：曲线后升级需 ~24 游戏分 → 60 tick@30× 足够
-  check('净化厂地块等级+1', extOf(s)[emptyIdx].lv === 2);
-  check('升级完成 pending 清除', extOf(s)[emptyIdx].pending === null);
-  var r3 = G.buildExt(emptyIdx, 'mine');
-  check('已占地块不可再建', r3.ok === false);
+  var r2 = G.upgradePlant(_ciB);
+  check('升级发电站', r2.ok === true, r2.msg);
+  check('升级施工中：队列登记 plant_upgrade',
+    (s.queues.build || []).some(function (q) { return q && q.type === 'plant_upgrade' && q.ci === _ciB; }));
+  for (var i3 = 0; i3 < 200 && (s.queues.build || []).length; i3++) G.tickOnce();
+  check('发电站升到 Lv2', (G.resource.plantAt(_ciB) || {}).plantLv === 2);
+  var r3 = G.buildPlant(_ciB, 'quarry');
+  check('已建厂地块不可重复建', r3.ok === false, r3.msg);
   /* v89.224 规则变更：新建筑需初始前置（居所 Lv2/3 起）—— 夹具先抬初始居所 */
   s.cities[0].cells.forEach(function (x) { if (x.build && x.build.id === 'minfang') x.build.lvl = Math.max(5, x.build.lvl || 1); });
   /* 城内建造 pending/进度 */
@@ -763,26 +830,34 @@
   check('U.durExact 大数值精确到秒', U.durExact(3995) === '1:06:35', U.durExact(3995));
   check('U.durExact 小数值 MM:SS', U.durExact(65) === '01:05', U.durExact(65));
   s2.queues.build.length = 0;
-  (extOf(s2) || []).forEach(function (e) { e.pending = null; });
-  var ei = extOf(s2).findIndex(function (e) { return !e.type && !e.pending; });
-  var rb = G.buildExt(ei, 'farm');
-  check('城外地块建造可发起', rb.ok === true, rb.msg);
+  /* v158.13（S4）规则变更：资源建筑已迁到星球，施工对象是**星球第 ci 格**
+     —— 读秒口径不变（同一个 buildProgressOf 出 pct/left/label），只换"谁在施工"：
+     旧写法是 `G.buildExt(空地槽位)`，迁移后堆场恒空、槽位不存在，改走 G.buildPlant。 */
+  ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { s2.res[k] += 200000; });
+  var _ci16 = -1;
+  for (var _i16 = 0; _i16 < _SP4.cells.length && _ci16 < 0; _i16++) {
+    var _c16 = _SP4.cells[_i16];
+    if (_c16 && _c16.type === 'desert' && !G.resource.plantAt(_i16)) _ci16 = _i16;
+  }
+  check('读秒用例找到第二块可建荒漠格', _ci16 >= 0, 'ci=' + _ci16);
+  G.resource.scan(_ci16);
+  var rb = G.buildPlant(_ci16, 'quarry');
+  check('星球地块建造可发起', rb.ok === true, rb.msg);
   var qb = s2.queues.build[0];
   check('建造时间保底≥5现实秒（高倍率下不至于秒完）', !!qb && (qb.totalTime / G.timeScale()) >= 4.9,
     qb ? (qb.totalTime / G.timeScale()).toFixed(1) + ' 现实秒 @' + G.timeScale() + '×' : '队列为空');
-  var l1 = G.buildPct('ext', ei);
+  var l1 = G.buildPct('plant', _ci16);
   G.tickOnce();
-  var l2 = G.buildPct('ext', ei);
+  var l2 = G.buildPct('plant', _ci16);
   check('倒计时每秒文本变化', l1 !== l2, l1 + ' → ' + l2);
   check('精确格式 X% · MM:SS', /^\d+% · (\d+:)?\d{2}:\d{2}$/.test(l2), l2);
-  var pr = G.buildProgress('ext', ei);
+  var pr = G.buildProgress('plant', _ci16);
   check('buildProgress 返回 pct/left/label', !!pr && typeof pr.pct === 'number' && typeof pr.left === 'number' && !!pr.label,
     'pct=' + pr.pct + ' left=' + pr.left.toFixed(1) + 's');
   for (var iw = 0; iw < 3; iw++) G.tickOnce();
-  check('连续 tick 后倒计时持续递减', G.buildProgress('ext', ei).left < pr.left,
-    pr.left.toFixed(1) + 's → ' + G.buildProgress('ext', ei).left.toFixed(1) + 's');
+  check('连续 tick 后倒计时持续递减', G.buildProgress('plant', _ci16).left < pr.left,
+    pr.left.toFixed(1) + 's → ' + G.buildProgress('plant', _ci16).left.toFixed(1) + 's');
   s2.queues.build.length = 0;
-  (extOf(s2) || []).forEach(function (e) { e.pending = null; });
 
   console.log('\n===== 17. 资源数值显示（可见增长）=====');
   /* U.fmt 会把 20000 缩写成 "2.0万" 并向下取整，导致每秒 +6.67 的变化 150 秒才可见一次。
@@ -2852,21 +2927,51 @@
     cS.cells.forEach(function (c, i2) { if (c.official) gi = i2; });
     return G.demolishAt(cS.id, gi).ok === false;
   })());
-  G.ensureExtGrid();
-  var eIdx = extOf(gS).findIndex(function (e) { return !e.type && !e.pending; });
-  extOf(gS)[eIdx] = { type: 'farm', lv: 2, pending: null };
-  var eRef = G.demolishExtRefund(eIdx);
+  /* ============================================================
+   * v158.13（S4）**规则变更**：城外拆毁从"堆场第 N 个格子"迁到"星球第 ci 格"。
+   * ------------------------------------------------------------
+   * 旧写法：`extOf(gS)[eIdx] = {type:'farm',lv:2}` 直接往堆场数组塞一块地，
+   *   再 demolishExtPreview/demolishExt 拆它 —— 迁移后 extGridOf 是**只读投影**，
+   *   往它上面塞东西既不落档、下标也不存在（这就是本节改前报"地块不存在"的原因）。
+   * 新口径：造局 = 真在星球上建一座厂 → 落成 → 拆。返还预览走唯一算式
+   *   `plantDismantleRefund`（与 dismantlePlant 内部同一个），不各算一份。
+   * ============================================================ */
+  var _cpci = -1;
+  for (var _cpi = 0; _cpi < G.sphere.cells.length && _cpci < 0; _cpi++) {
+    if (G.sphere.cells[_cpi] && G.sphere.cells[_cpi].type === 'forest' && !G.resource.plantAt(_cpi)) _cpci = _cpi;
+  }
+  check('星球上找到可建温室的地块（拆毁用例造局）', _cpci >= 0, 'ci=' + _cpci);
+  ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { gS.res[k] += 200000; });
+  G.resource.scan(_cpci);
+  var _rbDem = G.buildPlant(_cpci, 'forest');
+  check('（造局）星球上建一座温室', _rbDem.ok === true, _rbDem.msg);
+  /* 施工时长按游戏秒记（温室 1 级约 1500 游戏秒），ticks 要给够 —— 给少了会卡在
+     "正在施工不能拆"（v158.13 首轮就是这么假红的）。 */
+  for (var _iDem = 0; _iDem < 4000 && gS.queues.build.length; _iDem++) G.tickOnce();
+  check('（造局）温室落成', !!G.resource.plantAt(_cpci));
+  var eRef = G.plantDismantleRefund(_cpci);
   check('城外拆毁返还预览存在', !!eRef && eRef.grain > 0, JSON.stringify(eRef));
-  var rDem2 = G.demolishExt(eIdx);
+  var rDem2 = G.dismantlePlant(_cpci);
   check('城外拆毁执行成功', rDem2.ok === true, rDem2.msg);
-  check('城外拆毁后地块变荒地', !extOf(gS)[eIdx].type);
-  check('荒地不可再拆', G.demolishExt(eIdx).ok === false);
+  check('城外拆毁后地块变荒地', !G.resource.plantAt(_cpci));
+  check('荒地不可再拆', G.dismantlePlant(_cpci).ok === false);
   check('施工中地块不可拆毁', (function () {
-    var e2 = extOf(gS).findIndex(function (e) { return !e.type && !e.pending; });
-    extOf(gS)[e2] = { type: null, lv: 1, pending: 'farm' };
-    var r = G.demolishExt(e2);
-    extOf(gS)[e2].pending = null;
-    return r.ok === false;
+    /* 造局：真建一座 → 落成 → 塞一条在办的升级队列（等价于"点了升级、还没完工"）。
+       不塞的话这块地还是空的，「不可拆」会因"没有厂"而假通过。 */
+    var _ciBz = -1;
+    for (var k2 = 0; k2 < G.sphere.cells.length && _ciBz < 0; k2++) {
+      if (G.sphere.cells[k2] && G.sphere.cells[k2].type === 'forest' && !G.resource.plantAt(k2)) _ciBz = k2;
+    }
+    if (_ciBz < 0) return false;
+    G.resource.scan(_ciBz);
+    if (!G.buildPlant(_ciBz, 'forest').ok) return false;
+    for (var k3 = 0; k3 < 4000 && gS.queues.build.length; k3++) G.tickOnce();
+    if (!G.resource.plantAt(_ciBz)) return false;
+    gS.queues.build.push({ pid: G.pidOf(gS.cities[0]), cityId: gS.cities[0].id, ci: _ciBz, buildId: 'forest',
+      type: 'plant_upgrade', fromLevel: 1, targetLevel: 2, paidCost: {}, elapsed: 0, totalTime: 9999 });
+    var rBusy = G.dismantlePlant(_ciBz);
+    gS.queues.build.pop();
+    return rBusy.ok === false && /施工/.test(rBusy.msg || '');
   })());
   check('拆毁有二次确认弹窗', /ui\.openDemolishConfirm = function/.test(uiS) && /data-action="demolish-ask"/.test(uiS));
 
@@ -3302,48 +3407,55 @@
 
   /* ============================================================
    * 25. v14：外城地块按城独立 / 辖区特产 / 名城岁贡
+   * ------------------------------------------------------------
+   * v158.13（S4）**规则变更**：老板「资源建筑从城外转移到大地图」后，
+   * "外城地块（12 格堆场）"这一层不存在了 —— 产地是星球上的采集场，
+   * 归属仍按城（`rec.city`）。本节按新口径重写，验的仍是同一件事：
+   * **产地按城独立、互不影响、全境能汇总、产量遍历所有城**。
    * ============================================================ */
-  console.log('\n===== 25. 外城按城独立 / 辖区特产 / 岁贡（v14）=====');
+  console.log('\n===== 25. 城外产地按城独立 / 辖区特产 / 岁贡（v14 · v158.13 新口径）=====');
   var V14 = G.newGame({ name: '岁贡测试', cityName: '灰岗' });
   check('state 上不再有全局 extGrid', V14.extGrid === undefined);
-  check('首城自带外城地块（12 块）', V14.cities[0].extGrid && V14.cities[0].extGrid.length === 12);
+  check('首城开局 5 座采集场落在星球上（旧「12 块堆场」随 v158.13 迁移退役）', (function () {
+    var n = G.extUsed(V14.cities[0]);
+    return n === 5 && V14.cities[0].extGrid.length === 12;   /* extGrid 只剩老档兼容壳，不再产出 */
+  })(), '采集场 ' + G.extUsed(V14.cities[0]) + ' 座');
   check('首城档位为 self（自建城无岁贡）', V14.cities[0].type === 'self');
 
-  /* --- 外城地块按城独立 --- */
-  console.log('  --- 外城地块按城独立 ---');
+  /* --- 产地按城独立 --- */
+  console.log('  --- 城外产地按城独立 ---');
   var nCity = G.makeCity({ id: 'conq_test', name: '泽乡', x: 255, y: 335, type: 'jun', state: '泽心' });
   V14.cities.push(nCity);
-  check('攻占的新城自带自己的外城地块', nCity.extGrid && nCity.extGrid.length === 12);
-  check('新城地块与首城是不同数组', nCity.extGrid !== V14.cities[0].extGrid);
-  var extRef = G.extGridOf(nCity);
-  check('extGridOf 返回城内地块引用（多次调用同一数组）', G.extGridOf(nCity) === extRef);
-  /* 在首城地块上建净化厂，新城不应受影响 */
-  var usedA0 = G.extUsed(V14.cities[0]);      // 首城初始 2田1木1石1铁 = 5 块
-  V14.cities[0].extGrid[0] = { id: 'e1', type: 'farm', lv: 5, pending: null };
-  check('A 城地块变动不影响 B 城', !nCity.extGrid[0].type);
-  check('extUsed 按城统计', G.extUsed(V14.cities[0]) === usedA0 && G.extUsed(nCity) === 0,
-    '首城 ' + G.extUsed(V14.cities[0]) + ' / 新城 0');
-  check('extCap 按本城政务厅等级', G.extCap(V14.cities[0]) === 12 && G.extCap(nCity) === 12);
-  /* 政务厅升级 → 只扩本城 */
-  V14.cities[0].cells.forEach(function (c) {
-    if (c.build && c.build.id === 'guanfu') c.build.lvl = 3;
-  });
-  G.ensureExtGrid(V14.cities[0]);
-  check('政务厅升到 3 级 → 本城地块扩到 18', V14.cities[0].extGrid.length === 18);
-  check('本城扩展不影响他城', nCity.extGrid.length === 12);
-  check('全境统计汇总多城', (function () {
+  check('攻占的新城不会凭空得到采集场（产地只在星球上、要自己去建）', G.extUsed(nCity) === 0);
+  check('extGridOf 迁移态返回**只读投影**（两次调用内容同、引用不同 —— 写它不落档）', (function () {
+    var a = G.extGridOf(V14.cities[0]), b = G.extGridOf(V14.cities[0]);
+    if (a === b) return false;
+    var t = a[0];
+    if (!t) return false;
+    t.lv = 99;
+    var still = G.resource.plantAt(t.ci, G.pidOf(V14.cities[0]));
+    return !!still && still.plantLv !== 99;
+  })());
+  var usedA0 = G.extUsed(V14.cities[0]);      /* 开局 2 田 1 木 1 石 1 铁 = 5 座 */
+  /* 在首城名下再建一座，新城不应受影响 */
+  var _extraA = mkPlants(V14.cities[0], [['farm', 5]]);
+  check('（造局）首城名下新增 1 座净化厂', _extraA === 1);
+  check('A 城产地变动不影响 B 城', G.extUsed(nCity) === 0 && G.extUsed(V14.cities[0]) === usedA0 + 1,
+    '首城 ' + G.extUsed(V14.cities[0]) + ' / 新城 ' + G.extUsed(nCity));
+  check('extUsed 按城统计', G.extUsed(V14.cities[0]) === usedA0 + 1 && G.extUsed(nCity) === 0);
+  check('全境统计汇总多城（used/byType 走 extGridOf · cap 不再是"地块数"）', (function () {
     var sum = G.extSummary();
-    return sum.towns === 2 && sum.used === usedA0 && sum.cap === 30;
-  })(), '城' + G.extSummary().towns + ' 用' + G.extSummary().used + ' 上限' + G.extSummary().cap);
+    return sum.towns === 2 && sum.used === usedA0 + 1 && (sum.byType.farm || 0) >= 3;
+  })(), '城' + G.extSummary().towns + ' 用' + G.extSummary().used);
   /* v90.92：任务系统退役 —— 原读 GAME.questMetric('extCount','farm')。
      全境 ext 口径**唯一出口**是 G.extSummary()，此处改钉它（防口径漂移回魂）。 */
   check('全境 ext 口径唯一出口 = G.extSummary（v90.92：questMetric 已退役）',
-    typeof G.questMetric === 'undefined' && G.extSummary().cap === 30 && G.extSummary().towns === 2);
+    typeof G.questMetric === 'undefined' && G.extSummary().towns === 2);
 
   /* 生产遍历所有城市 */
-  V14.cities[0].extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
-  nCity.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
-  check('产量遍历所有城市的地块（两城各 5500/h）', (function () {
+  var _extraB = mkPlants(nCity, [['farm', 10]]);
+  check('（造局）新城名下建 1 座净化厂 Lv10', _extraB === 1);
+  check('产量遍历所有城市的采集场（两城各 5500/h 基础）', (function () {
     /* v144.4（A1 领土连通真生效）：本用例测的是「产量遍历所有城」，
        而测试第二城落在远隔海域的坐标（255,335），连通系数会把它压到 0.35。
        为了只测遍历口径，这里临时关掉连通惩罚（用完还原）—— 连通本身的断言另见 §563。 */
@@ -5340,12 +5452,38 @@
     }
     return noHack && plain;
   })());
-  check('±3 之外已恢复真实地形（不再一片平原）', (function () {
+  /* ---- v158.11（S2）规则变更：平原占比翻倍，出生点视野口径按新规则重写 ----
+     老板「增大平地地形占比」后，单块平原最大可达上千格（实测 seed 1 为 1296 格）——
+     出生城必然落在大平原上，原断言「±5 内 ≥3 种地形」在被赋予新规则后会**必然**
+     翻红（实测 seed 20261016 出生城 (331,53)：±5、±9 都只有 plain+forest 两种）。
+     要守的真实意图是「出生点不该是一片纯色、看不出地形」→ 改为 **≥2 种**。
+     另加一条统计口径（全星平原格 ±5 内 ≥2 种的比例 ≥85%），防"整星大片纯色"。
+     ⚠️ 上限没放宽：仍是 2 而不是 1，纯色出生点照样会被拦下。 */
+  check('出生点 ±5 内 ≥2 种地形（v158.11 平原占比翻倍后按新口径重写 · 原要求 3 种）', (function () {
     var c0 = st30.cities[0], seen = {};
     for (var y = c0.y - 5; y <= c0.y + 5; y++) for (var x = c0.x - 5; x <= c0.x + 5; x++) {
       var tl = G.map.tile(x, y); if (tl) seen[tl.terrain] = 1;
     }
-    return Object.keys(seen).length >= 3;
+    return Object.keys(seen).length >= 2;
+  })());
+  check('全星平原格 ±5 内 ≥2 种的占比 ≥85%（防整星大片纯色）', (function () {
+    var SP0 = G.sphere;
+    if (!SP0 || !SP0.cells || !SP0.ciOfXY) return false;
+    var cells = SP0.cells, plains = [], i;
+    for (i = 0; i < cells.length; i++) if (cells[i] && cells[i].type === 'plain') plains.push(i);
+    if (plains.length < 100) return false;                 /* 下限：防 0===0 平凡解 */
+    var step = Math.max(1, Math.floor(plains.length / 300)), ok = 0, tot = 0;
+    for (var s = 0; s < plains.length; s += step) {
+      var c0 = cells[plains[s]], seen = {};
+      for (var dy = -5; dy <= 5; dy++) for (var dx = -5; dx <= 5; dx++) {
+        var ci = SP0.ciOfXY(c0.x + dx, c0.y + dy);
+        var cc = ci >= 0 ? cells[ci] : null;
+        if (cc && cc.type) seen[cc.type] = 1;
+      }
+      tot++;
+      if (Object.keys(seen).length >= 2) ok++;
+    }
+    return tot >= 100 && ok / tot >= 0.85;
   })());
 
   /* ---------- ⑦ 暗黑图标 ---------- */
@@ -5614,43 +5752,20 @@
     && /case 'move-do'/.test(mS31) && /ui\.openShell\(\{/.test(mS31));
   check('Esc 可取消移动待选状态', /ui\._moveFrom != null\) \{ ui\._moveFrom = null/.test(mS31));
 
-  /* ---- ⑧b 城外改建 ---- */
-  console.log('  --- ⑧b 城外改建 ---');
-  check('GAME.convertExt / extConvertCost 已实现',
-    typeof G.convertExt === 'function' && typeof G.extConvertCost === 'function');
-  check('改建折扣为 60%', G.EXT_CONVERT_RATE === 0.6);
-  check('实测：改建保留等级', (function () {
-    var s = G.state, c = G.currentCity() || s.cities[0];
-    G.ensureExtGrid(c);
-    var g = G.extGridOf(c);
-    var i = -1;
-    for (var k = 0; k < g.length; k++) { if (g[k].type && !g[k].pending) { i = k; break; } }
-    if (i < 0) return true;
-    g[i].lv = 4;
-    var from = g[i].type;
-    var to = null;
-    DATA.EXT_BUILD_ORDER.forEach(function (x) { if (!to && x !== from) to = x; });
-    s.res.grain = 1e8; s.res.wood = 1e8; s.res.stone = 1e8; s.res.iron = 1e8;
-    var r = G.convertExt(i, to);
-    return r.ok && g[i].type === to && g[i].lv === 4;
-  })());
-  check('实测：改建费低于全新同等级造价', (function () {
-    var s = G.state, c = G.currentCity() || s.cities[0];
-    var g = G.extGridOf(c);
-    var i = -1;
-    for (var k = 0; k < g.length; k++) { if (g[k].type) { i = k; break; } }
-    if (i < 0) return true;
-    g[i].lv = 5;
-    var to = g[i].type === 'mine' ? 'farm' : 'mine';
-    var cost = G.extConvertCost(i, to);
-    var full = 0;
-    DATA.EXT_BUILDINGS[to].cost.slice(0, 5).forEach(function (r) { full += r[0] || 0; });
-    return cost.grain > 0 && cost.grain < full;
-  })());
-  check('改建为同类型被拒 / 施工中不可改建',
-    /与当前类型相同/.test(dS31) && /施工中不可改建/.test(dS31));
-  check('改建设有专属选择面板', /ui\.openExtConvert = function/.test(uS31) && /data-action="ext-convert-ask"/.test(uS31));
-  check('城外地块操作分区（正向 / 危险）', /🔧 改建为其他资源建筑/.test(uS31));
+  /* ---- ⑧b 城外改建：v158.13（S4）整组退役 ----
+     ⛔ 老板「资源建筑从城外转移到大地图」后，一块地能建哪种厂由**地形资源**决定
+     （森林→生物质→只有水培温室），"改成另一种类型"没有合法目标 —— 功能失去意义。
+     已整条清：EXT_CONVERT_RATE / extConvertCost / convertExt / 'ext-convert-ask' /
+     'ext-convert' / ui.openExtConvert / 城外地块面板「🔧 改建」按钮 + 本组 7 条断言。
+     换用途的正规路径 = 拆除（返还半数）后重建，见第 4 节与 §25 拆毁用例。 */
+  check('⛔ 城外改建已整体退役（函数/入口/面板三面都不在了）',
+    /* 注意：墓碑注释里写着 'ext-convert-ask' 的字面 —— 判据必须**剥注释**再查，
+       否则被自己的说明误伤（§48.4 老规矩：只查可执行形态）。 */
+    typeof G.convertExt === 'undefined' && typeof G.extConvertCost === 'undefined'
+    && G.EXT_CONVERT_RATE === undefined
+    && !/ui\.openExtConvert = function/.test(uS31)
+    && stripComment(uS31).indexOf('ext-convert-ask') < 0
+    && stripComment(mS31).indexOf('ext-convert-ask') < 0);
 
   /* ---- ⑨ 任务占位文案 ---- */
   console.log('  --- ⑨ 任务文案 ---');
@@ -11538,11 +11653,12 @@ console.log('\n===== 45. v60 城市归属与名城专有 =====');
     var a = V.cities[0], b = null;
     V.cities.forEach(function (c) { if (c.id === 'v60b') b = c; });
     if (!b) return false;
-    /* 各给一块净化厂，保证两城都有正的净水产 ——
+    /* 各给一座净化厂，保证两城都有正的净水产 ——
        只断言"B 没变"是不够的：把结算写成"只有首城结算"它也不会红。
-       必须同时证明"B 自己也在涨"（这就是本轮破坏测试查出来的盲区）。 */
-    a.extGrid[0] = { id: 'e1', type: 'farm', lv: 5 };
-    b.extGrid[0] = { id: 'e1', type: 'farm', lv: 5 };
+       必须同时证明"B 自己也在涨"（这就是本轮破坏测试查出来的盲区）。
+       v158.13（S4）：产地改到星球地块 → 造局走 mkPlants（写投影不落档）。 */
+    var _paA = mkPlants(a, [['farm', 5]]), _paB = mkPlants(b, [['farm', 5]]);
+    if (!_paA || !_paB) return false;
     a.res.grain = 1000; b.res.grain = 1000;
     var keep = G.ui._cityId;
     G.ui._cityId = a.id;                       // 当前城 = A（autoUpgrade 等按当前城）
@@ -13066,8 +13182,15 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
             pending: null, official: !!x.official };
         });
         fake.col = sh.col; fake.row = sh.row; fake.wallLv = sh.wallLv;
-        fake.extGrid = sh.extGrid.map(function (e) { return { id: e.id, type: e.type, lv: e.lv }; });
-        var cap = G.storeCapOf(fake), want = DATA.NPC_CITY_RES.resByTier[ty];
+        /* v158.13（S4）：产地迁到星球后，`fake.extGrid` 不再被 extGridOf 读取
+           （它改投影星球上的采集场）。本用例要验的是**仓容算式 vs resByTier 基准**，
+           不是"采集场怎么来的" —— 所以只在这一段把取材口换成影子城的堆场，
+           算式（storePartsOf / extStoreCapByResOf）逐字不动，用完立刻还原。 */
+        var _bakOut191b = GAME.extGridOf;
+        GAME.extGridOf = function () { return sh.extGrid; };
+        var cap;
+        try { cap = G.storeCapOf(fake); } finally { GAME.extGridOf = _bakOut191b; }
+        var want = DATA.NPC_CITY_RES.resByTier[ty];
         if (Math.abs(cap - want) > Math.max(1, cap * 0.001)) {
           bad.push(ty + '(仓容 ' + cap + ' ≠ 基准 ' + want + ')');
         }
@@ -13576,7 +13699,13 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       G.wallSlotOf(c).build = { id: 'chengqiang', lvl: capW };   /* v89.128：环城槽拉满 */
       /* 其余建筑也拉满 → 必须报"全部建筑已满级（含围墙）" */
       c.cells.forEach(function (x) { if (x.build && DATA.BUILDINGS[x.build.id]) x.build.lvl = DATA.BUILDINGS[x.build.id].maxLevel; });
-      (G.extGridOf(c) || []).forEach(function (e) { if (e && e.type) e.lv = DATA.MAX_BLEVEL; });
+      /* v158.13（S4）：「其余建筑也拉满」必须包到**星球上的采集场** ——
+         旧写法改投影数组（`G.extGridOf(c).forEach(e => e.lv = MAX)`）不落档，
+         采集场仍是 Lv1 → autoUpgrade 永远挑得到候选，"全部满级"这条就假红。 */
+      var _pid126 = G.pidOf(c);
+      (G.resource.plantsOf(c.id) || []).forEach(function (p) {
+        G.resource.set(p.ci, { plantLv: DATA.MAX_BLEVEL }, _pid126);
+      });
       st.settings.autoUpgrade = true;
       st.queues.build.length = 0;
       var r = G.autoUpgrade();
@@ -25864,10 +25993,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var tmp = G.makeCity({ id: 'extstore141', name: 'T', col: 6, row: 6 });
       st.cities.push(tmp);
       G.ui._cityId = tmp.id;
-      var g = G.extGridOf(tmp);
-      g.length = 0;
-      g.push({ id: 'e1', type: 'farm', lv: 1 }, { id: 'e2', type: 'forest', lv: 1 },
-        { id: 'e3', type: 'quarry', lv: 1 }, { id: 'e4', type: 'mine', lv: 12 });
+      /* v158.13（S4）：造局改真写星球地块（投影数组写不动，见 mkPlants 注释） */
+      var _made141 = mkPlants(tmp, [['farm', 1], ['forest', 1], ['quarry', 1], ['mine', 12]]);
       var n = G.extStoreCapOf(tmp);
       var cap = G.storeCapOf(tmp);
       /* 期望 = round(200万 × (1+科技) × (1+专精) × (1+档位)) + 露天 —— 拆开验"纯加法" */
@@ -25883,7 +26010,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          差 1 属逐类取整的正常结果 —— 规则变更所致）。 */
       var want = 3 * Math.round(1 * (DATA.BASE_STORE || 2000000) / div)
         + Math.round(12 * (DATA.BASE_STORE || 2000000) / div);
-      return hasAdd && n === want && cap === base + n && want === 4999999;
+      return hasAdd && _made141 === 4 && n === want && cap === base + n && want === 4999999;
     })());
 
     /* ---- ③ 宝物整叠（右键入口 + 小窗 + 同一个 doBagUse） ---------- */
@@ -26511,18 +26638,26 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var tmp = G.makeCity({ id: 'ext148', name: 'T', col: c.x, row: c.y });
       st.cities.push(tmp);
       G.ui._cityId = tmp.id;
-      var g = G.extGridOf(tmp);
-      g.length = 0;
-      g.push({ id: 'x1', type: 'farm', lv: 12 });
-      var lv12 = G.extStoreCapOf(tmp);          /* Lv12 单块 = 200万 × 12 ÷ 6 = 400 万 */
-      g[0].lv = 1;
-      var lv1 = G.extStoreCapOf(tmp);           /* Lv1 单块 = 33.3 万 */
-      /* 未建/施工的地块不计（e.type 为空） */
-      g.push({ id: 'x2', type: null, lv: 24 });
+      /* v158.13（S4）：造局改真写星球地块（投影数组写不动）——
+         Lv12 单块 = 200万 × 12 ÷ 6 = 400 万；降回 Lv1 = 33.3 万。 */
+      var _mk148 = mkPlants(tmp, [['farm', 12]]);
+      var lv12 = G.extStoreCapOf(tmp);
+      var _pl148 = G.resource.plantsOf(tmp.id);
+      if (_pl148[0]) G.resource.set(_pl148[0].ci, { plantLv: 1 }, G.pidOf(tmp));
+      var lv1 = G.extStoreCapOf(tmp);
+      /* 勘探了但没建厂的地块不计（旧"type 为空不计"的同义情形） */
+      var _pid148 = G.pidOf(tmp), _sc148 = -1;
+      for (var _i148 = 0; _i148 < G.sphere.cells.length && _sc148 < 0; _i148++) {
+        var _t148 = G.sphere.cells[_i148] && G.sphere.cells[_i148].type;
+        if (_t148 && G.resource.RES_OF_TYPE[_t148] && !G.resource.plantAt(_i148, _pid148)) {
+          G.resource.scan(_i148); _sc148 = _i148;
+        }
+      }
       var skip = G.extStoreCapOf(tmp);
       G.ui._cityId = bkId;
       st.cities.pop();
       return DATA.EXT_STORE_DIV === 6 && DATA.EXT_STORE_PER_LV === undefined
+        && _mk148 === 1 && _sc148 >= 0
         && lv12 === 4000000 && lv1 === Math.round(2000000 / 6) && skip === lv1;
     })());
 
@@ -27092,9 +27227,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ⑩ 野地按钮规格（文案 / 等长 / 统一规格 · 其他弹窗共用） ---- */
-    check('§131⑩ 野地面板「⛏️ 采集」+ op-zone-eq 等长（半行宽）+ 禁用态统一 + 建筑键共用规格', (function () {
+    check('§131⑩ 地块面板「⛏️ 采集」+ op-zone-eq 等长（半行宽）+ 禁用态统一 + 建筑键共用规格', (function () {
+      /* v158.13（S4）：判据从"全文件 op-zone-eq 恰好 6 处"改为**地块面板函数内 ≥5 处** ——
+         这一版新加了「资源地块」区（勘探/建厂），另有「城外采集场总览」页复用同一排版类，
+         全文件计数不再是一个有意义的锚（数着数着就会变成"改样式就红"）。 */
+      var land131 = '';
+      try { land131 = codeOf(u131s, 'ui.openLandModalCi = function'); } catch (e131) { land131 = ''; }
       return u131s.indexOf('>⚙️ 设置采集</button>') < 0
-        && (u131s.match(/op-zone-eq/g) || []).length === 6   /* v89.152：+「产出」区 · v89.193：+前哨护持区 · v89.195：+前哨危险区（放手） */
+        && (land131.match(/op-zone-eq/g) || []).length >= 5
         && /\.op-zone-eq \.op-row > \.btn \{ flex: 0 0 auto; width: calc\(\(100% - var\(--sp-3\)\) \/ 2\); \}/.test(h131)
         && /\.op-zone-eq \.op-row > \.btn:disabled,\s*\n  \.bldg-acts > \.btn:disabled,\s*\n  \.bldg-foot > \.btn:disabled \{ opacity: \.55;/.test(h131);
     })());
@@ -27416,13 +27556,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && u154.indexOf('wild-abandon-arm') < 0
       && m154.indexOf('_wildArm154 =') < 0 && m154.indexOf("case 'wild-abandon-arm'") < 0);
 
-    /* ---- ⑥ 改建完成 → 直接回城外大界面 ---- */
-    check('§154⑥ 改建完成 → closeAllModals（一次关净回大界面，不再弹回地块面板）', (function () {
-      var i = m154.indexOf("case 'ext-convert': (function () {");
-      if (i < 0) return false;
-      var seg = m154.slice(i, i + 700);
-      return seg.indexOf('ui.closeAllModals()') >= 0 && seg.indexOf('ui.closeModal()') < 0;
-    })());
+    /* ---- ⑥ 改建完成 → 直接回城外大界面：v158.13（S4）整组退役 ----
+       一块地能建哪种厂由地形资源决定，"改成另一种"无合法目标（见 domain.js 墓碑）。 */
+    check('⛔ §154⑥ 改建流程已退役（ext-convert 入口/case 都不在 main.js）',
+      stripComment(m154).indexOf("case 'ext-convert'") < 0
+      && stripComment(m154).indexOf("case 'ext-convert-ask'") < 0);
 
     /* ---- ⑦ 需求档案在册 ---- */
     check('§154⑦ 需求档案在册（v89.154 · 老板原文关键句逐字）', (function () {
@@ -27537,17 +27675,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ---- ⑤ 容量显式化（老板 5） ---- */
     check('§155⑤ 单块堆场出口（lv×BASE/DIV）· 面板「另加<归属资源>上限」（v89.212 分账）· tip 无 undefined', (function () {
-      var st = G.state, c = G.currentCity(), grid = G.extGridOf(c);
-      var keep = grid[3] ? JSON.parse(JSON.stringify(grid[3])) : null;
-      grid[3] = { id: 'e4', type: 'quarry', lv: 3 };
-      var one = G.extStoreCapOneOf(grid[3]);
+      var c = G.currentCity();
+      /* v158.13（S4）规则变更：面板入口从"堆场第 3 格（openExtModal）"改为
+         "星球某块地上的采集场（openPlantModal(ci)）" —— 判据（单块堆场算式 +
+         按资源分账文案）逐条不变，只换被打开的那一个对象。 */
+      var _mk155 = mkPlants(c, [['quarry', 3]]);
+      var _pl155 = G.resource.plantsOf(c.id).filter(function (x) { return x.type === 'quarry' && x.lv === 3; })[0];
+      var one = G.extStoreCapOneOf({ type: 'quarry', lv: 3 });
       var expect = Math.round(3 * DATA.BASE_STORE / DATA.EXT_STORE_DIV);
       var html = '';
-      var _om = G.ui.openModal; G.ui.openModal = function (h) { html = h; };
-      try { G.ui.openExtModal(3); } catch (e) { html = 'ERR:' + e.message; }
-      G.ui.openModal = _om;
-      grid[3] = keep;
-      return one === expect && G.extStoreCapOneOf({ type: null, lv: 0 }) === 0
+      if (_pl155) {
+        var _om = G.ui.openModal; G.ui.openModal = function (h) { html = h; };
+        try { G.ui.openPlantModal(_pl155.ci); } catch (e) { html = 'ERR:' + e.message; }
+        G.ui.openModal = _om;
+      }
+      return _mk155 === 1 && !!_pl155 && one === expect && G.extStoreCapOneOf({ type: null, lv: 0 }) === 0
         /* v89.212（老板 1）：面板标签按归属资源（石场 → 「另加电能上限」；v89.229 资源换代）；
            悬停分解行改「· 城外堆场（本类地块）：+」；选建悬停按类型动态映射资源名。 */
         && html.indexOf('另加电能上限') >= 0 && html.indexOf(U.fmt(one)) >= 0
@@ -30838,27 +30980,32 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && dS188.indexOf('麾下名将达') < 0;
     })());
 
-    /* ⑥ 民心行门 + 改建松绑（源码级 · 渲染两态在实机脚本 shot_v89188_gates） */
-    check('§188⑥ 民心段生成门 = 政务厅判据 · 改建按钮零 disabled · 施工说明在册（源码级）', (function () {
+    /* ⑥ 民心行门（源码级 · 渲染两态在实机脚本 shot_v89188_gates）
+       ⛔ v158.13（S4）：本条原附带「改建按钮零 disabled」——改建已整组退役，判据随之收掉。 */
+    check('§188⑥ 民心段生成门 = 政务厅判据 · 施工说明在册（源码级）', (function () {
       var gate188 = /if \(_gfBid135 === 'guanfu' && GAME\.heartsOf && GAME\.heartsActionOf\) \{/.test(uS188);
-      var i188 = uS188.indexOf('data-action="ext-convert"');
-      var seg188 = i188 >= 0 ? uS188.slice(i188, i188 + 420) : '';
-      return gate188 && seg188.length > 0 && seg188.indexOf('disabled') < 0
-        && uS188.indexOf('施工中不可改建 / 拆毁（完工后恢复') >= 0;
+      return gate188 && uS188.indexOf('施工中不可改建 / 拆毁（完工后恢复') >= 0;
     })());
 
-    /* ⑦ 改建缺料真调（域层：精确原因 + 不扣费） */
-    check('§188⑦ 改建缺料真调：ok:false + 原因含「材料不足」+ 资源未被扣', (function () {
+    /* ⑦ 缺料真调（域层：精确原因 + 不扣费）
+       v158.13（S4）规则变更：改建退役 → 同一条口径落在**星球上建采集场**（buildPlant）。 */
+    check('§188⑦ 采集场缺料真调：ok:false + 原因含缺项 + 资源未被扣', (function () {
       var st = G.newGame({ name: 's188e', region: '烬环' });
       var c = st.cities[0];
       G.ui._cityId = c.id;
-      var eg = G.extGridOf(c);
-      if (!eg[0]) return false;
-      eg[0].type = 'farm'; eg[0].lv = 10;
+      var pid188 = G.pidOf(c), ci188 = -1;
+      for (var i188 = 0; i188 < G.sphere.cells.length && ci188 < 0; i188++) {
+        var t188 = G.sphere.cells[i188] && G.sphere.cells[i188].type;
+        if (t188 && G.resource.RES_OF_TYPE[t188] === (DATA.EXT_BUILDINGS.forest || {}).res
+          && !G.resource.plantAt(i188, pid188)) ci188 = i188;
+      }
+      if (ci188 < 0) return false;
+      G.resource.scan(ci188);
       ['grain', 'wood', 'stone', 'iron'].forEach(function (kk) { c.res[kk] = 0; });
-      var r = G.convertExt(0, 'forest');
-      return r && r.ok === false && /材料不足/.test(r.msg || '')
-        && c.res.grain === 0 && c.res.wood === 0;
+      var r = G.buildPlant(ci188, 'forest');
+      return r && r.ok === false && /缺 /.test(r.msg || '')
+        && c.res.grain === 0 && c.res.wood === 0
+        && !G.resource.plantAt(ci188, pid188);
     })());
 
     /* ⑧ CSS 在册 */
@@ -31783,7 +31930,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return no && yes && afterPay && afterBack;
       } finally { G.state = bk; }
     })());
-    check('§194② 缺料提示唯一出口：costLackMsg 报缺项（旧币标"全境通用"）· 五处同源（v89.233 货币统一）', (function () {
+    check('§194② 缺料提示唯一出口：costLackMsg 报缺项（旧币标"全境通用"）· 同源七处（v158.13 增采集场建/升两处）', (function () {
       var bk = G.state;
       var st = G.newGame({ name: 'v194lack', cityName: '灰岗' });
       G.state = st;
@@ -31793,8 +31940,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.res(c).grain = 0;          /* 造局：净水清零（新局有初始净水，否则"缺水"不成立） */
         var msg = GAME.costLackMsg(c, { gold: 3000, grain: 500 });
         var okMsg = /旧币 3,000/.test(msg) && /净水 500/.test(msg) && /全境通用/.test(msg);
+        /* v158.13（S4）：v89.233 定稿时是 5 处；资源建筑迁到星球后，建厂/升厂
+           （buildPlant / upgradePlant）也走同一个出口 —— 5 + 2 = 7 处，口径不变。 */
         var n = (dS194.match(/GAME\.costLackMsg\(city, cost\) \|\|/g) || []).length;
-        return okMsg && n === 5;
+        return okMsg && n === 7;
       } finally { G.state = bk; }
     })());
 
@@ -33924,18 +34073,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       try {
         var st = G.newGame({ name: 's212a', mapSeed: 212 });
         G.state = st;
+        /* v158.13（S4）：造局改真写星球地块（投影数组写不动 —— 见 mkPlants 注释） */
         var mk = function (id, exts) {
           var c = G.makeCity({ id: id, name: id, col: 6, row: 6 });
           st.cities.push(c);
-          var g = G.extGridOf(c);
-          g.length = 0;
-          exts.forEach(function (t, i) { g.push({ id: 'x' + i, type: t, lv: 1 }); });
-          return c;
+          return { c: c, n: mkPlants(c, exts.map(function (t) { return [t, 1]; })) };
         };
-        var A = mk('s212a1', ['farm', 'farm', 'farm', 'farm', 'forest']);
-        var B = mk('s212a2', ['farm', 'forest', 'forest', 'forest', 'forest']);
+        var _A = mk('s212a1', ['farm', 'farm', 'farm', 'farm', 'forest']);
+        var _B = mk('s212a2', ['farm', 'forest', 'forest', 'forest', 'forest']);
+        var A = _A.c, B = _B.c;
         var BS = DATA.BASE_STORE, DV = DATA.EXT_STORE_DIV;
-        return G.storeCapOf(A, 'grain') > G.storeCapOf(B, 'grain')
+        return _A.n === 5 && _B.n === 5
+          && G.storeCapOf(A, 'grain') > G.storeCapOf(B, 'grain')
           && G.storeCapOf(B, 'wood') > G.storeCapOf(A, 'wood')
           && G.storeCapOf(A, 'grain') === BS + Math.round(4 * BS / DV)
           && G.storeCapOf(A, 'wood') === BS + Math.round(1 * BS / DV)
@@ -33951,14 +34100,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.state = st;
         var c = G.makeCity({ id: 's212c1', name: 'c', col: 6, row: 6 });
         st.cities.push(c);
-        var g = G.extGridOf(c);
-        g.length = 0;
-        g.push({ id: 'x1', type: 'farm', lv: 6 }, { id: 'x2', type: 'forest', lv: 12 });
+        var _mk2124 = mkPlants(c, [['farm', 6], ['forest', 12]]);
         var R = G.res(c);
         R.grain = 4500000; R.wood = 5000000;
         var g0 = R.grain, w0 = R.wood;
         for (var t = 0; t < 60; t++) G.tickOnce();
-        return (R.grain - g0) <= 2 && (R.wood - w0) > 0
+        return _mk2124 === 2 && (R.grain - g0) <= 2 && (R.wood - w0) > 0
           && G.storeCapOf(c, 'grain') === 2000000 + Math.round(6 * 2000000 / 6)
           && G.storeCapOf(c, 'wood') === 2000000 + Math.round(12 * 2000000 / 6);
       } finally { G.state = keep; }
@@ -35855,7 +36002,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), window.__r235b || '');
 
     /* ③ 城外闸真调四态（独立小局 · 用完还原）：
-          Lv1 试升被拒（报"需政务厅"）· cap=政务厅等级 · 抬政务厅后通过 · 推完 lv=2 */
+          Lv1 试升被拒（报"需政务厅"）· cap=政务厅等级 · 抬政务厅后通过 · 推完 lv=2
+          v158.13（S4）规则变更：真调对象从"堆场空地槽（buildExt/upgradeExt）"
+          换成"星球地块上的采集场（buildPlant/upgradePlant）"；四态判据逐条不变。 */
     check('§235③ 城外闸真调四态（拒 → 抬政务厅 → 通过 · cap=政务厅等级）', (function () {
       var keep = G.state;
       var out = {};
@@ -35863,13 +36012,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var st = G.newGame({ name: '§235', cityName: '灰岗', mapSeed: 20261007 });
         var c = st.cities[0];
         ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { c.res[k] = 9e7; });
-        var eg = GAME.extGridOf(c), idx = -1;
-        for (var i = 0; i < eg.length; i++) { if (!eg[i].type && !eg[i].pending) { idx = i; break; } }
-        var rb = GAME.buildExt(idx, 'farm');
-        for (var t1 = 0; t1 < 300 && st.queues.build.length; t1++) G.tickOnce();
-        out.built = eg[idx].type === 'farm' && eg[idx].lv === 1;
+        var pid235 = GAME.pidOf(c), ci235 = -1;
+        for (var i = 0; i < G.sphere.cells.length && ci235 < 0; i++) {
+          var t235 = G.sphere.cells[i] && G.sphere.cells[i].type;
+          if (t235 && GAME.resource.RES_OF_TYPE[t235] === (DATA.EXT_BUILDINGS.farm || {}).res
+            && !GAME.resource.plantAt(i, pid235)) ci235 = i;
+        }
+        GAME.resource.scan(ci235);
+        var rb = GAME.buildPlant(ci235, 'farm');
+        for (var t1 = 0; t1 < 600 && st.queues.build.length; t1++) G.tickOnce();
+        var p235b = GAME.resource.plantAt(ci235, pid235);
+        out.built = !!p235b && p235b.plant === 'farm' && p235b.plantLv === 1;
         var govLv1 = GAME.buildingLevel(c, 'guanfu');
-        var r1 = GAME.upgradeExt(idx);
+        var r1 = GAME.upgradePlant(ci235);
         out.rej = r1.ok === false && /政务厅/.test(r1.msg || '');
         out.rejMsg = r1.msg || '';
         out.cap1 = GAME.buildCapOf(c, 'farm');
@@ -35881,13 +36036,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var rg = GAME.upgradeAt(c.id, gi);
         for (var t2 = 0; t2 < 300 && st.queues.build.length; t2++) G.tickOnce();
         var govLv2 = GAME.buildingLevel(c, 'guanfu');
-        var r2 = GAME.upgradeExt(idx);
-        for (var t3 = 0; t3 < 300 && st.queues.build.length; t3++) G.tickOnce();
+        var r2 = GAME.upgradePlant(ci235);
+        for (var t3 = 0; t3 < 600 && st.queues.build.length; t3++) G.tickOnce();
         out.govUp = govLv2 === 2;
-        out.pass = r2.ok === true && eg[idx].lv === 2;
+        out.pass = r2.ok === true && (GAME.resource.plantAt(ci235, pid235) || {}).plantLv === 2;
         out.cap2 = GAME.buildCapOf(c, 'farm');
         window.__r235c = 'gov1=' + govLv1 + ' rej=' + out.rej + ' cap1=' + out.cap1
-          + ' gov2=' + govLv2 + ' pass=' + out.pass + ' cap2=' + out.cap2 + ' msg=' + out.rejMsg;
+          + ' gov2=' + govLv2 + ' pass=' + out.pass + ' cap2=' + out.cap2 + ' msg=' + out.rejMsg
+          + ' rb=' + (rb && rb.msg);
         return out.built && govLv1 === 1 && out.rej && out.cap1 === 1 && out.govUp && out.pass && out.cap2 === 2;
       } catch (e) {
         window.__r235c = 'ERR ' + (e && e.message);
@@ -44648,13 +44804,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (seaCi < 0) return 'SKIP-无海面格';
         var c2 = G.makeCity({ id: 'cut563', name: '断链城', ci: seaCi, type: 'self', pid: 1,
           res: { grain: 0, wood: 0, stone: 0, iron: 0 } });
-        c2.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
         st.cities.push(c2);
+        /* v158.13（S4）：产地改星球地块 —— 造局走 mkPlants；期望值要带**丰度**
+           （旧口径 extGrid 无丰度，5500 是裸值；现在每座厂乘 0.5~2.0）。 */
+        if (mkPlants(c2, [['farm', 10]]) !== 1) return false;
+        var _p563a = (G.resource.plantsOf(c2.id, G.pidOf(c2)) || [])[0];
+        var _base563a = 5500 * (_p563a ? _p563a.richness : 1);
         G.land.reset();
         var rawBase = G.prodBasePerHourOf(c2).grain;
         var stt = G.land.statusOf(c2);
         return stt.linked === false && stt.mul === 0.35 && rawBase > 0
-          && Math.abs(rawBase - 5500 * 0.35) < 1;
+          && Math.abs(rawBase - _base563a * 0.35) < 1;
       } finally { GAME.state = bk; DATA.LAND.apply = bkA; DATA.LAND.minMul = bkM;
         DATA.CLIMATE.coldProdLoss = bkCold; try { G.land.reset(); } catch (e) {} }
     })());
@@ -44680,13 +44840,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (seaCi < 0) return 'SKIP-无海面格';
         var c2 = G.makeCity({ id: 'cut563c', name: '断链城', ci: seaCi, type: 'self', pid: 1,
           res: { grain: 0, wood: 0, stone: 0, iron: 0 } });
-        c2.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
-        st.cities.push(c2); G.land.reset();
+        st.cities.push(c2);
+        /* v158.13（S4）：同上 —— 真写星球地块，期望值带丰度 */
+        if (mkPlants(c2, [['farm', 10]]) !== 1) return false;
+        var _p563c = (G.resource.plantsOf(c2.id, G.pidOf(c2)) || [])[0];
+        var _base563c = 5500 * (_p563c ? _p563c.richness : 1);
+        G.land.reset();
         DATA.LAND.apply = false;
         var off = G.prodBasePerHourOf(c2).grain;
         DATA.LAND.apply = true;
         var on = G.prodBasePerHourOf(c2).grain;
-        return off > on && Math.abs(off - 5500) < 1;
+        return off > on && Math.abs(off - _base563c) < 1;
       } finally { GAME.state = bk; DATA.LAND.apply = bkA; DATA.CLIMATE.coldProdLoss = bkCold3;
         try { G.land.reset(); } catch (e) {} }
     })());
@@ -49861,10 +50025,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && typeof RS.canBuildPlant === 'function' && typeof RS.consumeReserve === 'function',
       'resource 出口');
 
-    /* 资源键映射（静态，不依赖 state） */
-    check('§604③ 资源键映射（forest→wood/desert→stone/hill→iron/lake→grain）',
+    /* 资源键映射（静态，不依赖 state）
+       v158.13（S4）规则变更：`lake` **移出映射** —— 水面走不到、也不能勘探建厂，
+       留着它会让"湖心有个厂"这种点不进去的地块进产量链。平原/草原都归粮。 */
+    check('§604③ 资源键映射（forest→wood/desert→stone/hill→iron/plain·caoyuan→grain · lake 不产出）',
       RS.RES_OF_TYPE.forest === 'wood' && RS.RES_OF_TYPE.desert === 'stone'
-        && RS.RES_OF_TYPE.hill === 'iron' && RS.RES_OF_TYPE.lake === 'grain',
+        && RS.RES_OF_TYPE.hill === 'iron' && RS.RES_OF_TYPE.plain === 'grain'
+        && RS.RES_OF_TYPE.caoyuan === 'grain' && RS.RES_OF_TYPE.lake === undefined,
       'RES_OF_TYPE');
 
     /* 确定性 + 储量 + 勘探 + 软枯竭（需要最小 state + 假 sphere） */
@@ -49917,6 +50084,182 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       GAME.state = svState; GAME.sphereOf = svSphere;
     }
   })();
+
+  /* ============================================================
+   * §605 v158.11（S2）· 地形占比：平地必须够铺采集体系
+   * ------------------------------------------------------------
+   * **规则变更**（老板「增大平地地形占比」，资源地块转移大地图的前置）：
+   *   平地是唯一能立城的地类，也是资源地块建采集场的主力。改前 plain
+   *   占全格 5.77%（约陆地 10%），铺不开采集体系；v158.11 起放宽到
+   *   alt<0.55 / slope<0.68 / wet<0.78，实测 11.68%（约陆地 21%）。
+   *
+   * 为什么另加「阈值唯一源」断言：
+   *   改前 sphere.js 有一份 `SP.TERRAIN_RULES` 字符串规则表，自称「唯一判定
+   *   规则」却**没有任何消费方**，且数值与真跑的循环分叉（表里 plain 写
+   *   0.32/0.46/0.66，代码里 0.42/0.58/0.74）——一份骗人的死数据。
+   *   已删除，阈值收敛进 `SP.TERRAIN_TH` 并被 ⑤ 循环真正引用。
+   *   这两条断言防的是「阈值又散回裸数字」和「死表又被加回来」。
+   *
+   * 三条都不许放宽：上限防把森林/山地（生物质/废钢产地）吃光，
+   * 下限防 `0 === 0` 平凡解，簇规模防退化成碎点。
+   * ============================================================ */
+  console.log('  --- §605 S2 地形占比（平地够铺采集体系） ---');
+  check('§605① SP.TERRAIN_TH 是唯一阈值源；旧的 TERRAIN_RULES 死表已退役', (function () {
+    var SPx0 = GAME.sphere || {};
+    var th = SPx0.TERRAIN_TH || {};
+    var keys = ['hillAlt', 'hillSlopeAlt', 'hillSlope', 'zhaozeCoast', 'zhaozeCoastWet',
+      'zhaozeAlt', 'zhaozeAltWet', 'desertHeat', 'desertWet',
+      'plainAlt', 'plainSlope', 'plainWet', 'forestWet', 'forestCold'];
+    var allNum = keys.every(function (k) { return typeof th[k] === 'number' && th[k] > 0 && th[k] <= 1; });
+    return allNum && SPx0.TERRAIN_RULES === undefined;
+  })());
+  check('§605② ⑤ 循环真读 TH（源码不许再有裸阈值 / 死表复活）', (function () {
+    var s = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'sphere.js'), 'utf8');
+    var body = (s.match(/---- ⑤ 地类表[\s\S]*?typ\[ci\] = id;/) || [''])[0];
+    return /TH\.plainAlt/.test(body) && /TH\.plainSlope/.test(body) && /TH\.plainWet/.test(body)
+      && !/alt2 < 0\.55 && sl < 0\.68/.test(body)
+      && !/SP\.TERRAIN_RULES\s*=/.test(s);
+  })());
+  check('§605③ 实测 plain 占全格 7%~14%（基线 5.77% → 9.35% · 下限防平凡解 · 上限防吃光森林/山地）', (function () {
+    var SPx = (GAME.sphereOf && GAME.curPid && GAME.sphereOf(GAME.curPid())) || GAME.sphere;
+    var cells = (SPx && SPx.cells) || [], n = cells.length, plain = 0;
+    if (!n) return false;
+    for (var i = 0; i < n; i++) if (cells[i] && cells[i].type === 'plain') plain++;
+    var p = plain / n;
+    return p >= 0.07 && p <= 0.14;
+  })());
+  check('§605④ plain 成片（簇均 ≥ 20 格，不是碎点）', (function () {
+    var SPx = (GAME.sphereOf && GAME.curPid && GAME.sphereOf(GAME.curPid())) || GAME.sphere;
+    var cells = (SPx && SPx.cells) || [], adj = (SPx && SPx.adj) || [], n = cells.length;
+    if (!n || !adj.length) return false;
+    var seen = new Uint8Array(n), sizes = [];
+    for (var a = 0; a < n; a++) {
+      if (seen[a] || !cells[a] || cells[a].type !== 'plain') continue;
+      var q = [a]; seen[a] = 1;
+      for (var h = 0; h < q.length; h++) {
+        var cn = adj[q[h]] || [];
+        for (var k = 0; k < cn.length; k++) {
+          var nb = cn[k];
+          if (!seen[nb] && cells[nb] && cells[nb].type === 'plain') { seen[nb] = 1; q.push(nb); }
+        }
+      }
+      sizes.push(q.length);
+    }
+    if (!sizes.length) return false;
+    var sum = 0; sizes.forEach(function (s2) { sum += s2; });
+    return sum / sizes.length >= 20;
+  })());
+
+  /* ============================================================
+   * §606 v158.13（S4）· 采集场：勘探 → 建厂 → 产量×丰度 → 枯竭
+   * ------------------------------------------------------------
+   * **规则变更**（老板 2026-11-25 拍板三条）：
+   *   ① 「资源建筑从城外转移到大地图」→ extGrid 退役，extGridOf 改成投影已建厂地块
+   *   ② 「现有城外资源建筑清零，返还资源」→ RS.migrateExt 真开（MIGRATE_EXT=true）
+   *   ③ 「资源地块只有近地面勘探后才能建厂生产」→ canBuildPlant 拦未勘探
+   * 枯竭口径沿用老板选的成熟设计：**软枯竭**（产量折 25% 不停产），不硬停产。
+   *
+   * 这组断言守的是"数与数之间必须对得上"，不是"函数返回 true"：
+   *   · 丰度真的进了产量（用比值，避开全局折扣）
+   *   · 储量扣减按**理论产出**（基础×丰度），与入账产量口径不同，见 resource.js 注释
+   *   · 纯读接口不许写档（这条最容易在"面板遍历全星"时被破坏 → 存档爆炸）
+   * ============================================================ */
+  console.log('  --- §606 S4 采集场（勘探→建厂→产量×丰度→枯竭） ---');
+  check('§606① MIGRATE_EXT 已开 · extGridOf 走投影（源码形态）', (function () {
+    var rsrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'resource.js'), 'utf8');
+    var dsrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
+    return GAME.resource.MIGRATE_EXT === true
+      && /RS\.MIGRATE_EXT\s*=\s*true/.test(rsrc)
+      && /RS\.plantsOf\(city\.id\)/.test(dsrc);
+  })());
+  /* ⚠️ §606②~⑤ 必须**自带一局**：本节在文件末尾，`GAME.state` 已被前面几十个
+     fixture 折腾过（采集场被拆过、等级被改过），拿它当基准会假红 ——
+     这里现开一局（固定种子）做造局，用完还原。 */
+  var _keepState606 = GAME.state;
+  try {
+  GAME.state = GAME.newGame({ name: 's606', mapSeed: 20260921 });
+  check('§606② 开局 5 座厂都已标记"已勘探"（玩家开局就该看得见自家那几座）', (function () {
+    var c0 = GAME.state.cities[0], pid = GAME.pidOf(c0);
+    var list = GAME.resource.plantsOf(c0.id, pid);
+    if (list.length !== 5) return false;
+    return list.every(function (e) {
+      var rec = GAME.resource.at(e.ci, pid);
+      return rec && rec.scanned === true && rec.city === c0.id;
+    });
+  })());
+  check('§606③ 丰度真的进了产量（比值法 · 避开连通/气候/污染全局折扣）', (function () {
+    var c0 = GAME.state.cities[0], pid = GAME.pidOf(c0);
+    var list = GAME.resource.plantsOf(c0.id, pid);
+    var pick = list.filter(function (e) { return e.type === 'forest'; })[0];
+    if (!pick) return false;
+    var rec = GAME.resource.at(pick.ci, pid);
+    var base = (DATA.EXT_BUILDINGS.forest.prod[0] || 0) * rec.richness;
+    if (!(base > 0)) return false;
+    var w1 = GAME.prodBasePerHourOf(c0).wood;
+    GAME.resource.set(pick.ci, { plant: null, plantLv: 0 }, pid);
+    var w0 = GAME.prodBasePerHourOf(c0).wood;
+    GAME.resource.set(pick.ci, { plant: 'forest', plantLv: 1 }, pid);
+    var k = (w1 - w0) / base;
+    /* k = 全局折扣系数（0.5~1.05）。若丰度没进产量，k 会变成 折扣/richness，必然出界。 */
+    return (w1 - w0) > 0 && k > 0.5 && k <= 1.05;
+  })());
+  check('§606④ 储量按理论产出扣减（基础×丰度 · 不乘环境折扣）', (function () {
+    var c0 = GAME.state.cities[0], pid = GAME.pidOf(c0);
+    var list = GAME.resource.plantsOf(c0.id, pid);
+    var pick = list.filter(function (e) { return e.type === 'forest' && e.reserve > 100000; })[0];
+    if (!pick) return false;
+    var rec = GAME.resource.at(pick.ci, pid);
+    var expect = (DATA.EXT_BUILDINGS.forest.prod[0] || 0) * rec.richness;
+    var r0 = rec.reserve;
+    GAME.resource.tickMine(3600);
+    var got = r0 - GAME.resource.at(pick.ci, pid).reserve;
+    return Math.abs(got - expect) < Math.max(1, expect * 0.02);
+  })());
+  check('§606⑤ 软枯竭：储量归零后产量折 25%、不停产、不再扣', (function () {
+    var c0 = GAME.state.cities[0], pid = GAME.pidOf(c0);
+    var list = GAME.resource.plantsOf(c0.id, pid);
+    var pick = list.filter(function (e) { return e.type === 'forest'; })[0];
+    if (!pick) return false;
+    var rec = GAME.resource.at(pick.ci, pid);
+    var base = (DATA.EXT_BUILDINGS.forest.prod[0] || 0) * rec.richness;
+    var full = GAME.prodBasePerHourOf(c0).wood;
+    GAME.resource.set(pick.ci, { reserve: 0 }, pid);
+    var dead = GAME.prodBasePerHourOf(c0).wood;
+    GAME.resource.set(pick.ci, { plant: null, plantLv: 0 }, pid);
+    var without = GAME.prodBasePerHourOf(c0).wood;
+    GAME.resource.set(pick.ci, { plant: 'forest', plantLv: 1, reserve: 0 }, pid);
+    var dFull = full - without, dDead = dead - without;
+    if (!(dFull > 0) || !(dDead > 0)) return false;
+    var okRatio = Math.abs(dDead / dFull - GAME.resource.DEPLETE_MULT) < 0.02;
+    var r0 = GAME.resource.at(pick.ci, pid).reserve;
+    GAME.resource.tickMine(3600);
+    return okRatio && GAME.resource.at(pick.ci, pid).reserve === r0 && r0 === 0;
+  })());
+  } finally { GAME.state = _keepState606; }
+  check('§606⑥ 老档迁移：extGrid 清零 + 按累计造价返还 + 幂等', (function () {
+    var RSr = GAME.resource;
+    var fake = { cities: [{ id: 'c606', extGrid: [{ id: 'e1', type: 'farm', lv: 3 }, { id: 'e2', type: null, lv: 0 }],
+      res: { grain: 0, wood: 0, stone: 0, iron: 0 } }] };
+    var bkAdd = GAME.city.add;
+    var refundSum = 0;
+    GAME.city.add = function (ct, k, n) { refundSum += (n || 0); return n; };   /* 拦下返还，不污染真账本 */
+    var m1, m2;
+    try { m1 = RSr.migrateExt(fake); m2 = RSr.migrateExt(fake); }
+    finally { GAME.city.add = bkAdd; }
+    return !!m1 && m1.ok === true && refundSum > 0
+      && fake.cities[0].extGrid.every(function (e) { return !e.type; })
+      && m2 === null;
+  })());
+  check('§606⑦ view/plantsOf 是纯读（不许给全星 4 万格建档 · 存档爆炸防线）', (function () {
+    var pid = GAME.curPid();
+    var bucketOf = function () { return Object.keys((GAME.state.resources || {})[pid] || {}).length; };
+    var before = bucketOf();
+    var sp0 = GAME.sphereOf(pid);
+    for (var i = 0; i < sp0.cells.length; i += 37) GAME.resource.view(i, pid);
+    GAME.resource.plantsOf(GAME.state.cities[0].id, pid);
+    var after = bucketOf();
+    return before === after && before >= 5;         /* 下限：开局 5 座厂至少要在册，防 0===0 */
+  })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')

@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "d5db400412bad69c",
+ "sourceHash": "3ae57e3263f53ae9",
  "layout": {
   "order": [
    "core",
@@ -585,18 +585,19 @@
   {
    "name": "domain",
    "file": "js/domain.js",
-   "lines": 9717,
+   "lines": 9843,
    "bundle": "core",
    "duty": "domain.js  核心业务逻辑（真实数值版）",
    "deps": [
     "state",
     "data",
-    "map",
     "cities",
+    "map",
     "items",
     "sphere",
     "battle",
     "systems",
+    "resource",
     "tactic",
     "generals",
     "ui",
@@ -854,14 +855,14 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4432,
+   "lines": 4511,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
     "ui-fx",
     "battle",
-    "state",
     "domain",
+    "state",
     "ui-modal",
     "ui-view",
     "map3d",
@@ -883,6 +884,7 @@
     "cities",
     "ui-build",
     "ui-army",
+    "resource",
     "ui-bag",
     "faction",
     "colony",
@@ -931,7 +933,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9594,
+   "lines": 9610,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -957,6 +959,7 @@
     "ui-delve",
     "memorial",
     "ui-shell",
+    "resource",
     "ui-config",
     "ui-view"
    ]
@@ -1115,7 +1118,7 @@
   {
    "name": "resource",
    "file": "js/resource.js",
-   "lines": 299,
+   "lines": 494,
    "bundle": "core",
    "duty": "resource.js — 星球大地图资源地块引擎（核心玩法：资源多层级）",
    "deps": [
@@ -1233,7 +1236,7 @@
   {
    "name": "sphere",
    "file": "js/sphere.js",
-   "lines": 989,
+   "lines": 1006,
    "bundle": "core",
    "duty": "sphere.js — **球面世界内核**（纯 JS · 无 THREE · 逻辑与渲染共用 SSOT）",
    "deps": [
@@ -1245,7 +1248,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6566,
+   "lines": 6610,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [
@@ -1256,6 +1259,7 @@
     "map",
     "fog",
     "cities",
+    "resource",
     "faction",
     "ui-planet",
     "rules",
@@ -1276,7 +1280,6 @@
     "ending",
     "ui-modal",
     "planetgen",
-    "resource",
     "placement",
     "camp",
     "ruin",
@@ -1498,7 +1501,7 @@
   {
    "name": "ui-build",
    "file": "js/ui-build.js",
-   "lines": 1597,
+   "lines": 1650,
    "bundle": "ui",
    "duty": "ui-build.js　建造 · 前传君主 / 等距渲染 / 围墙 / 格内建筑 / 政务厅",
    "deps": [
@@ -1507,6 +1510,7 @@
     "icons",
     "ui-modal",
     "state",
+    "resource",
     "ui",
     "ui-view",
     "ui-army",
@@ -1674,7 +1678,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 971,
+   "lines": 1129,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1683,11 +1687,12 @@
     "state",
     "data",
     "ui-modal",
+    "resource",
+    "ui-fx",
     "ui-shell",
+    "ui-craft",
     "sphere",
     "ui",
-    "ui-fx",
-    "ui-craft",
     "growth",
     "taint",
     "convoy",
@@ -1731,7 +1736,7 @@
   {
    "name": "ui-planet",
    "file": "js/ui-planet.js",
-   "lines": 2335,
+   "lines": 2306,
    "bundle": "ui",
    "duty": "ui-planet.js　星球与英雄 · 星球生成切换 / 英雄界面 / 属性 / 部件栏",
    "deps": [
@@ -1744,13 +1749,13 @@
     "planetgen",
     "ui-view",
     "ui-report",
-    "ui-shell",
     "sphere",
     "ui-core",
     "ui-craft",
+    "ui-shell",
     "ui",
-    "icons",
     "portraits",
+    "icons",
     "belt",
     "ui-bag",
     "ui-build"

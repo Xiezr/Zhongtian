@@ -774,6 +774,11 @@ import './data.js';
        `generate()` 内部就是 `if (!s.map.cities) { buildNpcCities(seed) ... }`，
        幂等：已有城就跳过。 */
     try { if (GAME.map && GAME.map.generate) GAME.map.generate(); } catch (e) { /* 建城失败不挡住开局 */ }
+    /* v158.13（S4）：开局预置的 5 座资源建筑**落到星球地块上**（见 RS.seedInitialPlants）。
+       必须在球面定型、城 ci 就绪之后 —— 早于这一步 city.ci 还是 -1（v139 的老坑）。 */
+    try {
+      if (GAME.resource && GAME.resource.seedInitialPlants) GAME.resource.seedInitialPlants(city);
+    } catch (eSP) { /* 落地块失败不挡住开局（产量为 0 也比开不了局好） */ }
     /* ⛔ v157.85：这里原有 `if (rulerOpts.prologue) GAME.prologue.begin(...)` ——
        前传整段退役，连带 v139 这条"等球面定型再开局"的时序说明一起删除。
        现在 newGame 走完就是**正式局**：城已建、NPC 城已落、君主已在城里。 */
@@ -3348,6 +3353,10 @@ import './data.js';
   GAME.simulateBulk = function (secReal) {
     var s = GAME.state, ts = GAME.timeScale();
 
+    /* v158.13（S4）：采集场储量按批量段的游戏秒一次扣完（与 tickOnce 同一出口）。
+       放在资源结算之前 —— 否则这一段产量还是按"没枯竭"的丰度入账。 */
+    if (GAME.resource && GAME.resource.tickMine) { try { GAME.resource.tickMine(ts * secReal); } catch (eMineB) { } }
+
     /* 定期来袭：离线也要照打（**与在线同一个 invasionTick**）——
        长时间离线会一次跨过多个周期，函数内部用 while 逐个结算。 */
     GAME.invasionTick(ts / 3600 * secReal);
@@ -4542,6 +4551,11 @@ import './data.js';
     var ts = GAME.timeScale();
     var dtReal = 1; // 现实秒
 
+    /* v158.13（S4）：采集场挖矿 —— 储量按**游戏秒**扣（1 现实秒 = ts 游戏秒）。
+       只遍历"建过厂"的地块（bucket 里没有厂时 for-in 立即结束），不吃城数。
+       产量侧是纯查询（prodBasePerHourOf），消耗侧只在这里 —— 界面随便刷新都不会挖走矿。 */
+    if (GAME.resource && GAME.resource.tickMine) { try { GAME.resource.tickMine(ts); } catch (eMine) { } }
+
     /* v89.83：自动练功（君主修行）—— 与自动出征同一处挂钩，节流在域层里 */
     /* v91.57：自动练功随君主修行退役（本条调用删除）。 */
     /* v89.115（老板「自动菜单增加一个自动治疗伤兵」）：伤兵满旧币即治（节流在域层里） */
@@ -4829,11 +4843,19 @@ import './data.js';
   GAME.prodBasePerHourOf = function (city) {
     var base = { grain: 0, wood: 0, stone: 0, iron: 0 };
     if (!city) return base;
-    (city.extGrid || []).forEach(function (e) {
+    /* v158.13（S4）：资源建筑转移大地图后，地块由 `GAME.extGridOf` 统一取材 ——
+       迁移模式下它是"已建厂地块"的投影（含丰度/枯竭），关掉时退回城内 extGrid。
+       两个字段只在迁移模式存在，缺省按 1 倍处理 → 旧口径逐字不变：
+         · richness —— 丰度乘数（同一个厂，富矿比贫矿产得多）
+         · deplete  —— 已枯竭：产量 × RS.DEPLETE_MULT（软枯竭，不停产） */
+    var _RS = GAME.resource;
+    var _dm = (_RS && _RS.DEPLETE_MULT != null) ? _RS.DEPLETE_MULT : 1;
+    (GAME.extGridOf(city) || []).forEach(function (e) {
       if (!e || !e.type) return;
       var eb = DATA.EXT_BUILDINGS[e.type];
       if (!eb) return;
-      base[eb.res] += eb.prod[e.lv - 1] * 1;
+      var _mul = (e.richness != null ? e.richness : 1) * (e.deplete ? _dm : 1);
+      base[eb.res] += eb.prod[e.lv - 1] * _mul;
     });
     (city.cells || []).forEach(function (cell) {
       if (!cell.build) return;
@@ -5799,6 +5821,28 @@ import './data.js';
   GAME.applyBuildDone = function (q) {
     var s = GAME.state;
     if (GAME.sfx) GAME.sfx('build');      /* v89.93（E4）：落成有声音（反馈层） */
+    /* v158.13（S4）：采集场施工完成 —— 落到**星球地块**上（RS 唯一写出口）。
+       ⚠️ 与上面 ext_build 分支是两条账：extGrid 迁移后已清零，
+          `extGridOf()[extIdx]` 拿到的是现算的投影数组，写它不会落档（≠bug，是只读投影）。 */
+    if (q.type === 'plant_build' || q.type === 'plant_upgrade') {
+      var RSp = GAME.resource;
+      if (!RSp) return;
+      var _pcur = RSp.at(q.ci, q.pid);
+      var _pct = function (ci) { try { return (GAME.map && GAME.map.coordTextCi) ? GAME.map.coordTextCi(ci) : ('格 #' + ci); } catch (e) { return '格 #' + ci; } };
+      if (q.type === 'plant_build') {
+        var _pr = RSp.placePlant(q.ci, q.buildId, q.pid, q.cityId);
+        if (!_pr.ok) return;                       /* 地块已被占/不再匹配 → 丢弃这条过期队列 */
+        GAME.log('采集场建成：' + (DATA.EXT_BUILDINGS[q.buildId] ? DATA.EXT_BUILDINGS[q.buildId].name : q.buildId)
+          + '（' + _pct(q.ci) + '）', 'sys', 'build');
+      } else {
+        if (!_pcur || !_pcur.plant) return;        /* 施工期间被拆 → 丢弃 */
+        if ((_pcur.plantLv || 1) !== q.fromLevel) return;   /* 等级已不是当初那一级 → 丢弃 */
+        RSp.set(q.ci, { plantLv: q.targetLevel }, q.pid);
+        GAME.log('采集场升级至 Lv' + q.targetLevel + '（' + _pct(q.ci) + '）', 'sys', 'build');
+      }
+      GAME.statBump('buildDone', 1);
+      return;
+    }
     if (q.type === 'ext_build' || q.type === 'ext_upgrade') {
       var qc = GAME.cityById(q.cityId) || (s.cities && s.cities[0]);
       var e = qc ? GAME.extGridOf(qc)[q.extIdx] : null;

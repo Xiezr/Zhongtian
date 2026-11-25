@@ -8399,8 +8399,15 @@ import './gltf.js';
     own: ['己方城市', '进入'], npc: ['名城', '查看'], adm: ['行政城', '查看'],
     fort: ['据点', '查看'], lord: ['君主所在', '进入'],
     ruin: ['遗迹', '探索'], village: ['村社', '交涉'], camp: ['营地', '清剿'],
-    prop: ['放置物', '查看']
+    prop: ['放置物', '查看'],
+    /* v158.12（S3）：资源地块 —— 只对「有工业价值」的三地形提示勘探，见 _interactKindOf */
+    res: ['资源地块', '勘探']
   };
+  /* 值得走近提示勘探的地形（森林→生物质 / 山地→废钢 / 荒漠→电能）。
+     ⚠️ plain/caoyuan/lake 也映射 grain，但那是**最基础资源且遍地都是** ——
+     每格都弹「勘探」会变成满屏噪音（老板交互 8 原则第 1 条：复杂留给系统）。
+     这些地形仍可在**地块面板**里勘探，只是不在提示条上抢戏。 */
+  var RES_HINT_TYPES = { forest: 1, hill: 1, desert: 1 };
   function _propAtCi(ci) {
     try {
       var d = SP.cells[ci].dir;
@@ -8419,6 +8426,15 @@ import './gltf.js';
         && (!GAME.village.isKnown || GAME.village.isKnown(ci))) return 'village';
     } catch (e3) { }
     if (_propAtCi(ci)) return 'prop';
+    /* v158.12（S3）：未勘探的资源地块 → 提示可勘探。
+       排序放在最后：城/遗迹/村社/营地这些「有实物的东西」优先，资源地块是
+       地形自带的背景层，不该把它们的状态提示挤掉。
+       只认森林/山地/荒漠（见 RES_HINT_TYPES），且**已勘探就不再提示**
+       —— 勘探是一次性的，勘探完提示条该消失，换面板里的建厂入口。 */
+    try {
+      var _rv = (GAME.resource && GAME.resource.view) ? GAME.resource.view(ci) : null;
+      if (_rv && !_rv.scanned && RES_HINT_TYPES[_rv.type]) return 'res';
+    } catch (eR) { }
     return null;
   }
   /* 返回 {ci, kind, name, verb, angle, hex} 或 null。**只读**，不改 state。 */

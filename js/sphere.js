@@ -234,19 +234,35 @@ import './core.js';
   var TYPE_NAME = { lake: '湖泊', zhaoze: '沼泽', plain: '平地', caoyuan: '草原', forest: '森林', desert: '荒漠', hill: '山地' };
   SP.TYPE_NAME = TYPE_NAME;
 
-  /* 地类表（**唯一**的判定规则；按顺序短路） */
-  SP.TERRAIN_RULES = [
-    { when: 'sea',                                    id: 'lake',    why: '海平面以下' },
-    { when: 'alt > 0.86',                             id: 'hill',    why: '雪线以上裸岩' },
-    { when: 'alt > 0.70 && slope > 0.62',             id: 'hill',    why: '陡坡：侵蚀强、积不住土' },
-    { when: 'coast <= 1 && wet > 0.55',                id: 'zhaoze',  why: '近水低地：沉积+滞水' },
-    { when: 'alt < 0.16 && wet > 0.62',               id: 'zhaoze',  why: '低洼湿地' },
-    { when: 'heat > 0.60 && wet < 0.38',              id: 'desert',  why: '热+干（内陆/背风）' },
-    { when: 'alt < 0.32 && slope < 0.46 && wet < 0.66', id: 'plain', why: '低平冲积：能立城' },
-    { when: 'wet > 0.56',                             id: 'forest',  why: '湿润：成林' },
-    { when: 'cold > 0.72',                            id: 'forest',  why: '高纬/高寒：针叶林' },
-    { when: '*',                                      id: 'caoyuan', why: '其余：草原' }
-  ];
+  /* ============================================================
+   * v158.11（S2）· 地类阈值表（**唯一真值源**，按顺序短路）
+   * ------------------------------------------------------------
+   * 老板「增大平地地形占比」——平地是唯一能立城的地类，也是资源地块
+   *   建采集场的主力；原占比仅 5.8%（占陆地 ~10%），不够铺采集体系。
+   *
+   * 为什么要有这张表：
+   *   改前这里另有一份 `SP.TERRAIN_RULES` 的**字符串规则表**，声称自己是
+   *   「唯一判定规则」，但**没有任何消费方**（grep 全库只有定义处），且数值
+   *   早已和真正跑的 ⑤ 循环分叉（表里 plain 写 0.32/0.46/0.66，代码里是
+   *   0.42/0.58/0.74）—— 一份骗人的文档数据。按「不许死代码」整条删除，
+   *   改成下面这张**被真正引用**的阈值表，循环与探针都读它。
+   *
+   * 调比例 = 只改这张表的数（改完跑 terrain_ratio_probe 验收）。
+   * 改"样子" = 只改 map3d.TERRAIN_RGB。两处不会打架。
+   *
+   * v158.11 实测（5 seed 平均，40962 格）：plain 5.77% → 11.68%，
+   *   森林 16.4→13.8、沼泽 8.6→6.9、草原 6.4→4.8，山地/荒漠不动。
+   * ============================================================ */
+  SP.TERRAIN_TH = {
+    hillAlt: 0.86,                       /* 雪线以上裸岩 */
+    hillSlopeAlt: 0.70, hillSlope: 0.62, /* 陡坡：侵蚀强、积不住土 */
+    zhaozeCoast: 1, zhaozeCoastWet: 0.62,/* 近水低地：沉积+滞水 */
+    zhaozeAlt: 0.13, zhaozeAltWet: 0.70, /* 低洼湿地 */
+    desertHeat: 0.50, desertWet: 0.42,   /* 热+干（内陆/背风） */
+    plainAlt: 0.50, plainSlope: 0.64, plainWet: 0.76,  /* 低平冲积：能立城 */
+    forestWet: 0.56,                     /* 湿润：成林 */
+    forestCold: 0.28                     /* 高寒：针叶林 */
+  };
 
   /* 分位数归一（0~1）：用排序 + 二分，O(n log n)，40k 格无压力 */
   function rank01(vals, idxs) {
@@ -314,20 +330,21 @@ import './core.js';
     var wetN = rank01(wetRaw, land);
     var slopeN = rank01(slopeRaw, land);
 
-    /* ---- ⑤ 地类表 ---- */
+    /* ---- ⑤ 地类表（阈值一律读 SP.TERRAIN_TH，唯一真值源） ---- */
+    var TH = SP.TERRAIN_TH;
     var typ = new Array(nv);
     for (i = 0; i < nv; i++) typ[i] = 'lake';
     for (var li = 0; li < land.length; li++) {
       var ci = land[li], alt2 = altN[ci], heat = heatN[ci], wet = wetN[ci], sl = slopeN[ci], cst = coast[ci];
       var id = 'caoyuan';
-      if (alt2 > 0.86) id = 'hill';
-      else if (alt2 > 0.70 && sl > 0.62) id = 'hill';
-      else if (cst <= 1 && wet > 0.55) id = 'zhaoze';
-      else if (alt2 < 0.16 && wet > 0.62) id = 'zhaoze';
-      else if (heat > 0.50 && wet < 0.42) id = 'desert';
-      else if (alt2 < 0.42 && sl < 0.58 && wet < 0.74) id = 'plain';
-      else if (wet > 0.56) id = 'forest';
-      else if (heat < 0.28) id = 'forest';       /* 高寒针叶林 */
+      if (alt2 > TH.hillAlt) id = 'hill';
+      else if (alt2 > TH.hillSlopeAlt && sl > TH.hillSlope) id = 'hill';
+      else if (cst <= TH.zhaozeCoast && wet > TH.zhaozeCoastWet) id = 'zhaoze';
+      else if (alt2 < TH.zhaozeAlt && wet > TH.zhaozeAltWet) id = 'zhaoze';
+      else if (heat > TH.desertHeat && wet < TH.desertWet) id = 'desert';
+      else if (alt2 < TH.plainAlt && sl < TH.plainSlope && wet < TH.plainWet) id = 'plain';
+      else if (wet > TH.forestWet) id = 'forest';
+      else if (heat < TH.forestCold) id = 'forest';   /* 高寒针叶林 */
       typ[ci] = id;
     }
 

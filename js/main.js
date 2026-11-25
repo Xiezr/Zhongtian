@@ -1076,15 +1076,8 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       }
       case 'ext-build': GAME.doExtBuild(Number(el.dataset.idx), el.dataset.eid); break;
       case 'ext-upgrade': GAME.doExtUpgrade(Number(el.dataset.idx)); break;
-      case 'ext-convert-ask': ui.openExtConvert(Number(el.dataset.idx)); break;
-      case 'ext-convert': (function () {
-        var rr = GAME.convertExt(Number(el.dataset.idx), el.dataset.eid);
-        ui.toast(rr.msg);
-        /* v89.154（老板 2）：「城外建筑进入改建界面，完成改建后，应直接回到城外大界面」——
-           改建面板是从「地块面板」进的下级；closeModal 只弹一层会回到地块面板（已被改用途，
-           信息过时）。closeAllModals 一次关净 → 回到城外地块大界面（视图页）。 */
-        if (rr.ok) { ui.closeAllModals(); GAME.refreshAll(); }
-      })(); break;
+      /* ⛔ v158.13（S4）退役：'ext-convert-ask' / 'ext-convert'（改建）——
+         一块地能建哪种厂由地形资源决定，"改成另一种"无合法目标。见 domain.js 墓碑。 */
 
       /* 装备 */
       case 'equip-item': GAME.doEquip(el.dataset.gen, el.dataset.item); break;
@@ -2074,6 +2067,92 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       case 'rep-filter': ui.setRepFilter(el.dataset.v); break;
       case 'rep-fav': ui.toggleRepFav(Number(el.dataset.rid)); break;      /* v89.120：身份 rid */
       case 'close-modal': if (ui._provokeTimer) { clearTimeout(ui._provokeTimer); ui._provokeTimer = null; } ui.closeModal(); break;
+      /* ============================================================
+       * v158.12（S3）· 资源地块勘探
+       * ------------------------------------------------------------
+       * 老板「资源地块只有近地面勘探后才能建厂生产」——勘探就是这条链的第一环。
+       * 走 `GAME.resource.scan()` 唯一写出口（它内部 ensure + set），
+       * 成功后**就地重开地块面板**：玩家不必关窗再点一次，能立刻看到刚探出的
+       * 丰度与储量（交互原则：不要让用户为一次动作重复劳动）。
+       * ============================================================ */
+      case 'res-scan': {
+        var _rci = Number(el.dataset.ci);
+        var RSs = GAME.resource;
+        if (!RSs || !RSs.scan) { if (ui.toast) ui.toast('资源系统未启用'); break; }
+        var _rview0 = RSs.view ? RSs.view(_rci) : null;
+        if (!_rview0) { if (ui.toast) ui.toast('这一格不是资源地块'); break; }
+        if (_rview0.scanned) { if (ui.toast) ui.toast('这一格已经勘探过了'); break; }
+        var _rrec = RSs.scan(_rci);
+        if (!_rrec) { if (ui.toast) ui.toast('勘探失败（无地块数据）'); break; }
+        var _rtier = RSs.richTier ? RSs.richTier(_rrec.richness) : null;
+        if (ui.toast) ui.toast('🔍 勘探完成：' + (RSs.resName ? RSs.resName(_rrec.res) : _rrec.res)
+          + ' · ' + (_rtier ? _rtier.name : '') + ' ×' + (_rrec.richness || 0).toFixed(2)
+          + ' · 储量 ' + GAME.utils.numText(_rrec.reserve || 0, 0));
+        if (GAME.log) GAME.log('勘探：' + (RSs.resName ? RSs.resName(_rrec.res) : _rrec.res) + ' 地块（丰度 ×' + (_rrec.richness || 0).toFixed(2) + '）', 'sys', 'admin');
+        if (ui.openLandModalCi && GAME.map3d && GAME.map3d._surf) ui.openLandModalCi(_rci);
+        else if (ui.openLandModalCi) ui.openLandModalCi(_rci);
+        break;
+      }
+      /* ============================================================
+       * v158.13（S4）· 采集场：开面板 / 建 / 升 / 拆
+       * ------------------------------------------------------------
+       * 老板「要设计一个在城外进行建造的流程」——这四个动作就是那条流程。
+       * 全部走 domain 的唯一出口（buildPlant/upgradePlant/dismantlePlant），
+       * 扣费/排队/落成都在那里，界面这层只负责"问一句"和"报一声"。
+       * ============================================================ */
+      case 'res-build-open': {
+        var _pbci = Number(el.dataset.ci);
+        if (ui.openPlantModal) ui.openPlantModal(_pbci);
+        break;
+      }
+      case 'plant-build-do': {
+        var _pbci2 = Number(el.dataset.ci), _pbeid = el.dataset.eid;
+        var _pbr = GAME.buildPlant ? GAME.buildPlant(_pbci2, _pbeid) : { ok: false, msg: '建造系统未就绪' };
+        if (ui.toast) ui.toast(_pbr.ok ? ('🏗 ' + (_pbr.msg || '已开工')) : (_pbr.msg || '无法建造'));
+        if (ui.closeModal) ui.closeModal();
+        break;
+      }
+      case 'plant-upgrade-do': {
+        var _puci = Number(el.dataset.ci);
+        var _pur = GAME.upgradePlant ? GAME.upgradePlant(_puci) : { ok: false, msg: '升级系统未就绪' };
+        if (ui.toast) ui.toast(_pur.ok ? ('⬆ ' + (_pur.msg || '已开工')) : (_pur.msg || '无法升级'));
+        if (ui.closeModal) ui.closeModal();
+        break;
+      }
+      case 'plant-dismantle-do': {
+        var _pdci = Number(el.dataset.ci);
+        /* 拆除不可逆（只返还半数材料）→ 先问一句，别让人手滑掉一座厂 */
+        ui.openModal(
+          '<div class="gold-heading">🗑 拆除采集场</div>' +
+          '<div class="m-body"><div class="q-empty">拆除后这座厂立刻消失，只返还 <b>一半</b> 已投入材料。<br>这块地的储量还在，之后可以重建。</div></div>' +
+          '<div class="modal-foot">' +
+          '<button class="btn red" data-action="plant-dismantle-yes" data-ci="' + _pdci + '">确认拆除</button>' +
+          '<button class="btn" data-action="close-modal">取消</button></div>',
+          { size: 'sm' });
+        break;
+      }
+      case 'plant-dismantle-yes': {
+        var _pdyci = Number(el.dataset.ci);
+        var _pdr = GAME.dismantlePlant ? GAME.dismantlePlant(_pdyci) : { ok: false, msg: '拆除系统未就绪' };
+        if (ui.toast) ui.toast(_pdr.ok ? ('🗑 ' + (_pdr.msg || '已拆除')) : (_pdr.msg || '无法拆除'));
+        if (ui.closeModal) ui.closeModal();
+        break;
+      }
+      /* 城外商情总览 → 跳到星球上那块地（定位 + 直接开地块面板，建造/升级都在那里） */
+      case 'plant-goto': {
+        var _pgci = Number(el.dataset.ci);
+        ui.closeAllModals();
+        if (ui.view !== 'map') ui.setView('map');
+        try { if (GAME.map3d && GAME.map3d.focusOnCell) GAME.map3d.focusOnCell(_pgci, true); } catch (eG) { }
+        if (ui.openLandModalCi) ui.openLandModalCi(_pgci);
+        break;
+      }
+      case 'plant-goto-map': {
+        ui.closeAllModals();
+        if (ui.view !== 'map') ui.setView('map');
+        if (ui.toast) ui.toast('走近森林 / 山地 / 荒漠地块 → 勘探 → 建厂');
+        break;
+      }
       /* v157.96（老板：「为地块增加传送按钮，点击后弹窗自动关闭，人物出现在当前格」）*/
       case 'cell-teleport': {
         var _tci = Number(el.dataset.ci);
@@ -4370,7 +4449,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.6';
+  GAME.VERSION = 'v158.13';
   function boot() {
     fitAppSize();
     try {

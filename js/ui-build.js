@@ -1333,8 +1333,64 @@ import './ui.js';
   };
 
   /* --------- 城外（地块网格 · 弹窗式） --------- */
+  /* ============================================================
+   * v158.13（S4）· 城外商情总览（迁移态）
+   * ------------------------------------------------------------
+   * 老板「现有城外资源建筑清零」「资源建筑从城外转移到大地图」之后，
+   * 原来那版 12×8 堆场棋盘**已经是空的了**：extGrid 恒空、extGridOf 只投影
+   * 星球上已建的厂。继续画旧棋盘 = 一排空位 + 点进去报「地块不存在」。
+   *
+   * 所以这一页在迁移态下换成**只读总览**：每座采集场一行（名称/等级/资源/
+   * 丰度/储量/状态），点「在地图上查看」跳到那块地。建造入口**不在这里** ——
+   * 按老板定的流程：走近地块 → 勘探 → 建厂（见地块面板的资源区块）。
+   * 这一页只回答"我在外面到底有几座厂、还剩多少矿"。
+   * ============================================================ */
+  ui.extPlantListHTML = function (c) {
+    var RS = GAME.resource;
+    var rows = [];
+    try { rows = RS.plantsOf(c.id) || []; } catch (e0) { rows = []; }
+    var RN = {};
+    (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RN[m.key] = m.name; });
+    var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
+    var head = '<div class="op-zone-t">采集场总览　<span class="ui-sub">共 ' + rows.length + ' 座</span></div>';
+    if (!rows.length) {
+      return '<div class="ui-page">' +
+        '<div class="op-zone op-zone-eq">' + head +
+          '<div class="q-empty">城外还没有采集场。<br>去星球上找一块带工业价值的地（森林 / 山地 / 荒漠），走近后<b>勘探</b>，再在那块地上<b>建厂</b>。</div>' +
+          '<div class="op-row"><button class="btn gold" data-action="plant-goto-map">🗺 去星球找地</button></div>' +
+        '</div></div>';
+    }
+    var body = rows.map(function (e) {
+      var eb = (DATA.EXT_BUILDINGS || {})[e.type] || {};
+      var tier = (RS.richTier ? RS.richTier(e.richness) : null) || { name: '普通', tone: 'normal' };
+      var pct = e.reserveMax > 0 ? Math.max(0, Math.min(100, e.reserve / e.reserveMax * 100)) : 0;
+      var per = (eb.prod && eb.prod[e.lv - 1] ? eb.prod[e.lv - 1] : 0) * (e.richness || 1) * (e.deplete ? (RS.DEPLETE_MULT || 1) : 1);
+      return '<div class="op-zone op-zone-eq">' +
+        '<div class="op-zone-t">' + (eb.icon || '🏭') + ' ' + U.escape(eb.name || e.type) +
+          ' <span class="ui-sub">Lv' + e.lv + ' · ' + U.escape(RN[eb.res] || eb.res || '') + '</span></div>' +
+        '<div class="attr"><span class="k">产量</span><span class="v">' + U.numText(Math.round(per), 0) + ' /时' +
+          '　<span class="ui-sub">基础值（未计环境折扣）</span></span></div>' +
+        '<div class="attr"><span class="k">丰度</span><span class="v" style="color:' + (toneCol[tier.tone] || 'var(--text)') + ';">' +
+          tier.name + ' ×' + (e.richness || 0).toFixed(2) + '</span></div>' +
+        '<div class="attr"><span class="k">储量</span><span class="v">' +
+          '<span style="display:inline-block;width:132px;height:9px;background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:4px;overflow:hidden;vertical-align:-1px;margin-right:6px;"><i style="display:block;height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(180deg,var(--gold-light),var(--gold-dark));"></i></span>' +
+          U.numText(e.reserve, 0) + ' / ' + U.numText(e.reserveMax, 0) +
+          (e.deplete ? '　<span style="color:var(--red-light);">已枯竭（残采 25%）</span>' : '') +
+        '</span></div>' +
+        '<div class="op-row"><button class="btn" data-action="plant-goto" data-ci="' + e.ci + '">📍 在地图上查看</button></div>' +
+      '</div>';
+    }).join('');
+    return '<div class="ui-page">' +
+      '<div class="op-zone op-zone-eq">' + head +
+        '<div class="op-row"><button class="btn gold" data-action="plant-goto-map">🗺 去星球上再建一座</button></div>' +
+      '</div>' + body + '</div>';
+  };
+
   ui.extHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
+    /* v158.13（S4）迁移态 → 走只读总览（旧堆场棋盘已恒空，见上方注释） */
+    var _RSm = GAME.resource;
+    if (_RSm && _RSm.ON_MAP && _RSm.MIGRATE_EXT && _RSm.plantsOf) return ui.extPlantListHTML(c);
     GAME.ensureExtGrid(c);
     var cap = GAME.extCap(c), used = GAME.extUsed(c);
     var all = GAME.extSummary ? GAME.extSummary() : null;
@@ -1457,10 +1513,7 @@ import './ui.js';
         '<div class="attr"><span class="k">另加' + (_rn212 || '资源') + '上限</span><span class="v good">+' + U.fmt(GAME.extStoreCapOneOf(e)) + '</span></div>' +
         (eRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(eRef) + '</div>' : '') +
         /* v68（设计规范 §11）：与城内弹窗同一骨架 —— 功能行 / 升级行 / 底栏 */
-        '<div class="op-zone">' +
-          /* ⛔ v89.138（老板 4）：标题行撤除（同上） */
-          '<div class="op-row"><button class="btn gold" data-action="ext-convert-ask" data-idx="' + idx + '">🔧 改建为其他资源建筑</button></div>' +
-        '</div>' +
+        /* ⛔ v158.13（S4）退役：「改建」按钮（一块地的厂型由地形资源决定，无合法目标） */
         /* v91.72（老板）：「资源建筑的升级按钮应该放在底部」——
            升级键从正文中段挪到底部操作栏（与拆毁 / 关闭同排），正文只留信息。 */
         '<div class="bldg-foot">' +

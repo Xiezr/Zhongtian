@@ -1183,39 +1183,10 @@ import './ui.js';
    * 忠诚与状态 / 守将效果 / 装备概览 / 赏赐 / 操作入口
    * 入口：英雄列表点姓名，或操作列「详情」
    * ============================================================ */
-  /* 城外改建选择面板（v19 · 需求 8）：等级保留，费用 = 目标建筑同等级累计造价 × 60% */
-  ui.openExtConvert = function (idx) {
-    var c = GAME.currentCity();
-    var e = GAME.extGridOf(c)[idx];
-    if (!e || !e.type) { ui.toast('该地块没有建筑可改建'); return; }
-    var cur = DATA.EXT_BUILDINGS[e.type];
-    var list = DATA.EXT_BUILD_ORDER.filter(function (eid) { return eid !== e.type; }).map(function (eid) {
-      var eb = DATA.EXT_BUILDINGS[eid];
-      var cost = GAME.extConvertCost(idx, eid);
-      var afford = GAME.canAfford(cost);
-      return '<div class="xc-row">' +
-        '<div class="xc-ico">' + GAME.icons.forExt(eid) + '</div>' +
-        '<div class="xc-info"><b>' + eb.name + '</b>' +
-          /* v90.44（老板）：改建费不再内联，移入「改建」按钮悬停。 */
-          '<span class="xc-prod">Lv' + e.lv + ' 产量 ' + U.perHourText(eb.prod[e.lv - 1]) + '/时</span></div>' +
-        /* v89.188（老板 6）：「改建有时候点不了」——材料不足的按钮不再 disabled
-           （灰按钮点不动、又不说为什么 = "点不了"的根因）。保留 dim 视觉但**可点**：
-           点后走 GAME.convertExt，材料不足由域层返回精确原因 toast（不扣费）；
-           按钮悬停给出"材料不足"提示。 */
-        '<button class="btn sm' + (afford ? ' gold' : ' dim') + '" data-action="ext-convert" data-idx="' + idx + '" data-eid="' + eid + '"'
-          + ' title="改建费：' + U.escape(GAME.costString(cost)) + '\n' + U.escape(afford
-              ? ('改建为 ' + eb.name + '（等级保留）')
-              : ('本城材料不足（跨城需走「本境调运」）—— 点击后可见提示')) + '">改建</button>' +
-        '</div>';
-    }).join('');
-    ui.openShell({
-      title: '🔧 改建 · ' + cur.name + ' Lv' + e.lv,
-      sub: '等级保留，只换用途' + ui.help('改建不返还旧建筑投入（与拆毁不同），但省去重新施工的时间'),
-      size: 'md',
-      body: '<div class="xc-list">' + list + '</div>',
-      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
-    });
-  };
+  /* ⛔ v158.13（S4）退役：城外「改建」选择面板（v19 需求 8）。
+     一块地能建哪种厂由地形资源决定（森林→生物质→水培温室），"改成另一种"
+     在新模型里没有合法目标 —— 要换用途就拆（dismantlePlant 返还半数）再建。
+     原入口：城外地块面板「🔧 改建为其他资源建筑」→ main.js 'ext-convert-ask'。 */
 
   /* ------------------------------------------------------------
    * 英雄详情（v26 · 需求 1/2 重排）

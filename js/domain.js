@@ -1094,6 +1094,26 @@ import './state.js';
     var s = GAME.state;
     if (!city) city = GAME.currentCity() || (s && s.cities && s.cities[0]);
     if (!city) return [];
+    /* ============================================================
+     * v158.13（S4）· 城外资源建筑**转移大地图**后的读取出口
+     * ------------------------------------------------------------
+     * 老板：「资源建筑从城外转移到大地图」「资源地块只有近地面勘探后才能建厂」。
+     * 迁移开关打开后，城内堆场（city.extGrid）恒为空 —— 真正的资源建筑活在
+     * 星球地块上（state.resources[pid][ci].plant）。
+     *
+     * 这里把「已建厂地块」投影成**和旧 extGrid 同形状**的数组（type/lv + 产量
+     * 链要的 richness/deplete），于是：
+     *   · 产量链  prodBasePerHourOf  → 一个字符都不用改（自己就乘上丰度了）
+     *   · 仓容链  extStoreCapByResOf → 按 type/lv 分账，自动等价
+     *   · 面板    extRows/外城总览   → 拿到的还是能遍历的地块
+     * 换句话说：迁移只换"地块从哪来"，不换"怎么算"。
+     * ⚠️ **只读**：这是每次现算的新数组，写它不会落档。建/升级/拆除采集场
+     *    一律走 GAME.buildPlant / upgradePlant / dismantlePlant（它们写 RS）。
+     * ============================================================ */
+    var RS = GAME.resource;
+    if (RS && RS.ON_MAP && RS.MIGRATE_EXT && RS.plantsOf) {
+      try { return RS.plantsOf(city.id) || []; } catch (eR) { return []; }
+    }
     if (!city.extGrid) city.extGrid = [];
     return city.extGrid;
   };
@@ -1199,7 +1219,9 @@ import './state.js';
     ((s && s.cities) || []).forEach(function (c) {
       out.towns++;
       out.cap += GAME.extCap(c);
-      (c.extGrid || []).forEach(function (e) {
+      /* v158.13（S4）：改走统一取材口 extGridOf —— 迁移态它投影星球上的采集场，
+         直接读 `c.extGrid` 会永远统计到 0 座（老档遗留的空壳数组）。 */
+      (GAME.extGridOf(c) || []).forEach(function (e) {
         if (!e || !e.type) return;
         out.used++;
         out.byType[e.type] = (out.byType[e.type] || 0) + 1;
@@ -1294,6 +1316,129 @@ import './state.js';
     e.pending = e.type;
     GAME.city.queueAdd('build', { pid: GAME.pidOf(city), cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + eb.name };
+  };
+
+  /* ============================================================
+   * v158.13（S4）· 采集场：在**星球地块**上建 / 升 / 拆
+   * ------------------------------------------------------------
+   * 老板：「现有城外资源建筑清零，返还资源。但是要设计一个在城外进行建造的流程」
+   * —— 城外建造 = 在星球某一格上开厂，脚步、资源、时间三件事都要真的花。
+   *
+   * 与旧 `buildExt(extIdx)` 的差别只在"目标怎么定位"：
+   *   · 旧：城内堆场第 N 号格子（extGrid[extIdx]）
+   *   · 新：星球第 ci 格（这块地必须是**已勘探**、资源匹配、且没被占）
+   * 扣费/排队/施工时长/建造队列/落成通知**全部复用旧链**（payCostIn → queueAdd
+   * → applyBuildDone），不新开第二套经济。
+   * ⚠️ 未勘探不能建（RS.canBuildPlant 里拦）—— 这正是"只有近地面勘探后才能
+   *    建厂生产"这条要求在代码里的落点。
+   * ============================================================ */
+  /* 坐标文案兜底（domain 在 node 门禁下可能没挂 GAME.map） */
+  function _coordOf(ci) {
+    try { return (GAME.map && GAME.map.coordTextCi) ? GAME.map.coordTextCi(ci) : ('格 #' + ci); }
+    catch (e) { return '格 #' + ci; }
+  }
+
+  GAME.buildPlant = function (ci, eid, cityId) {
+    var RS = GAME.resource;
+    if (!RS || !RS.ON_MAP || !RS.MIGRATE_EXT) return { ok: false, msg: '资源大地图模式未开启' };
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '城市不存在' };
+    var eb = DATA.EXT_BUILDINGS[eid];
+    if (!eb) return { ok: false, msg: '未知采集场' };
+    var pid = GAME.pidOf(city);
+    var chk = RS.canBuildPlant(ci, eid, pid);
+    if (!chk.ok) return chk;
+    /* 同一块地不许有两个施工队（施工中标记存在队列里，不写地块记录） */
+    var _dup = ((GAME.state && GAME.state.queues && GAME.state.queues.build) || []).some(function (q) {
+      return q && q.type === 'plant_build' && q.ci === ci;
+    });
+    if (_dup) return { ok: false, msg: '这块地已经在施工了' };
+    var slot = GAME.checkBuildSlot(city.id);
+    if (!slot.ok) return slot;
+    var cost = GAME.buildCostDiscountOf(GAME.extBuildCost(eid, 0));
+    if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
+    GAME.payCostIn(city, cost);
+    GAME.city.queueAdd('build', {
+      pid: pid, cityId: city.id, ci: ci, buildId: eid, type: 'plant_build',
+      paidCost: GAME.resOnlyOf(cost), elapsed: 0,
+      totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime())
+    });
+    return { ok: true, msg: '开始建造 ' + eb.name + '（' + _coordOf(ci) + '）' };
+  };
+
+  /* 升级采集场（等级、造价、时间与旧城外口径同尺） */
+  GAME.upgradePlant = function (ci, cityId) {
+    var RS = GAME.resource;
+    if (!RS || !RS.ON_MAP || !RS.MIGRATE_EXT) return { ok: false, msg: '资源大地图模式未开启' };
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '城市不存在' };
+    var pid = GAME.pidOf(city);
+    var cur = RS.plantAt(ci, pid);
+    if (!cur) return { ok: false, msg: '这块地上没有采集场' };
+    var eid = cur.plant, lv = cur.plantLv || 1;
+    var pre = GAME.buildPrereqOf(city, eid, lv + 1, cur);
+    if (!pre.ok) return pre;
+    if (lv >= GAME.buildCapOf(city, eid, cur)) return { ok: false, msg: '已达最高等级' };
+    var _dup = ((GAME.state && GAME.state.queues && GAME.state.queues.build) || []).some(function (q) {
+      return q && q.type === 'plant_upgrade' && q.ci === ci;
+    });
+    if (_dup) return { ok: false, msg: '这块地已经在施工了' };
+    var slot = GAME.checkBuildSlot(city.id);
+    if (!slot.ok) return slot;
+    var cost = GAME.buildCostDiscountOf(GAME.extBuildCost(eid, lv));
+    if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
+    GAME.payCostIn(city, cost);
+    GAME.city.queueAdd('build', {
+      pid: pid, cityId: city.id, ci: ci, buildId: eid, type: 'plant_upgrade',
+      fromLevel: lv, targetLevel: lv + 1,
+      paidCost: GAME.resOnlyOf(cost), elapsed: 0,
+      totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime())
+    });
+    return { ok: true, msg: '开始升级 ' + ((DATA.EXT_BUILDINGS[eid] || {}).name || eid) };
+  };
+
+  /* 拆采集场的返还预览（唯一算式）：逐级造价累加 × 50%。
+     拆除动作与界面「拆了能退多少」共用这一个，别各算一份。 */
+  GAME.plantDismantleRefund = function (ci, cityId) {
+    var RS = GAME.resource;
+    var back = { grain: 0, wood: 0, stone: 0, iron: 0 };
+    if (!RS || !RS.ON_MAP || !RS.MIGRATE_EXT) return back;
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return back;
+    var cur = RS.plantAt(ci, GAME.pidOf(city));
+    if (!cur) return back;
+    var eb = DATA.EXT_BUILDINGS[cur.plant] || null;
+    if (eb && eb.cost) {
+      for (var l = 0; l < (cur.plantLv || 1); l++) {
+        var c0 = eb.cost[l]; if (!c0) break;
+        back.grain += (c0[0] || 0) * 0.5; back.wood += (c0[1] || 0) * 0.5;
+        back.stone += (c0[2] || 0) * 0.5; back.iron += (c0[3] || 0) * 0.5;
+      }
+    }
+    return back;
+  };
+  /* 拆除采集场（返还一半已投入 —— 与旧「拆毁城外建筑」同口径） */
+  GAME.dismantlePlant = function (ci, cityId) {
+    var RS = GAME.resource;
+    if (!RS || !RS.ON_MAP || !RS.MIGRATE_EXT) return { ok: false, msg: '资源大地图模式未开启' };
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '城市不存在' };
+    var pid = GAME.pidOf(city);
+    var cur = RS.plantAt(ci, pid);
+    if (!cur) return { ok: false, msg: '这块地上没有采集场' };
+    /* 施工中不可拆：队列里还有这条地的工程时拆掉，落成那一步会写到一块空地上
+       （旧城外口径同样禁拆 —— 这条不许因为换了大图就漏掉）。 */
+    var _busy = ((GAME.state && GAME.state.queues && GAME.state.queues.build) || []).some(function (q) {
+      return q && q.ci === ci && (q.type === 'plant_build' || q.type === 'plant_upgrade');
+    });
+    if (_busy) return { ok: false, msg: '这块地正在施工，不能拆除' };
+    var back = GAME.plantDismantleRefund(ci, city.id);
+    RS.dismantlePlant(ci, pid);
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      if (back[k] > 0) GAME.city.add(city, k, back[k]);
+    });
+    GAME.log('拆除采集场：' + _coordOf(ci) + '（返还半数已投入）', 'sys', 'build');
+    return { ok: true, msg: '已拆除（返还半数材料）' };
   };
 
   /* 唯一建筑（城内只能建1座，居所/军营/战储仓可多建）。围墙不占格，已移出此表。
@@ -1536,46 +1681,18 @@ import './state.js';
   };
 
   /* ============================================================
-   * 城外资源地块「改建」（v19 · 需求 8）
-   *   把已建的资源建筑改成另一种类型，**等级保留**。
-   *   收费 = 目标建筑「当前等级」的累计造价 × 60%（改建折扣：
-   *   地基与人力已在，只需改造）。
+   * ⛔ v158.13（S4）退役：城外资源地块「改建」（v19 需求 8）
+   * ------------------------------------------------------------
+   * 原口径：把已建的城外建筑改成另一种类型，等级保留，收 60% 改造费。
+   * 为什么退役：老板「资源建筑从城外转移到大地图」后，**一块地能建哪种厂
+   * 由它的资源决定**（森林→生物质→只有水培温室），而资源又由地形决定、
+   * 不可改。于是"改成另一种类型"在新模型里**恒等于原类型**（无合法目标），
+   * 功能失去意义 —— 想换用途就拆（返还半数）再建。
+   * 一并移除：EXT_CONVERT_RATE / extConvertCost / convertExt /
+   *   入口 main.js 'ext-convert'、ui.openExtConvert（ui-planet）、
+   *   城外面板的「改建」按钮、smoke ⑧b 整组断言。
+   * 相关但**未退役**：拆除返还（dismantlePlant · 半数）与堆场分账（不变）。
    * ============================================================ */
-  GAME.EXT_CONVERT_RATE = 0.6;
-  GAME.extConvertCost = function (extIdx, newType, cityId) {
-    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    var e = GAME.extGridOf(city)[extIdx];
-    if (!e || !e.type) return null;
-    var eb = DATA.EXT_BUILDINGS[newType];
-    if (!eb) return null;
-    var out = { grain: 0, wood: 0, stone: 0, iron: 0 };
-    for (var i = 0; i < (e.lv || 1); i++) {
-      var c = eb.cost[i];
-      if (!c) continue;
-      out.grain += c[0] || 0; out.wood += c[1] || 0; out.stone += c[2] || 0; out.iron += c[3] || 0;
-    }
-    for (var k in out) out[k] = Math.round(out[k] * GAME.EXT_CONVERT_RATE);
-    return out;
-  };
-  GAME.convertExt = function (extIdx, newType, cityId) {
-    var s = GAME.state, city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    if (!city) return { ok: false, msg: '城市不存在' };
-    var e = GAME.extGridOf(city)[extIdx];
-    if (!e || !e.type) return { ok: false, msg: '该地块没有建筑可改建' };
-    if (e.pending) return { ok: false, msg: '施工中不可改建（可先取消施工）' };
-    var eb = DATA.EXT_BUILDINGS[newType];
-    if (!eb) return { ok: false, msg: '未知建筑类型' };
-    if (e.type === newType) return { ok: false, msg: '与当前类型相同' };
-    var cost = GAME.extConvertCost(extIdx, newType, city.id);
-    if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: '本城改建材料不足（跨城需走「本境调运」）' };
-    GAME.payCostIn(city, cost);
-    var old = DATA.EXT_BUILDINGS[e.type];
-    var oldName = old ? old.name : e.type;
-    e.type = newType;
-    GAME.statBump('converted', 1);
-    GAME.log('🔧 城外 ' + oldName + ' 改建为 ' + eb.name + '（Lv' + e.lv + ' 保留）');
-    return { ok: true, msg: oldName + ' 已改建为 ' + eb.name + '（等级保留）' };
-  };
 
   /* 城外资源地块拆毁（返还累计投入的 50%） */
   GAME.demolishExtRefund = function (extIdx, cityId) {
@@ -4988,14 +5105,17 @@ import './state.js';
     });
     (s.cities || []).forEach(function (ct) {
       if (!cityRoomOf(ct)) return;   /* v89.167：同上（城外候选） */
-      (ct.extGrid || []).forEach(function (e, idx) {
+      /* v158.13（S4）：城外候选改**走统一取材口** extGridOf ——
+         迁移模式下它投影的是星球上已建的采集场（带 ci），不再读空的 ct.extGrid。
+         旧写法读 ct.extGrid 会让"自动升级"在迁移后**永远升不到城外**（回归）。 */
+      (GAME.extGridOf(ct) || []).forEach(function (e, idx) {
         if (!e || !e.type || e.pending) return;
         var eb = DATA.EXT_BUILDINGS[e.type];
         /* v92.240e：候选上限必须与真升级用同一把尺（含政务厅闸/科技闸/hiLv 宽限）。
            漏传 bid/piece 会让城外建筑被误判为"可升到通用上限 12"而真实上限是 11，
            导致 autoUpgrade 每 tick 谎报"→Lv12"、建筑却卡在真实 11（伪振荡）。 */
         if (!eb || e.lv >= GAME.buildCapOf(ct, e.type, e)) return;
-        cands.push({ kind: 'ext', idx: idx, cityId: ct.id, lv: e.lv,
+        cands.push({ kind: (e.ci != null ? 'plant' : 'ext'), idx: idx, ci: e.ci, cityId: ct.id, lv: e.lv,
           name: (multi ? ct.name + '·' : '') + eb.name });
       });
     });
@@ -5031,7 +5151,8 @@ import './state.js';
       var cCty167 = GAME.cityById(c.cityId);
       if (cCty167 && !cityRoomOf(cCty167)) continue;      /* 该城本轮已排满 → 跳过（非失败） */
       /* v89.104：预算闸门退役（见函数群注释）—— 资源不足只跳过当项 */
-      var r = c.kind === 'ext' ? GAME.upgradeExt(c.idx, c.cityId)
+      var r = c.kind === 'plant' ? GAME.upgradePlant(c.ci, c.cityId)
+        : c.kind === 'ext' ? GAME.upgradeExt(c.idx, c.cityId)
         : GAME.upgradeAt(c.cityId || city.id, c.idx);
       if (r && r.ok) {
         doneN167++;
@@ -8529,7 +8650,10 @@ import './state.js';
 
 
   /* --------- 建造进度查询（供格子/弹窗实时刷新） --------- */
-  /* kind: 'city'|'ext'，idx: 格子/地块索引；返回 {pct, left, label} 或 null */
+  /* kind: 'city'|'ext'|'plant'，idx: 格子/地块索引/星球格号；返回 {pct, left, label} 或 null
+     v158.13（S4）新增 'plant'：资源建筑迁到星球后，施工对象是**星球第 ci 格**
+     （队列里记 q.ci，不记 extIdx）。'ext' 只服务尚未迁移的旧堆场格子，
+     迁移开关打开后它查不到任何东西 —— 别把两者混用。 */
   GAME.buildProgress = function (kind, idx, cityId) {
     var s = GAME.state;
     if (!s) return null;
@@ -8540,7 +8664,9 @@ import './state.js';
       var sameCity = !cur || !q.cityId || q.cityId === cur.id;
       var hit = kind === 'city'
           ? (GAME.slotEq(q.gridIndex, idx) && (q.type === 'build' || q.type === 'upgrade') && sameCity)
-          : (q.extIdx === idx && (q.type === 'ext_build' || q.type === 'ext_upgrade') && sameCity);
+          : kind === 'plant'
+            ? (q.ci === idx && (q.type === 'plant_build' || q.type === 'plant_upgrade') && sameCity)
+            : (q.extIdx === idx && (q.type === 'ext_build' || q.type === 'ext_upgrade') && sameCity);
       if (hit) return GAME.buildProgressOf(q);
     }
     return null;

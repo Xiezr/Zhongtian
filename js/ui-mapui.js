@@ -636,6 +636,67 @@ import './ui.js';
           + U.escape(ter.name || '此地') + '没有可采之物）—— 往有树/有矿/有水的地块走</div>') +
       '</div>';
 
+    /* ============================================================
+     * v158.12（S3 勘探）· 资源地块区块
+     * ------------------------------------------------------------
+     * 老板「资源地块只有近地面勘探后才能建厂生产」——地块面板就是"近地面"
+     * 的定点作业面：走近点这一格，就能看到这块地是什么资源、值不值得开厂。
+     *
+     * 三个刻意的设计（都是老板的交互原则落地）：
+     *   ① **只对有工业价值的地形出这个区块**（森林/山地/荒漠）。平原/草原/湖泊
+     *      也映射净水，但那是遍地都是的基础资源 —— 每块地都挂一段"净水地块"
+     *      纯属噪音（原则 1：复杂留给系统）。
+     *   ② **勘探前不报丰度/储量**。丰度是勘探的回报；提前报出来，勘探这个动作
+     *      就没有意义了。
+     *   ③ 走 `RS.view()`（纯计算不写档）而不是 `RS.at/ensure` —— 打开面板看一眼
+     *      不该在存档里给这一格建档。
+     * ============================================================ */
+    var resBox = '';
+    (function () {
+      var RS = GAME.resource;
+      if (!RS || !RS.view || !RS.ON_MAP) return;
+      var rv = null;
+      try { rv = RS.view(ci); } catch (e0) { rv = null; }
+      if (!rv) return;
+      if (!(rv.type === 'forest' || rv.type === 'hill' || rv.type === 'desert')) return;
+      /* 资源**全名**（净水/生物质/电能/废钢）—— 面板里用 `ui.RES_NAME` 的短名（水/生/电/钢）
+         会读成黑话，这里按 DATA.RESOURCES 取正式名 */
+      var RN2 = {};
+      (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RN2[m.key] = m.name; });
+      var rname = (RN2[rv.res] || rv.res || '');
+      var toneCol = { legend: 'var(--gold-light)', good: 'var(--green-ok)', normal: 'var(--text)', poor: 'var(--text-dim)' };
+      resBox = '<div class="op-zone op-zone-eq"><div class="op-zone-t">资源地块</div>';
+      if (!rv.scanned) {
+        resBox +=
+          '<div class="attr"><span class="k">资源</span><span class="v" style="color:var(--text-dim);">未勘探 —— 地形特征推断可能有 ' +
+            U.escape(rname) + '</span></div>' +
+          '<div class="op-row"><button class="btn gold" data-action="res-scan" data-ci="' + ci +
+            '">🔍 勘探</button><span class="op-hint">勘探后才能在此建采集场</span></div>';
+      } else {
+        var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通', tone: 'normal' };
+        var pct = rv.reserveMax > 0 ? Math.max(0, Math.min(100, rv.reserve / rv.reserveMax * 100)) : 0;
+        var depleted = rv.reserve <= 0;
+        resBox +=
+          '<div class="attr"><span class="k">资源</span><span class="v">' + U.escape(rname) +
+            '　<span style="color:' + (toneCol[tier.tone] || 'var(--text)') + ';">' + tier.name +
+            ' ×' + rv.richness.toFixed(2) + '</span></span></div>' +
+          '<div class="attr"><span class="k">储量</span><span class="v">' +
+            '<span style="display:inline-block;width:132px;height:9px;background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:4px;overflow:hidden;vertical-align:-1px;margin-right:6px;"><i style="display:block;height:100%;width:' + pct.toFixed(1) + '%;background:linear-gradient(180deg,var(--gold-light),var(--gold-dark));"></i></span>' +
+            U.numText(rv.reserve, 0) + ' / ' + U.numText(rv.reserveMax, 0) +
+            (depleted ? '　<span style="color:var(--red-light);">已枯竭（残采 25%）</span>' : '') +
+          '</span></div>';
+        if (rv.plant) {
+          var eb = (DATA.EXT_BUILDINGS || {})[rv.plant] || {};
+          resBox += '<div class="attr"><span class="k">采集场</span><span class="v">' +
+            U.escape(eb.name || rv.plant) + ' Lv' + rv.plantLv + '</span></div>';
+        } else {
+          resBox += '<div class="op-row"><button class="btn gold" data-action="res-build-open" data-ci="' + ci +
+            '">🏭 建采集场</button><span class="op-hint">在这块地上开厂，按丰度持续产出</span></div>';
+        }
+      }
+      resBox += '</div>';
+    })();
+
     /* v89.83（老板「已占领的野地，其入口操作应只保留派驻」）—— 已占野地是「我的地盘」。
        v89.136（老板「'野地采集（0/3队）'这个弹窗界面不需要」+「地块操作界面加一个采集操作」）：
        采集从"弹窗总入口"**收敛回地块界面**（见上方 gatherBox · 独立「采集」区）——
@@ -723,7 +784,7 @@ import './ui.js';
     ui.openModal(
       '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
       (GAME.jianghuWildMounted ? ui.jianghuHTML(ci) : '') +
-      stat + gatherBox + ops +
+      stat + resBox + gatherBox + ops +
       /* v157.96：已占领地块也给「⤓ 传送」（老板要的是"地块"通用，不是只管未占领）*/
       '<div class="modal-foot"><button class="btn" data-action="cell-teleport" data-ci="' + ci +
         '" title="把人物传送到这一格（并关闭此面板）">⤓ 传送</button>' +
@@ -743,6 +804,103 @@ import './ui.js';
    * 提交链路 = dispatch → prepare（上限预检 + 无将硬闸）→ 抵达 station 分支 → wildGarrisonAdd。
    * 如需恢复：本段代码见 `backup/v89137/ui.js`（判据：`ui.openWildGarrison = function`）。
    * ============================================================ */
+
+  /* ============================================================
+   * v158.13（S4）· 采集场面板（建 / 升 / 拆）
+   * ------------------------------------------------------------
+   * 老板：「资源建筑从城外转移到大地图」「要设计一个在城外进行建造的流程」。
+   * 这个面板就是那条流程的界面：站在哪块地上，就只能开哪种厂（地形决定资源），
+   * 造价/工期/产量/可采时长**全部摆在明面上**再让人点确认 ——
+   * 不是"点了才知道建了什么"，也不是"建完才知道能采多久"。
+   * 三种状态一个面板：未建（建厂）· 已建（升级/拆除）· 施工中（进度）。
+   * ============================================================ */
+  ui.openPlantModal = function (ci) {
+    var RS = GAME.resource;
+    if (!RS || !RS.ON_MAP || !RS.MIGRATE_EXT) { ui.toast('资源大地图模式未开启'); return; }
+    var rv = RS.view(ci);
+    if (!rv) { ui.toast('这一格不是资源地块'); return; }
+    if (!rv.scanned) { ui.toast('先勘探这块地'); return; }
+    var RES_NAME2 = {};
+    (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) RES_NAME2[m.key] = m.name; });
+    var eid = (RS.PLANT_OF_RES || {})[rv.res];
+    var eb = (DATA.EXT_BUILDINGS || {})[eid];
+    if (!eb) { ui.toast('这块地没有对应的采集场'); return; }
+    var city = GAME.currentCity() || (GAME.state.cities && GAME.state.cities[0]);
+    var pid = GAME.pidOf ? GAME.pidOf(city) : null;
+    var tier = RS.richTier ? RS.richTier(rv.richness) : { name: '普通' };
+    var curLv = rv.plant ? rv.plantLv : 0;
+    var ts = GAME.timeScale ? GAME.timeScale() : 120;
+
+    /* 施工中：队列里有这块地的任务就不给重复下单 */
+    var q = null;
+    ((GAME.state.queues && GAME.state.queues.build) || []).forEach(function (x) {
+      if (x && (x.type === 'plant_build' || x.type === 'plant_upgrade') && x.ci === ci) q = x;
+    });
+
+    var head =
+      '<div class="attr"><span class="k">地块</span><span class="v">' +
+        U.escape((DATA.TERRAIN[rv.type] || {}).name || rv.type) + ' · ' + (RES_NAME2[rv.res] || rv.res) +
+        '　<span style="color:var(--gold-light);">' + tier.name + ' ×' + rv.richness.toFixed(2) + '</span></span></div>' +
+      '<div class="attr"><span class="k">采集场</span><span class="v">' + U.escape(eb.icon || '') + ' ' +
+        U.escape(eb.name) + (curLv ? (' Lv' + curLv) : '') + '</span></div>';
+
+    /* 产量与可采时长（丰度已计入，枯竭后按残采系数） */
+    var per = eb.prod[Math.max(0, (curLv || 1) - 1)] || 0;
+    var yieldH = per * rv.richness * (rv.reserve > 0 ? 1 : RS.DEPLETE_MULT);
+    var hours = yieldH > 0 ? (rv.reserve / yieldH) : 0;           /* 游戏小时 */
+    var realH = hours * 3600 / ts / 3600;                          /* 现实小时 */
+    var body = head +
+      '<div class="attr"><span class="k">产量</span><span class="v">' +
+        U.numText(yieldH, 0) + ' / 游戏时　<span class="ui-sub">（基础 ' + U.numText(per, 0) +
+        ' × 丰度 ' + rv.richness.toFixed(2) + (rv.reserve > 0 ? '' : ' × 残采 ' + RS.DEPLETE_MULT) + '）</span></span></div>' +
+      /* v89.212（老板 1）「地块多的存的多」：这座厂的**露天堆场**另加本资源上限
+         （= 同级战储仓的 1/6，纯加法不吃加成）—— 迁移到星球后口径不变，只是
+         "地块"从城内堆场格变成了这块地，算式仍走 extStoreCapOneOf 唯一出口。 */
+      '<div class="attr"><span class="k">堆场</span><span class="v">另加' + U.escape(RES_NAME2[rv.res] || '资源') + '上限 +' +
+        (GAME.extStoreCapOneOf ? U.fmt(GAME.extStoreCapOneOf({ type: eid, lv: Math.max(1, curLv) })) : '—') +
+        '　<span class="ui-sub">（每级另加' + U.escape(RES_NAME2[rv.res] || '资源') + '上限 +' +
+        (GAME.extStoreCapOneOf ? U.fmt(GAME.extStoreCapOneOf({ type: eid, lv: 1 })) : '—') + '）</span></span></div>' +
+      '<div class="attr"><span class="k">储量</span><span class="v">' +
+        U.numText(rv.reserve, 0) + ' / ' + U.numText(rv.reserveMax, 0) +
+        '　<span class="ui-sub">按当前产量约可采 ' + realH.toFixed(1) + ' 现实小时</span></span></div>';
+
+    var foot = '';
+    if (q) {
+      var pct = q.totalTime > 0 ? Math.min(100, (q.elapsed / q.totalTime) * 100) : 0;
+      body += '<div class="attr"><span class="k">施工</span><span class="v">' +
+        (q.type === 'plant_build' ? '建造中' : '升级中') + '　' + pct.toFixed(0) + '%</span></div>';
+      foot = '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    } else if (!rv.plant) {
+      var cost = GAME.buildCostDiscountOf ? GAME.buildCostDiscountOf(GAME.extBuildCost(eid, 0)) : GAME.extBuildCost(eid, 0);
+      body += '<div class="attr"><span class="k">造价</span><span class="v">' +
+        [[cost.grain, 'grain'], [cost.wood, 'wood'], [cost.stone, 'stone'], [cost.iron, 'iron']].filter(function (x) { return x[0]; })
+          .map(function (x) { return (RES_NAME2[x[1]] || x[1]) + ' ' + U.numText(x[0], 0); }).join('　') +
+        '　<span class="ui-sub">工期 ' + U.dur(cost.time) + '</span></span></div>';
+      var afford = GAME.canAffordIn ? GAME.canAffordIn(city, cost) : true;
+      foot = '<div class="modal-foot">' +
+        '<button class="btn gold" data-action="plant-build-do" data-ci="' + ci + '" data-eid="' + eid + '"' +
+          (afford ? '' : ' disabled title="本城资源不足"') + '>🏭 开工建造</button>' +
+        '<button class="btn" data-action="close-modal">取消</button></div>';
+    } else {
+      var costU = GAME.buildCostDiscountOf ? GAME.buildCostDiscountOf(GAME.extBuildCost(eid, curLv)) : GAME.extBuildCost(eid, curLv);
+      var capLv = GAME.buildCapOf ? GAME.buildCapOf(city, eid) : 99;
+      body += '<div class="attr"><span class="k">升级</span><span class="v">Lv' + (curLv + 1) +
+        ' → 产量 ' + U.numText((eb.prod[curLv] || 0) * rv.richness, 0) + ' / 游戏时' +
+        '　<span class="ui-sub">' + (costU ? (U.numText(costU.grain, 0) + ' 净水 · ' + U.numText(costU.wood, 0) + ' 生物质 · 工期 ' + U.dur(costU.time)) : '已满级') + '</span></span></div>';
+      foot = '<div class="modal-foot">' +
+        (curLv < capLv && costU
+          ? '<button class="btn gold" data-action="plant-upgrade-do" data-ci="' + ci + '">⬆ 升级至 Lv' + (curLv + 1) + '</button>'
+          : '<button class="btn" disabled title="已达最高等级">已满级</button>') +
+        '<button class="btn red" data-action="plant-dismantle-do" data-ci="' + ci + '">🗑 拆除</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>';
+    }
+
+    ui.openModal(
+      '<div class="gold-heading">🏭 ' + U.escape(eb.name) + '</div>' +
+      '<div class="m-body">' + body + '</div>' + foot,
+      { size: 'md', live: function () { ui.openPlantModal(ci); } }
+    );
+  };
 
   /* 放弃野地二次确认（v23）：不可逆操作必须说清代价 */
   ui.openAbandonWildAsk = function (ci) {
