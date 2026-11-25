@@ -7084,6 +7084,9 @@
         } catch (eHint) { }
       } catch (eAv) { }
     }
+    /* v158.18（老板「新手玩法」）：任务链常驻提示 —— 内部 sig 去重，
+       只在步骤/视图变化时写 DOM（不每帧 innerHTML）。 */
+    try { if (GAME.ui && GAME.ui.renderQuestHint) GAME.ui.renderQuestHint(); } catch (eQh) { }
     /* v158.2（P2 · 城市街区 L1）：在 P0/P1 之后覆盖相机 —— 只写 cam，
        绝不写 camO.dist / camO.quat / lookPitch，退出街区时上一帧的轨道相机逐位还原。 */
     if (M.DISTRICT && GAME.district && GAME.district.active) {
@@ -15928,7 +15931,9 @@
     var region = $('#create-region').value;
     var txt;
     if (region === 'random' || !DATA.STATE_SPECIALTY[region]) {
-      txt = '（随机择一区落籍 · 出生城落在该区首府近旁的平原）';
+      /* v158.18（老板「新手玩法」）：补一句"选区只影响位置与特产、不影响难度"——
+         新手面对十三个区名最怕的是"选错就难很多"。 */
+      txt = '（随机择一区落籍 · 出生城落在该区首府近旁的平原 · 选区只影响出生位置与周边特产，不影响难度）';
     } else {
       var sp = DATA.STATE_SPECIALTY[region];
       var mat = DATA.MATERIAL_BY_ID[sp.mat];
@@ -15940,6 +15945,27 @@
         (mat ? mat.name : sp.mat) + '　' + sp.lore + '）';
     }
     $('#create-map-preview').textContent = txt;
+    /* v158.18（老板「新手玩法」）：十三个区名对新手是纯黑话 —— 给每枚 chip 挂悬停说明
+       （首府 + 特产 + 风土），不点选也能比。文案走 DATA.STATE_SPECIALTY 唯一数据源，
+       与上面选中后的预览同一份数据，不另写一份表。 */
+    try {
+      var _chips = document.querySelectorAll('.chip[data-target="create-region"]');
+      for (var _ci = 0; _ci < _chips.length; _ci++) {
+        var _rv = _chips[_ci].getAttribute('data-v');
+        if (!_rv || _rv === 'random' || !DATA.STATE_SPECIALTY[_rv]) {
+          _chips[_ci].title = '随机择一区落籍（选区只影响出生位置与周边特产，不影响难度）';
+          continue;
+        }
+        var _sp = DATA.STATE_SPECIALTY[_rv];
+        var _mat = DATA.MATERIAL_BY_ID[_sp.mat];
+        var _seat = null;
+        (DATA.NPC_CITIES || []).forEach(function (x) {
+          if (!_seat && x.state === _rv && (x.type === 'zhou' || x.type === 'capital')) _seat = x;
+        });
+        _chips[_ci].title = _rv + ' · 首府' + (_seat ? _seat.name : '—') +
+          ' · 特产' + (_mat ? _mat.name : _sp.mat) + (_sp.lore ? '　' + _sp.lore : '');
+      }
+    } catch (eChipTip) { }
     /* 存档选择：有档则亮出「继续上次的游戏」并显示存档概要 */
     var btnC = $('#create-continue'), note = $('#create-save-note');
     var meta = GAME.readMeta ? GAME.readMeta() : null;
@@ -16471,13 +16497,16 @@
       var res = null;
       try { res = GAME.gatherResOf ? GAME.gatherResOf(ty) : null; } catch (e2) { res = null; }
       var canCity = (ty === 'plain');
+      /* v158.18（老板「新手玩法」）：图例正文用**资源全名**（净水/生物质/电能/废钢），
+         不再是单字「水/生/钢/电」—— 新手看不懂单字。走 ui.resFull 唯一出口。 */
+      var resName = res ? (ui.resFull ? ui.resFull(res) : (RN[res] || res)) : null;
       rows.push({
         type: ty,
         name: TN[ty],
         css: css,
-        res: res ? (RN[res] || res) : null,
+        res: resName,
         canCity: canCity,
-        note: res ? ('可采：' + (RN[res] || res)) : (canCity ? '不可采 · **可立城**' : '不可采')
+        note: res ? ('可采：' + resName) : (canCity ? '不可采 · **可立城**' : '不可采')
       });
     }
     return rows;
@@ -19378,13 +19407,18 @@
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
          两者本是同一枚硬币（民怨 = 100 − 民心），各占一行纯粹浪费侧栏高度。 */
       /* v89.128（老板）：「民心/税率/幸存者前边的小图标去掉」 */
-      '<div class="res-line"><span class="lbl">民心 / 民怨</span><span class="val"' + _hTip204 + '>' +
+      /* v158.18（老板「新手玩法」）：新手不知道「民心 / 民怨」「税率」是什么 ——
+         给行加悬停解释。⚠️ title 放**外层 div**、不动内层 span：
+         smoke 有 `<span class="lbl">民心 \/ 民怨</span>` 的逐字断言，改内层会假红。 */
+      '<div class="res-line" title="民心 = 100 − 税率×100（±安抚）。民心低、民怨高会闹事：产出下降、兵源减少">' +
+        '<span class="lbl">民心 / 民怨</span><span class="val"' + _hTip204 + '>' +
         '<b style="color:' + (hearts > 60 ? 'var(--green-ok)' : hearts > 30 ? '#e6a400' : 'var(--red-light)') + ';font-variant-numeric:tabular-nums;">' + hearts + '</b>' +
         ' <span style="color:var(--text-dim);">/</span> ' +
         '<span style="font-variant-numeric:tabular-nums;">' + minyuan + '</span></span></div>' +
       /* v89.104（老板）：「税率调整直接放左侧统计栏的税率处，将目前的数值显示
          改成可调节的税率数值」—— 就地点 −/＋（步长 5%，0~100%），值走 GAME.doSetTax。 */
-      '<div class="res-line"><span class="lbl">税率</span><span class="val">' +
+      '<div class="res-line" title="按百分比抽走产出：税率越高进账越多，但民心越低、民怨越高">' +
+        '<span class="lbl">税率</span><span class="val">' +
         /* v89.128（老板）：「可点击的功能按钮参考资源那里的按钮，统一图标风格大小和颜色」 */
         '<span class="plus-btn" data-action="tax-step" data-d="-5" title="税率 −5%">−</span>' +
         '<b style="font-variant-numeric:tabular-nums;margin:0 6px;">' + Math.round((s.tax || 0) * 100) + '%</b>' +
@@ -21218,7 +21252,9 @@
           rows += R('威望作用', '<span style="color:var(--green-ok);">' + GAME.rankBonusText() + '</span>', '');
           rows += R('节钺', (DATA.JIEYUE || {}).icon + ' ×<b>' + GAME.jieyueOf() + '</b> <span class="ui-sub">（攻占名城 / 威望每 ' + ((DATA.JIEYUE || {}).rankEvery || 4) + ' 档 +1）</span>',
             '<button class="btn sm" data-action="open-jieyue">查看用途</button>');
-          rows += R('主城', (function () { var mc = GAME.mainCityOf(); return mc ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>') : '<span class="ui-sub">未设 —— 到目标城的政务厅点「设为主城」</span>'; })(), '');
+          /* v158.18（老板「新手玩法」）：补一句"政务厅就是城内那座 🏛"—— 新手知道要"设主城"，
+             却不知道政务厅在哪（它其实是开局自带的一座城内建筑）。 */
+          rows += R('主城', (function () { var mc = GAME.mainCityOf(); return mc ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>') : '<span class="ui-sub">未设 —— 到目标城的政务厅（城内那座 🏛）点「设为主城」</span>'; })(), '');
           rows += R('神器', '供奉 ' + U.fmt(GAME.artPts()) + '　' + (DATA.ARTIFACTS || []).map(function (a) { return a.icon + a.name.slice(0, 2) + ' Lv' + GAME.artLevelOf(a.id); }).join(' · '),
             '<button class="btn sm gold" data-action="open-artifacts">查看</button>');
           rows += R('声望', '<span style="color:var(--green-ok);">' + U.fmt(s.rep) + '</span>', '');
@@ -21436,6 +21472,15 @@
   /* 资源显示名与图标（模块级共享：野地面板 / 采集面板等多处复用） */
   ui.RES_NAME = { grain: '水', wood: '生', stone: '电', iron: '钢', gold: '币' };   /* v89.229：随资源换代（净水/生物质/电能/废钢） */
   ui.RES_ICON = { grain: '💧', wood: '🌿', stone: '⚡', iron: '🔩', gold: '💰' };   /* v89.229：随资源换代 */
+  /* v158.18（老板「新手玩法」）：资源**全名**唯一出口 —— 面板正文一律用全名
+     （净水/生物质/电能/废钢），单字「水/生/电/钢」只留给图标旁的紧凑位。
+     与 v158.17 在 ui-mapui 里建立的 resFull 同一口径（读 DATA.RESOURCES 的 name），
+     这里提到 ui.resFull 供地形图例等面板共用，不再各写一份。 */
+  ui.resFull = (function () {
+    var FULL = {};
+    (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) FULL[m.key] = m.name; });
+    return function (k) { return FULL[k] || ui.RES_NAME[k] || k; };
+  })();
 
   /* v87「地形专属场景区块」-> v88.1 整合：
      ui.wildSceneHTML / ui.doWildScene / _wsGen / _wsResult 已全部删除 ——
@@ -23157,6 +23202,9 @@
       el.classList.toggle('active', el.dataset.view === v);
     });
     ui.renderView(v);
+    /* v158.18（老板「新手玩法」）：切视图即刷任务链提示 —— 新手在城内与地图页之间
+       来回时提示要跟着变（城内给「去大世界」入口，大世界里给当前步骤）。 */
+    if (ui.renderQuestHint) ui.renderQuestHint();
   };
 
   /* 背包页签 */
@@ -25606,7 +25654,9 @@
             (wcan128 ? 'Lv0 → Lv1' : U.escape(wsub128)) + '</span></button>' +
         '</div><div class="bldg-foot">' +
           '<button class="btn" data-action="close-modal">关闭</button>' +
-          '<span class="op-hint">耐久 100×N 万 · 守军防御 +10N% · 远程射程 +3N%</span>' +
+          /* v158.18（老板「新手玩法」）：同 data.js desc —— 退役三条未落地的假承诺
+             （耐久 100×N 万 / 守军防御 +10N% / 远程射程 +3N%），改与实现一致。 */
+          '<span class="op-hint">每级 +20 城防 · 城头火力随城防放大</span>' +
         '</div></div>');
       return;
     }
@@ -25718,7 +25768,10 @@
           return 'Lv' + t + (t137 > i ? ' <b style="color:var(--green-ok);">✓</b>' : '');
         }).join(' → ');
         extra += '<div class="attr"><span class="k">建筑专精</span><span class="v' + (t137 > 0 ? ' good' : '') + '">'
-          + prog137 + '　·　'
+          /* v158.18（老板「新手玩法」）：新手看到「Lv12 → Lv24 → Lv36」完全不知道是什么 ——
+             补一句"本建筑升到"，把门槛说清（12/24/36 是**这座建筑的等级**，不是别的系统）。
+             ⚠️ 保留 "Lv12 起" / "下一档 Lv24" / "×1" 原字串：smoke 有逐字断言。 */
+          + '<span style="color:var(--text-dim);">本建筑升到 </span>' + prog137 + '　·　'
           + (t137 > 0 ? ('当前 <b>×' + t137 + '</b>：' + mast.txt) : ('Lv' + tiers137[0] + ' 起：' + mast.txt))
           /* tier 0 时"Lv12 起"本身已是目标，不再重复一条"下一档"；已到档才给"下一档/已满档" */
           + (t137 > 0
@@ -29969,14 +30022,16 @@
     var movable = GAME.isMovableCity(c);
     ui.openModal(
       '<div class="gold-heading">📍 迁址 · ' + U.escape(c.name) + '</div>' +
-      '<div class="note">迁址后：**原格归还星球**，新格成为你的城市。' +
-        '只可迁到**平原**空地（球系：填格索引 ci）。名城地望固定，不可迁。</div>' +
+      /* v158.18（老板「新手玩法」）：退役代码术语「球系：填格索引 ci / 格索引」——
+         玩家不该看到变量名。改成「格编号」，并告诉他在哪看（地图上点一格的面板里有）。 */
+      '<div class="note">迁址后：原来的地块会回到无主状态，新格成为你的城市。' +
+        '只可迁到<b>平原</b>空地（地图上点一格，面板里会显示它的格编号）。名城地望固定，不可迁。</div>' +
       '<div class="attr"><span class="k">当前坐标</span><span class="v">' +
-        GAME.coordText(c) + '（球系）</span></div>' +
+        GAME.coordText(c) + '</span></div>' +
       (movable
         ? '<div class="attr"><span class="k">迁往</span><span class="v">' +
-            '格索引 <input type="number" id="move-ci" class="qty-input" style="width:110px;" min="0" value="' +
-              (c.ci != null ? c.ci : 0) + '"></span></div>'
+            '目标格编号 <input type="number" id="move-ci" class="qty-input" style="width:110px;" min="0" value="' +
+              (c.ci != null ? c.ci : 0) + '">　<span class="ui-sub">填地图上那一格的编号</span></span></div>'
         : '<div class="note">这座城是名城 —— 地望固定，不可迁址。</div>') +
       '<div class="modal-foot">' +
         (movable ? '<button class="btn gold" data-action="city-move-do">确认迁址</button>' : '') +
@@ -31748,6 +31803,50 @@ ui.openDuel = function (fid, moveId) {
        都走本函数 on=false，跟随条随之还原，不会漏。 */
     var _fh = document.getElementById('follow-hud');
     if (_fh) _fh.style.display = (!on && GAME.map3d && GAME.map3d.FOLLOW) ? 'block' : 'none';
+    return el;
+  };
+
+  /* ============================================================
+   * v158.18（老板「新手玩法」）：任务链常驻提示条
+   * ------------------------------------------------------------
+   * 新手第一卡点（探针 p_newbie 实测）：`Q.hint()` 一直有内容
+   * （🚶 任务链 · 走一段路），却没接到任何可见 HUD —— hintShown=false /
+   * questPanel=false / anyGuideText=false，开局后屏幕上没有一个字说"该干嘛"。
+   * 照 #interact-hint 的既有范式：挂 ui.layerRoot() 唯一挂载点、
+   * sig 去重（不每帧重写 innerHTML），出口挂 GAME.ui.* 不新增顶层全局。
+   * 另：大世界入口「🧍 人物」只在**地图页底栏**（map-dock），新手开局在
+   * 城内视图根本看不到它 —— 所以城内态额外补一枚「去大世界走走」，
+   * 走同一个 follow-toggle 出口（不新开入口）。
+   * ============================================================ */
+  ui.renderQuestHint = function () {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var G = GAME;
+    var hint = (G.questline && G.questline.hint) ? G.questline.hint() : '';
+    var el = document.getElementById('quest-hint');
+    if (!hint || !G.state) {                      /* 任务链走完 / 没开局 → 收起 */
+      if (el) { el.style.display = 'none'; el.innerHTML = ''; el.removeAttribute('data-sig'); }
+      return null;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'quest-hint';
+      el.style.cssText = 'position:absolute;left:22px;top:64px;z-index:1901;'
+        + 'display:none;pointer-events:auto;font-size:14px;line-height:1.7;';
+      root.appendChild(el);
+    }
+    var inWorld = !!(G.map3d && G.map3d.FOLLOW);   /* 跟随态/街区态 = 已在大世界 */
+    var gate = inWorld ? '' :
+      '<button class="btn sm" data-action="follow-toggle" style="margin-left:10px;">🧍 去大世界走走</button>';
+    var sig = hint + '|' + (inWorld ? 'w' : 'c');
+    if (el.getAttribute('data-sig') !== sig) {
+      el.setAttribute('data-sig', sig);
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:7px 12px;font-weight:700;">'
+        + U.escape(hint) + '</span>' + gate;
+    }
+    el.style.display = 'block';
     return el;
   };
 
@@ -34032,8 +34131,10 @@ ui.openDuel = function (fid, moveId) {
       'title="指挥战斗：查看正在进行的战斗与行军中的军队（有战斗待指挥时闪烁）">⚔ 指挥战斗</button>';
     /* v90.73（老板 9）：底部导航加**星球生成器**入口 —— 调参生成星球，作为副本（不与其他星球同屏）。 */
     /* v90.79（老板 1）：星球生成器移到底栏**最右**（与「隐藏名称」同款图标按钮样式）。 */
+    /* v158.18（老板「新手玩法」）：名字是老板定的不动，title 补清楚"不影响当前星球"——
+       新手最容易把这个入口当成"会重置世界"的危险按钮而不敢点。 */
     var planetBtn = '<button class="bb-planet" data-action="planet-gen-open" ' +
-      'title="星球生成器：设置要素参数生成新星球（各星球作独立副本，不同屏展示）">🪐 星球生成器</button>';
+      'title="星球生成器：设置要素参数，生成一颗新星球作为独立副本（不影响你当前的星球；也能在这里查看 / 进入已生成的星球）">🪐 星球生成器</button>';
     /* v90.98（老板）：**地图视野缩放条** —— 底栏右侧、星球生成器左侧；仅地图视图显示。
        拖动滑块 = 极小视野 ⇄ 极大视野（与滚轮同源 camO.dist，见 map3d.zoomFrac/setZoom）。 */
     var zoomHTML = '';
@@ -42477,7 +42578,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.17';
+  GAME.VERSION = 'v158.18';
   function boot() {
     fitAppSize();
     try {

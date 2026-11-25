@@ -6790,6 +6790,9 @@ import './gltf.js';
         } catch (eHint) { }
       } catch (eAv) { }
     }
+    /* v158.18（老板「新手玩法」）：任务链常驻提示 —— 内部 sig 去重，
+       只在步骤/视图变化时写 DOM（不每帧 innerHTML）。 */
+    try { if (GAME.ui && GAME.ui.renderQuestHint) GAME.ui.renderQuestHint(); } catch (eQh) { }
     /* v158.2（P2 · 城市街区 L1）：在 P0/P1 之后覆盖相机 —— 只写 cam，
        绝不写 camO.dist / camO.quat / lookPitch，退出街区时上一帧的轨道相机逐位还原。 */
     if (M.DISTRICT && GAME.district && GAME.district.active) {

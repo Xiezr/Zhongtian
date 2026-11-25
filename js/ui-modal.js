@@ -504,7 +504,9 @@ import './ui.js';
     var region = $('#create-region').value;
     var txt;
     if (region === 'random' || !DATA.STATE_SPECIALTY[region]) {
-      txt = '（随机择一区落籍 · 出生城落在该区首府近旁的平原）';
+      /* v158.18（老板「新手玩法」）：补一句"选区只影响位置与特产、不影响难度"——
+         新手面对十三个区名最怕的是"选错就难很多"。 */
+      txt = '（随机择一区落籍 · 出生城落在该区首府近旁的平原 · 选区只影响出生位置与周边特产，不影响难度）';
     } else {
       var sp = DATA.STATE_SPECIALTY[region];
       var mat = DATA.MATERIAL_BY_ID[sp.mat];
@@ -516,6 +518,27 @@ import './ui.js';
         (mat ? mat.name : sp.mat) + '　' + sp.lore + '）';
     }
     $('#create-map-preview').textContent = txt;
+    /* v158.18（老板「新手玩法」）：十三个区名对新手是纯黑话 —— 给每枚 chip 挂悬停说明
+       （首府 + 特产 + 风土），不点选也能比。文案走 DATA.STATE_SPECIALTY 唯一数据源，
+       与上面选中后的预览同一份数据，不另写一份表。 */
+    try {
+      var _chips = document.querySelectorAll('.chip[data-target="create-region"]');
+      for (var _ci = 0; _ci < _chips.length; _ci++) {
+        var _rv = _chips[_ci].getAttribute('data-v');
+        if (!_rv || _rv === 'random' || !DATA.STATE_SPECIALTY[_rv]) {
+          _chips[_ci].title = '随机择一区落籍（选区只影响出生位置与周边特产，不影响难度）';
+          continue;
+        }
+        var _sp = DATA.STATE_SPECIALTY[_rv];
+        var _mat = DATA.MATERIAL_BY_ID[_sp.mat];
+        var _seat = null;
+        (DATA.NPC_CITIES || []).forEach(function (x) {
+          if (!_seat && x.state === _rv && (x.type === 'zhou' || x.type === 'capital')) _seat = x;
+        });
+        _chips[_ci].title = _rv + ' · 首府' + (_seat ? _seat.name : '—') +
+          ' · 特产' + (_mat ? _mat.name : _sp.mat) + (_sp.lore ? '　' + _sp.lore : '');
+      }
+    } catch (eChipTip) { }
     /* 存档选择：有档则亮出「继续上次的游戏」并显示存档概要 */
     var btnC = $('#create-continue'), note = $('#create-save-note');
     var meta = GAME.readMeta ? GAME.readMeta() : null;

@@ -37,6 +37,9 @@ import './ui.js';
       el.classList.toggle('active', el.dataset.view === v);
     });
     ui.renderView(v);
+    /* v158.18（老板「新手玩法」）：切视图即刷任务链提示 —— 新手在城内与地图页之间
+       来回时提示要跟着变（城内给「去大世界」入口，大世界里给当前步骤）。 */
+    if (ui.renderQuestHint) ui.renderQuestHint();
   };
 
   /* 背包页签 */

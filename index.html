@@ -4533,9 +4533,12 @@
   <div class="create-box wood-frame">
     <div class="inner-panel">
       <!-- v116：原来写「创建城市」，可交付的是**没有城**的前传（50 人、两辆车）。
-           承诺与交付不符，玩家第一秒就觉得自己点错了。改成如实的说法。 -->
-      <div class="gold-heading">给这支队伍起个名</div>
-      <div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">你还一座城都没有 —— 先把人带出去，活到能立城那天。</div>
+           承诺与交付不符，玩家第一秒就觉得自己点错了。改成如实的说法。
+           v158.18（老板「新手玩法」）：v157.85 老板已拍板「**前传整段退役**，
+           新局一律直接有城」（见 ui.doCreate 的同条注释）—— 这两句 v116 文案
+           还停在"没有城"的前传口径，与现在的交付不符，逐字改回如实说法。 -->
+      <div class="gold-heading">给君主起个名</div>
+      <div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">你有一座刚立起来的城 —— 先让幸存者活下去，再把城做大。</div>
       <div class="create-inner">
         <div>
           <div class="avatar-select">
@@ -4790,9 +4793,9 @@
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=a69ebd07"></script>
-<script src="js/bundle-core.js?v=a69ebd07"></script>
-<script src="js/bundle-war.js?v=a69ebd07"></script>
-<script src="js/bundle-ui.js?v=a69ebd07"></script>
+<script src="vendor/three.min.js?v=4d4037c9"></script>
+<script src="js/bundle-core.js?v=4d4037c9"></script>
+<script src="js/bundle-war.js?v=4d4037c9"></script>
+<script src="js/bundle-ui.js?v=4d4037c9"></script>
 </body>
 </html>

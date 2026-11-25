@@ -1158,6 +1158,50 @@ import './ui.js';
   };
 
   /* ============================================================
+   * v158.18（老板「新手玩法」）：任务链常驻提示条
+   * ------------------------------------------------------------
+   * 新手第一卡点（探针 p_newbie 实测）：`Q.hint()` 一直有内容
+   * （🚶 任务链 · 走一段路），却没接到任何可见 HUD —— hintShown=false /
+   * questPanel=false / anyGuideText=false，开局后屏幕上没有一个字说"该干嘛"。
+   * 照 #interact-hint 的既有范式：挂 ui.layerRoot() 唯一挂载点、
+   * sig 去重（不每帧重写 innerHTML），出口挂 GAME.ui.* 不新增顶层全局。
+   * 另：大世界入口「🧍 人物」只在**地图页底栏**（map-dock），新手开局在
+   * 城内视图根本看不到它 —— 所以城内态额外补一枚「去大世界走走」，
+   * 走同一个 follow-toggle 出口（不新开入口）。
+   * ============================================================ */
+  ui.renderQuestHint = function () {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var G = GAME;
+    var hint = (G.questline && G.questline.hint) ? G.questline.hint() : '';
+    var el = document.getElementById('quest-hint');
+    if (!hint || !G.state) {                      /* 任务链走完 / 没开局 → 收起 */
+      if (el) { el.style.display = 'none'; el.innerHTML = ''; el.removeAttribute('data-sig'); }
+      return null;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'quest-hint';
+      el.style.cssText = 'position:absolute;left:22px;top:64px;z-index:1901;'
+        + 'display:none;pointer-events:auto;font-size:14px;line-height:1.7;';
+      root.appendChild(el);
+    }
+    var inWorld = !!(G.map3d && G.map3d.FOLLOW);   /* 跟随态/街区态 = 已在大世界 */
+    var gate = inWorld ? '' :
+      '<button class="btn sm" data-action="follow-toggle" style="margin-left:10px;">🧍 去大世界走走</button>';
+    var sig = hint + '|' + (inWorld ? 'w' : 'c');
+    if (el.getAttribute('data-sig') !== sig) {
+      el.setAttribute('data-sig', sig);
+      el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
+        + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
+        + 'border-radius:8px;padding:7px 12px;font-weight:700;">'
+        + U.escape(hint) + '</span>' + gate;
+    }
+    el.style.display = 'block';
+    return el;
+  };
+
+  /* ============================================================
    * v158.3（P3 大世界）：载具态 HUD（纯文字，不新增按钮 → 无孤儿按钮风险）
    * ------------------------------------------------------------
    * ⚠️ 同 P2：不复用 #interact-hint（每帧按 sig 重写 innerHTML、pointer-events:none）。

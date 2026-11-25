@@ -949,7 +949,9 @@ import './ui.js';
             (wcan128 ? 'Lv0 → Lv1' : U.escape(wsub128)) + '</span></button>' +
         '</div><div class="bldg-foot">' +
           '<button class="btn" data-action="close-modal">关闭</button>' +
-          '<span class="op-hint">耐久 100×N 万 · 守军防御 +10N% · 远程射程 +3N%</span>' +
+          /* v158.18（老板「新手玩法」）：同 data.js desc —— 退役三条未落地的假承诺
+             （耐久 100×N 万 / 守军防御 +10N% / 远程射程 +3N%），改与实现一致。 */
+          '<span class="op-hint">每级 +20 城防 · 城头火力随城防放大</span>' +
         '</div></div>');
       return;
     }
@@ -1061,7 +1063,10 @@ import './ui.js';
           return 'Lv' + t + (t137 > i ? ' <b style="color:var(--green-ok);">✓</b>' : '');
         }).join(' → ');
         extra += '<div class="attr"><span class="k">建筑专精</span><span class="v' + (t137 > 0 ? ' good' : '') + '">'
-          + prog137 + '　·　'
+          /* v158.18（老板「新手玩法」）：新手看到「Lv12 → Lv24 → Lv36」完全不知道是什么 ——
+             补一句"本建筑升到"，把门槛说清（12/24/36 是**这座建筑的等级**，不是别的系统）。
+             ⚠️ 保留 "Lv12 起" / "下一档 Lv24" / "×1" 原字串：smoke 有逐字断言。 */
+          + '<span style="color:var(--text-dim);">本建筑升到 </span>' + prog137 + '　·　'
           + (t137 > 0 ? ('当前 <b>×' + t137 + '</b>：' + mast.txt) : ('Lv' + tiers137[0] + ' 起：' + mast.txt))
           /* tier 0 时"Lv12 起"本身已是目标，不再重复一条"下一档"；已到档才给"下一档/已满档" */
           + (t137 > 0

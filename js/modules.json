@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "a69ebd07b1f74512",
+ "sourceHash": "4d4037c91eb94959",
  "layout": {
   "order": [
    "core",
@@ -527,7 +527,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7357,
+   "lines": 7361,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -934,7 +934,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 9677,
+   "lines": 9680,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -946,8 +946,8 @@
     "gltf",
     "state",
     "fog",
-    "data",
     "ui-mapui",
+    "data",
     "ui-fx",
     "placement",
     "village",
@@ -1502,7 +1502,7 @@
   {
    "name": "ui-build",
    "file": "js/ui-build.js",
-   "lines": 1650,
+   "lines": 1655,
    "bundle": "ui",
    "duty": "ui-build.js　建造 · 前传君主 / 等距渲染 / 围墙 / 格内建筑 / 政务厅",
    "deps": [
@@ -1527,7 +1527,7 @@
   {
    "name": "ui-city",
    "file": "js/ui-city.js",
-   "lines": 483,
+   "lines": 488,
    "bundle": "ui",
    "duty": "ui-city.js　城市 · 新手引导 / 城市操作栏 / 侧栏驻军与资源",
    "deps": [
@@ -1586,7 +1586,7 @@
   {
    "name": "ui-craft",
    "file": "js/ui-craft.js",
-   "lines": 2419,
+   "lines": 2430,
    "bundle": "ui",
    "duty": "ui-craft.js　器物 · 宝物 / 神器 / 荒野行动 / 游商 / 制造 / 熔铸 / 抽卡",
    "deps": [
@@ -1679,7 +1679,7 @@
   {
    "name": "ui-mapui",
    "file": "js/ui-mapui.js",
-   "lines": 1219,
+   "lines": 1263,
    "bundle": "ui",
    "duty": "ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格",
    "deps": [
@@ -1692,8 +1692,8 @@
     "ui-shell",
     "ui-fx",
     "ui-craft",
-    "sphere",
     "ui",
+    "sphere",
     "growth",
     "taint",
     "convoy",
@@ -1712,7 +1712,7 @@
   {
    "name": "ui-modal",
    "file": "js/ui-modal.js",
-   "lines": 823,
+   "lines": 846,
    "bundle": "ui",
    "duty": "ui-modal.js　弹窗框架 · 格局 / 键盘流 / 实时刷新 / 悬停保护 / 整体缩放",
    "deps": [
@@ -1766,7 +1766,7 @@
   {
    "name": "ui-report",
    "file": "js/ui-report.js",
-   "lines": 1538,
+   "lines": 1540,
    "bundle": "ui",
    "duty": "ui-report.js　文书 · 通用分页 / 统计 / 公文 / 战报沙盘",
    "deps": [
@@ -1788,7 +1788,7 @@
   {
    "name": "ui-shell",
    "file": "js/ui-shell.js",
-   "lines": 514,
+   "lines": 517,
    "bundle": "ui",
    "duty": "ui-shell.js　外框 · 图例 / 坐标浮层 / 环境状态条 / 队列总览",
    "deps": [
@@ -1796,20 +1796,20 @@
     "map",
     "domain",
     "sphere",
+    "ui-craft",
     "map3d",
     "story",
     "ui-modal",
     "ui",
     "data",
     "portraits",
-    "ui-craft",
     "ui-build"
    ]
   },
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1373,
+   "lines": 1375,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [
@@ -1840,7 +1840,7 @@
   {
    "name": "ui-view",
    "file": "js/ui-view.js",
-   "lines": 1536,
+   "lines": 1539,
    "bundle": "ui",
    "duty": "ui-view.js　视图与枢纽 · setView / 交易站 / 英雄枢纽 / 节钺 / 行政 / 世界账本",
    "deps": [
@@ -1881,6 +1881,7 @@
     "tower",
     "village",
     "events",
+    "ui-mapui",
     "ui-core",
     "ui-army",
     "goals",

@@ -223,13 +223,16 @@ import './ui.js';
       var res = null;
       try { res = GAME.gatherResOf ? GAME.gatherResOf(ty) : null; } catch (e2) { res = null; }
       var canCity = (ty === 'plain');
+      /* v158.18（老板「新手玩法」）：图例正文用**资源全名**（净水/生物质/电能/废钢），
+         不再是单字「水/生/钢/电」—— 新手看不懂单字。走 ui.resFull 唯一出口。 */
+      var resName = res ? (ui.resFull ? ui.resFull(res) : (RN[res] || res)) : null;
       rows.push({
         type: ty,
         name: TN[ty],
         css: css,
-        res: res ? (RN[res] || res) : null,
+        res: resName,
         canCity: canCity,
-        note: res ? ('可采：' + (RN[res] || res)) : (canCity ? '不可采 · **可立城**' : '不可采')
+        note: res ? ('可采：' + resName) : (canCity ? '不可采 · **可立城**' : '不可采')
       });
     }
     return rows;

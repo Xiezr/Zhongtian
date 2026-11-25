@@ -1354,14 +1354,16 @@ import './ui.js';
     var movable = GAME.isMovableCity(c);
     ui.openModal(
       '<div class="gold-heading">📍 迁址 · ' + U.escape(c.name) + '</div>' +
-      '<div class="note">迁址后：**原格归还星球**，新格成为你的城市。' +
-        '只可迁到**平原**空地（球系：填格索引 ci）。名城地望固定，不可迁。</div>' +
+      /* v158.18（老板「新手玩法」）：退役代码术语「球系：填格索引 ci / 格索引」——
+         玩家不该看到变量名。改成「格编号」，并告诉他在哪看（地图上点一格的面板里有）。 */
+      '<div class="note">迁址后：原来的地块会回到无主状态，新格成为你的城市。' +
+        '只可迁到<b>平原</b>空地（地图上点一格，面板里会显示它的格编号）。名城地望固定，不可迁。</div>' +
       '<div class="attr"><span class="k">当前坐标</span><span class="v">' +
-        GAME.coordText(c) + '（球系）</span></div>' +
+        GAME.coordText(c) + '</span></div>' +
       (movable
         ? '<div class="attr"><span class="k">迁往</span><span class="v">' +
-            '格索引 <input type="number" id="move-ci" class="qty-input" style="width:110px;" min="0" value="' +
-              (c.ci != null ? c.ci : 0) + '"></span></div>'
+            '目标格编号 <input type="number" id="move-ci" class="qty-input" style="width:110px;" min="0" value="' +
+              (c.ci != null ? c.ci : 0) + '">　<span class="ui-sub">填地图上那一格的编号</span></span></div>'
         : '<div class="note">这座城是名城 —— 地望固定，不可迁址。</div>') +
       '<div class="modal-foot">' +
         (movable ? '<button class="btn gold" data-action="city-move-do">确认迁址</button>' : '') +

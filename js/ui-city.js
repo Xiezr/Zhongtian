@@ -399,13 +399,18 @@ import './ui.js';
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
          两者本是同一枚硬币（民怨 = 100 − 民心），各占一行纯粹浪费侧栏高度。 */
       /* v89.128（老板）：「民心/税率/幸存者前边的小图标去掉」 */
-      '<div class="res-line"><span class="lbl">民心 / 民怨</span><span class="val"' + _hTip204 + '>' +
+      /* v158.18（老板「新手玩法」）：新手不知道「民心 / 民怨」「税率」是什么 ——
+         给行加悬停解释。⚠️ title 放**外层 div**、不动内层 span：
+         smoke 有 `<span class="lbl">民心 \/ 民怨</span>` 的逐字断言，改内层会假红。 */
+      '<div class="res-line" title="民心 = 100 − 税率×100（±安抚）。民心低、民怨高会闹事：产出下降、兵源减少">' +
+        '<span class="lbl">民心 / 民怨</span><span class="val"' + _hTip204 + '>' +
         '<b style="color:' + (hearts > 60 ? 'var(--green-ok)' : hearts > 30 ? '#e6a400' : 'var(--red-light)') + ';font-variant-numeric:tabular-nums;">' + hearts + '</b>' +
         ' <span style="color:var(--text-dim);">/</span> ' +
         '<span style="font-variant-numeric:tabular-nums;">' + minyuan + '</span></span></div>' +
       /* v89.104（老板）：「税率调整直接放左侧统计栏的税率处，将目前的数值显示
          改成可调节的税率数值」—— 就地点 −/＋（步长 5%，0~100%），值走 GAME.doSetTax。 */
-      '<div class="res-line"><span class="lbl">税率</span><span class="val">' +
+      '<div class="res-line" title="按百分比抽走产出：税率越高进账越多，但民心越低、民怨越高">' +
+        '<span class="lbl">税率</span><span class="val">' +
         /* v89.128（老板）：「可点击的功能按钮参考资源那里的按钮，统一图标风格大小和颜色」 */
         '<span class="plus-btn" data-action="tax-step" data-d="-5" title="税率 −5%">−</span>' +
         '<b style="font-variant-numeric:tabular-nums;margin:0 6px;">' + Math.round((s.tax || 0) * 100) + '%</b>' +

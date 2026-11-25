@@ -50495,6 +50495,96 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && night >= 0.78 && Math.abs(day - 1) < 1e-9;    /* 日面逐位不变 */
   })(), 'night=' + ((1 - 0.45) + 0.45 * 0.55).toFixed(4));
 
+  /* ============================================================
+   * §608 v158.18 · 新手视角全功能走查（老板「假设你对游戏任何设置均未知，
+   * 新手玩游戏，探索所有功能，任何卡点都需要解决」）
+   * ------------------------------------------------------------
+   * 清档开局实测（探针 .workbuddy/tools/probe/p_newbie.js）暴露的新手卡点，
+   * 逐条钉住**可回归的形态**（不是"改了就算"）：
+   *   ① 任务链提示接到可见 HUD —— 此前 Q.hint() 一直有值却没人显示
+   *      （实测 hintShown=false / questPanel=false / anyGuideText=false）；
+   *   ② 城内给「去大世界」入口 —— 大世界入口（🧍 人物）只在地图页底栏，
+   *      新手开局在城内根本看不见，这是第一卡点；
+   *   ③ 创角文案与"新局即有城"一致 —— v157.85 前传整段退役后文案没跟上；
+   *   ④ 迁址面板不暴露代码术语（"球系：填格索引 ci" → "格编号"）；
+   *   ⑤ 围墙 desc 退役三条**从未落地**的假承诺（耐久/防御%/射程%，全库无实现）；
+   *   ⑥ 地形图例用资源全名（单字"水/生/钢/电"对新手是黑话）；
+   *   ⑦ 建筑专精补"本建筑升到"（12/24/36 是**建筑等级**门槛）；
+   *   ⑧ 状态栏给民心/税率悬停解释（title 放外层，内层 span 原样）。
+   * ============================================================ */
+  console.log('  --- §608 v158.18 新手视角走查（引导/文案/假动作） ---');
+  var _r608 = function (p2) { return _fs607.readFileSync(_p607.join(__dirname, p2), 'utf8'); };
+  var _um608 = _r608('js/ui-mapui.js');
+  var _uc608 = _r608('js/ui-city.js');
+  var _ush608 = _r608('js/ui-shell.js');
+  var _ucr608 = _r608('js/ui-craft.js');
+  var _ub608 = _r608('js/ui-build.js');
+  var _dt608 = _r608('js/data.js');
+  var _sp608 = _r608('js/ui-space.js');
+  var _vw608 = _r608('js/ui-view.js');
+  var _m3d608 = _r608('js/map3d.js');
+  var _html608 = _r608('index.html');
+
+  check('§608① 任务链提示接到可见 HUD（Q.hint 有值就必须有人显示）', (function () {
+    /* 定义：读 questline.hint、挂 layerRoot 唯一挂载点、有独立 id；
+       接线：ui-view（切视图）与 map3d（渲染循环）都真调 —— 缺一处就会"某视图下没提示"。 */
+    return /ui\.renderQuestHint = function \(\)/.test(_um608)
+      && /questline\.hint/.test(_um608)
+      && /ui\.layerRoot\(\)/.test(_um608)
+      && /getElementById\('quest-hint'\)/.test(_um608)
+      && /ui\.renderQuestHint\(\)/.test(_vw608)          /* 切视图接线 */
+      && /renderQuestHint\(\)/.test(_m3d608);            /* 渲染循环接线 */
+  })());
+
+  check('§608② 城内给「去大世界」入口（原来只在地图页底栏）', (function () {
+    var i = _um608.indexOf('ui.renderQuestHint = function');
+    var blk = _um608.slice(i, _um608.indexOf('v158.3（P3 大世界）：载具态 HUD', i));
+    return /data-action="follow-toggle"/.test(blk)
+      && /去大世界走走/.test(blk)
+      && /\.FOLLOW/.test(blk);                           /* 已在大世界就不重复给按钮 */
+  })());
+
+  check('§608③ 创角文案与"新局即有城"一致（v157.85 前传整段退役）', (function () {
+    return _html608.indexOf('一座城都没有') < 0
+      && _html608.indexOf('你有一座刚立起来的城') >= 0
+      && _html608.indexOf('给君主起个名') >= 0;
+  })());
+
+  check('§608④ 迁址面板不暴露代码术语（格索引 ci → 目标格编号）', (function () {
+    /* 剥注释再查：改动的沿革注释里保留了解释用的旧字串。 */
+    var code = stripComment(_sp608);
+    return code.indexOf('格索引 ci') < 0
+      && code.indexOf('球系：填格索引') < 0
+      && code.indexOf('目标格编号') >= 0;
+  })());
+
+  check('§608⑤ 围墙 desc 退役三条未落地的假承诺（与 domain 实现一致）', (function () {
+    /* 实现 = domain.js `city.def + wallLvl*20`；耐久/防御%/射程% 全库无实现，
+       tactic.js 注释自己就记着"另外两条从未落地"。剥注释后再查，避免命中沿革说明。 */
+    var d = stripComment(_dt608), b = stripComment(_ub608);
+    return d.indexOf('100×N 万') < 0 && d.indexOf('守军防御 +10N%') < 0
+      && d.indexOf('每级 +20 城防') >= 0
+      && b.indexOf('100×N 万') < 0 && b.indexOf('每级 +20 城防') >= 0;
+  })());
+
+  check('§608⑥ 地形图例用资源全名 + 全名唯一出口 ui.resFull', (function () {
+    return /ui\.resFull = \(function \(\)/.test(_ucr608)
+      && /DATA\.RESOURCES/.test(_ucr608)
+      && /ui\.resFull\(res\)/.test(_ush608)
+      && /可采：' \+ resName/.test(_ush608);
+  })());
+
+  check('§608⑦ 建筑专精补"本建筑升到"（12/24/36 是建筑等级门槛）', (function () {
+    return /本建筑升到 <\/span>' \+ prog137/.test(_ub608)
+      && /' 起：' \+ mast\.txt/.test(_ub608);            /* 旧字串必须仍在（smoke 前序断言锁） */
+  })());
+
+  check('§608⑧ 状态栏给民心/税率悬停解释（外层 div 加 title，内层 span 原样）', (function () {
+    return /title="民心 = 100 − 税率×100/.test(_uc608)
+      && /title="按百分比抽走产出/.test(_uc608)
+      && /<span class="lbl">民心 \/ 民怨<\/span>/.test(_uc608);   /* 内层原样保留 */
+  })());
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));

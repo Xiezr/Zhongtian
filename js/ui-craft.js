@@ -518,7 +518,9 @@ import './ui.js';
           rows += R('威望作用', '<span style="color:var(--green-ok);">' + GAME.rankBonusText() + '</span>', '');
           rows += R('节钺', (DATA.JIEYUE || {}).icon + ' ×<b>' + GAME.jieyueOf() + '</b> <span class="ui-sub">（攻占名城 / 威望每 ' + ((DATA.JIEYUE || {}).rankEvery || 4) + ' 档 +1）</span>',
             '<button class="btn sm" data-action="open-jieyue">查看用途</button>');
-          rows += R('主城', (function () { var mc = GAME.mainCityOf(); return mc ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>') : '<span class="ui-sub">未设 —— 到目标城的政务厅点「设为主城」</span>'; })(), '');
+          /* v158.18（老板「新手玩法」）：补一句"政务厅就是城内那座 🏛"—— 新手知道要"设主城"，
+             却不知道政务厅在哪（它其实是开局自带的一座城内建筑）。 */
+          rows += R('主城', (function () { var mc = GAME.mainCityOf(); return mc ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>') : '<span class="ui-sub">未设 —— 到目标城的政务厅（城内那座 🏛）点「设为主城」</span>'; })(), '');
           rows += R('神器', '供奉 ' + U.fmt(GAME.artPts()) + '　' + (DATA.ARTIFACTS || []).map(function (a) { return a.icon + a.name.slice(0, 2) + ' Lv' + GAME.artLevelOf(a.id); }).join(' · '),
             '<button class="btn sm gold" data-action="open-artifacts">查看</button>');
           rows += R('声望', '<span style="color:var(--green-ok);">' + U.fmt(s.rep) + '</span>', '');
@@ -736,6 +738,15 @@ import './ui.js';
   /* 资源显示名与图标（模块级共享：野地面板 / 采集面板等多处复用） */
   ui.RES_NAME = { grain: '水', wood: '生', stone: '电', iron: '钢', gold: '币' };   /* v89.229：随资源换代（净水/生物质/电能/废钢） */
   ui.RES_ICON = { grain: '💧', wood: '🌿', stone: '⚡', iron: '🔩', gold: '💰' };   /* v89.229：随资源换代 */
+  /* v158.18（老板「新手玩法」）：资源**全名**唯一出口 —— 面板正文一律用全名
+     （净水/生物质/电能/废钢），单字「水/生/电/钢」只留给图标旁的紧凑位。
+     与 v158.17 在 ui-mapui 里建立的 resFull 同一口径（读 DATA.RESOURCES 的 name），
+     这里提到 ui.resFull 供地形图例等面板共用，不再各写一份。 */
+  ui.resFull = (function () {
+    var FULL = {};
+    (DATA.RESOURCES || []).forEach(function (m) { if (m && m.key) FULL[m.key] = m.name; });
+    return function (k) { return FULL[k] || ui.RES_NAME[k] || k; };
+  })();
 
   /* v87「地形专属场景区块」-> v88.1 整合：
      ui.wildSceneHTML / ui.doWildScene / _wsGen / _wsResult 已全部删除 ——
