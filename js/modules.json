@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "3294fd3e2572ee59",
+ "sourceHash": "8ec58784bed97331",
  "layout": {
   "order": [
    "core",
@@ -31,7 +31,6 @@
    "convoy",
    "growth",
    "camp",
-   "ruin",
    "faction",
    "rival",
    "land",
@@ -161,7 +160,6 @@
   "convoy",
   "growth",
   "camp",
-  "ruin",
   "faction",
   "rival",
   "land",
@@ -258,7 +256,6 @@
    "convoy",
    "growth",
    "camp",
-   "ruin",
    "faction",
    "rival",
    "land",
@@ -527,7 +524,7 @@
   {
    "name": "data",
    "file": "js/data.js",
-   "lines": 7361,
+   "lines": 7353,
    "bundle": "core",
    "duty": "data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）",
    "deps": [
@@ -586,7 +583,7 @@
   {
    "name": "domain",
    "file": "js/domain.js",
-   "lines": 9843,
+   "lines": 9840,
    "bundle": "core",
    "duty": "domain.js  核心业务逻辑（真实数值版）",
    "deps": [
@@ -606,7 +603,6 @@
     "camp",
     "tower",
     "map3d",
-    "ruin",
     "story",
     "ui-city",
     "ui-fx",
@@ -856,7 +852,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4556,
+   "lines": 4549,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -901,7 +897,6 @@
     "growth",
     "village",
     "convoy",
-    "ruin",
     "fog",
     "climate",
     "taint",
@@ -934,7 +929,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 10095,
+   "lines": 10078,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -952,13 +947,12 @@
     "placement",
     "village",
     "camp",
-    "ruin",
     "main",
     "ui-exped",
     "belt",
     "faction",
-    "ui-delve",
     "resource",
+    "ui-delve",
     "memorial",
     "ui-shell",
     "ui-config",
@@ -1144,31 +1138,13 @@
   {
    "name": "rival",
    "file": "js/rival.js",
-   "lines": 545,
+   "lines": 534,
    "bundle": "core",
    "duty": "rival.js — 你不是唯一在重建的人（v94.1 · 世界层最小可运行）",
    "deps": [
     "state",
     "cities",
-    "data",
-    "ruin"
-   ]
-  },
-  {
-   "name": "ruin",
-   "file": "js/ruin.js",
-   "lines": 185,
-   "bundle": "core",
-   "duty": "ruin.js — 旧世界遗迹（v92.7 · 构想 A4 遗物埋点 + A9 遗迹剧情）",
-   "deps": [
-    "state",
-    "data",
-    "domain",
-    "ui",
-    "camp",
-    "ui-space",
-    "fog",
-    "items"
+    "data"
    ]
   },
   {
@@ -1283,7 +1259,6 @@
     "planetgen",
     "placement",
     "camp",
-    "ruin",
     "village",
     "rival",
     "surge",
@@ -1615,19 +1590,18 @@
   {
    "name": "ui-delve",
    "file": "js/ui-delve.js",
-   "lines": 604,
+   "lines": 577,
    "bundle": "ui",
    "duty": "ui-delve.js　废土 · 营地 / 遗迹 / 斗将 / 村社 / 拓荒队 / 三条线",
    "deps": [
     "battle",
-    "data",
     "ui-modal",
     "faction",
     "village",
+    "data",
     "ui-fx",
     "state",
     "main",
-    "ruin",
     "camp",
     "ui-core",
     "convoy",

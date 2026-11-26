@@ -262,21 +262,18 @@ import './state.js';
    * 不指路、不给坐标 —— 那是"情报"，不是"传闻"。
    * ============================================================ */
   GAME.rumorLineOf = function () {
-    var cm = 0, ru = 0, i;
+    var cm = 0, i;      /* v158.25：`ru`（遗迹计数）随遗迹系统退役 */
     if (GAME.fog && GAME.fog.get) {
       if (GAME.camp && GAME.camp.list) {
         var cl = GAME.camp.list(), cf = GAME.camp.found ? GAME.camp.found() : {};
         for (i = 0; i < cl.length; i++) if (!cf[cl[i]] && GAME.fog.get(cl[i]) === 0) cm++;
       }
-      if (GAME.ruin && GAME.ruin.list) {
-        var rl = GAME.ruin.list(), rf = GAME.ruin.found ? GAME.ruin.found() : {};
-        for (i = 0; i < rl.length; i++) if (!rf[rl[i]] && GAME.fog.get(rl[i]) === 0) ru++;
-      }
+      /* ⛔ v158.25：遗迹统计随遗迹系统退役（老板选 A）。 */
     }
-    if (!cm && !ru) return '传闻：这颗星球上已经没什么你没见过的东西了。';
+    if (!cm) return '传闻：这颗星球上已经没什么你没见过的东西了。';
     var seg = [];
     if (cm) seg.push(cm + ' 处营地');
-    if (ru) seg.push(ru + ' 处旧世界遗迹');
+    /* v158.25：`ru` 随遗迹退役，这里不再有遗迹段。 */
     return '传闻：无人到过的地方还有 ' + seg.join('、') + ' —— 往没亮的地方走。';
   };
 

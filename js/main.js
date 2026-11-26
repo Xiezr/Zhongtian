@@ -1510,7 +1510,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       /* v92.4：幸存者营地交涉（招募 / 洗劫）—— 两条路选一条，选完就结束。 */
       case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
       /* v92.7：遗迹翻找（两个翻法互斥，翻一次就没了） */
-      case 'ruin-act': GAME.doRuinAct(el.getAttribute('data-ci'), el.getAttribute('data-rs')); break;
+      /* ⛔ v158.25：`ruin-act`（遗迹翻找）随 DATA.RUIN 一起退役 —— 玩家遇不到的入口不算入口。 */
       /* v92.9：斗将（向势力代将叫阵 · 招式心理战） */
       case 'duel-with':
         if (el.getAttribute('data-reset')) ui._duel = null;
@@ -2695,16 +2695,9 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       ui.openConvoyModal();
     } else GAME.refreshView();
   };
-  GAME.doRuinAct = function (ci, side) {
-    var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;
-    if (!r) { ui.toast('遗迹翻找不可用'); return; }
-    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
-    if (r.ok) {
-      GAME.log(r.msg, 'sys', 'wild');
-      GAME.refreshAll();
-    }
-    ui.openRuinModal(+ci);
-  };
+  /* ⛔ v158.25（老板选 A）：`GAME.doRuinAct` 整条退役 —— 遗迹系统已删
+     （DATA.RUIN / ruin.js / ui.openRuinModal 同步移除），留着这个出口就是留一个
+     "调了没反应"的后门。墓碑在此，不许复活。 */
   GAME.doAutoExploreOnce = function () {
     var cfg = GAME.autoExploreCfg();
     if (!cfg) return;

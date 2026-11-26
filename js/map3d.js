@@ -21,7 +21,7 @@ import './gltf.js';
    * 为什么提出来：本文件在 jsdom（无 THREE）下第 18 行就整块 `return`，
    * 于是"点哪一格该给什么面板 / 该不该给手势条"这段**纯数据逻辑**在 smoke 里根本不存在，
    * 只能靠正则扫源码（等于没测）。
-   * 这两个函数只碰 GAME.map / GAME.camp / GAME.village / GAME.ruin / GAME.fortOwnAt
+   * 这两个函数只碰 GAME.map / GAME.camp / GAME.village / GAME.fortOwnAt（v158.25 起不含 ruin）
    * 和 `GAME.map3d.cellRef|cellKind`，**一行 THREE 都不需要** → 提到守卫之前，
    * 两种环境都挂上同一份实现（不许在无 THREE 分支里另写一份）。
    * ============================================================ */
@@ -106,9 +106,7 @@ import './gltf.js';
         && (!GAME.village.isKnown || GAME.village.isKnown(ci))) {
         out.facts.push('村社');
         out.tasks.push('🏘️ 可交涉（关系长期变化）');
-      } else if (GAME.ruin && GAME.ruin.isFound && GAME.ruin.isFound(ci)) {
-        out.facts.push('遗迹');
-        out.tasks.push('🏚️ 可探索（给材料）');
+      /* ⛔ v158.25：遗迹情报分支随遗迹系统退役（老板选 A）。 */
       } else {
         var w = null;
         try { w = GAME.map.wildAt ? GAME.map.wildAt(ci) : null; } catch (e4) { w = null; }
@@ -129,14 +127,14 @@ import './gltf.js';
      *    "说不清是什么的色块"。别再把它加回来。
      * 上面各分支已经覆盖了绝大多数情况，但**任何一格只要上了色，就应当说得出它是什么** ——
      * 玩家不该对着色块猜。这里按"来源表"补一行，并用 indexOf 去重，
-     * 避免与上面已经写明的"营地 / 村社 / 遗迹"重复。
+     * 避免与上面已经写明的"营地 / 村社"重复（遗迹 v158.25 退役）。
      * ============================================================ */
     var _tkK = null;
     try { _tkK = (GAME.map3d && GAME.map3d._tintKind) ? GAME.map3d._tintKind[ci] : null; } catch (e6) { _tkK = null; }
     var TK_DESC = {
       camp: '幸存者营地',
       village: '村社',
-      ruin: '旧世界遗迹',
+      /* v158.25：ruin 随遗迹系统退役 */
       own: '我方占领',
       memorial: '阵亡纪念地'
     };
@@ -144,8 +142,7 @@ import './gltf.js';
       var _hit = out.facts.join('').indexOf(TK_DESC[_tkK]) >= 0
         || (_tkK === 'own' && out.facts.join('').indexOf('前哨') >= 0)
         || (_tkK === 'camp' && out.facts.join('').indexOf('营地') >= 0)
-        || (_tkK === 'village' && out.facts.join('').indexOf('村社') >= 0)
-        || (_tkK === 'ruin' && out.facts.join('').indexOf('遗迹') >= 0);
+        || (_tkK === 'village' && out.facts.join('').indexOf('村社') >= 0);
       if (!_hit) out.facts.push('地面标记：' + TK_DESC[_tkK]);
     }
     return out;
@@ -184,7 +181,7 @@ import './gltf.js';
     }
     else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
     else if (GAME.village && GAME.village.at && GAME.village.at(ci) && GAME.village.isKnown(ci) && ui.openVillageModal) ui.openVillageModal(ci);
-    else if (GAME.ruin && GAME.ruin.isFound(ci) && ui.openRuinModal) ui.openRuinModal(ci);
+    /* ⛔ v158.25：`ui.openRuinModal` 随遗迹系统退役。 */
     else if (ui.openLandModalCi) {
       GAME.map._terrOverride = cell ? cell.type : null;
       GAME.map._regionOverride = reg;
@@ -3016,7 +3013,7 @@ import './gltf.js';
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub;   /* v157.85：`#pl<pos>`（前传君主站位）随前传退役删除 */ };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; }
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } /* v158.25：ruin 段随遗迹系统退役 */
       /* v93.2：村社——活着几处、护着几处、空了几处（任一变化都要重建标记） */
       if (GAME.state && GAME.state.villages) {
         var _vva = GAME.state.villages, _vn = 0, _vg = 0, _vd = 0;
@@ -5764,7 +5761,7 @@ import './gltf.js';
        `_tint` 只存颜色，**没存"为什么上色"** —— 于是悬停简报只能说"未探明"，
        玩家对着一片褐色/金色/青色块无从判断。这里同一处写入时顺手记下来源，
        悬停与面板都读它（同源，不会出现"颜色和说明不一致"）。
-       取值：camp / village / ruin / own / memorial（v157.98：trace 已退役）*/
+       取值：camp / village / own / memorial（v157.98 trace 退役 · v158.25 ruin 退役）*/
     var _tk = {}, _tkOwn = {};
     /* v157s（老板：「被占领地块，全地块用一个特征色显示，加上小旗子」）——
        旗子**只画了一个 sprite**，地上什么都没有。于是：
@@ -5857,17 +5854,7 @@ import './gltf.js';
         _tk[_vci] = 'village';
       }
     }
-    /* v92.7：已发现的旧世界遗迹 —— 青珠（待翻）/ 暗青（已翻） */
-    if (GAME.ruin && GAME.ruin.found) {
-      var _rf = GAME.ruin.found();
-      Object.keys(_rf).forEach(function (k) {
-        var ci = +k, rec = _rf[k];
-        var cell0 = _tileCells[ci];
-        if (!cell0 || !cell0.pos) return;
-        if (GAME.fog && GAME.fog.get(ci) <= 0) return;
-        _tint[ci] = (rec && rec.side) ? [58, 92, 88] : [110, 199, 192]; _tk[ci] = 'ruin';
-      });
-    }
+    /* ⛔ v158.25：遗迹青珠涂色随遗迹系统退役（老板选 A）。 */
     /* v157s：占领类涂色**最后写入** —— 同一格既是营地又是我的前哨时，以"已占领"为准。 */
     var _ownN = 0;
     for (var _ok in _tintOwn) { _tint[_ok] = _tintOwn[_ok]; _tk[_ok] = _tkOwn[_ok] || 'own'; _ownN++; }
@@ -8659,7 +8646,7 @@ import './gltf.js';
   var INTERACT_INFO = {
     own: ['己方城市', '进入'], npc: ['名城', '查看'], adm: ['行政城', '查看'],
     fort: ['据点', '查看'], lord: ['君主所在', '进入'],
-    ruin: ['遗迹', '探索'], village: ['村社', '交涉'], camp: ['营地', '清剿'],
+    village: ['村社', '交涉'], camp: ['营地', '清剿'],   /* v158.25：ruin 已退役 */
     prop: ['放置物', '查看'],
     /* v158.12（S3）：资源地块 —— 只对「有工业价值」的三地形提示勘探，见 _interactKindOf */
     res: ['资源地块', '勘探']
@@ -8680,7 +8667,7 @@ import './gltf.js';
   function _interactKindOf(ci) {
     var k = (M.cellKind && M.cellKind[ci]) || null;
     if (k && INTERACT_INFO[k]) return k;
-    try { if (GAME.ruin && GAME.ruin.isFound && GAME.ruin.isFound(ci)) return 'ruin'; } catch (e1) { }
+    /* ⛔ v158.25：'ruin' 这一 kind 随遗迹系统退役。 */
     try { if (GAME.camp && GAME.camp.isFound && GAME.camp.isFound(ci)) return 'camp'; } catch (e2) { }
     try {
       if (GAME.village && GAME.village.at && GAME.village.at(ci)
@@ -9211,7 +9198,7 @@ import './gltf.js';
   var LM_MAX = 24;                    /* 同屏最多 24 个 —— 地表只有 ±44 米，再多也没地方站 */
   function lmSig() {
     var n1 = 0, n2 = 0, n3 = 0;
-    try { n1 = Object.keys((GAME.ruin && GAME.ruin.found) ? GAME.ruin.found() : {}).length; } catch (e1) { }
+    /* v158.25：n1（遗迹数）随遗迹系统退役，恒 0 */
     try { n2 = Object.keys((GAME.state && GAME.state.villages) || {}).length; } catch (e2) { }
     try { n3 = Object.keys((GAME.camp && GAME.camp.found) ? GAME.camp.found() : {}).length; } catch (e3) { }
     return (M._surf ? 's' : 'o') + n1 + '/' + n2 + '/' + n3;
@@ -9227,12 +9214,8 @@ import './gltf.js';
       g.add(m);
       return m;
     };
-    if (kind === 'ruin') {
-      /* 断柱 + 斜梁：一眼看出"这是旧世界留下的"，不是玩家放的 */
-      mk(new THREE.CylinderGeometry(0.26, 0.34, 2.6, 7), 0xb3b9bf, -0.55, 1.3, 0);
-      mk(new THREE.CylinderGeometry(0.24, 0.30, 1.4, 7), 0x9aa0a6, 0.52, 0.70, 0.18);
-      mk(new THREE.BoxGeometry(1.9, 0.22, 1.1), 0x848b91, 0, 0.11, 0.55);
-    } else if (kind === 'village') {
+    /* ⛔ v158.25：'ruin' 造型（断柱+斜梁）随遗迹系统退役。 */
+    if (kind === 'village') {
       /* 草屋：圆墙 + 锥顶，和玩家的"木屋"区分开（那道是方屋） */
       mk(new THREE.CylinderGeometry(0.86, 0.96, 0.86, 8), 0x8d6e4b, 0, 0.43, 0);
       mk(new THREE.ConeGeometry(1.12, 0.95, 8), 0xa8845c, 0, 1.13, 0);
@@ -9254,7 +9237,7 @@ import './gltf.js';
       if (!(ci >= 0) || !SP.cells[ci]) return;
       cand.push({ ci: ci, kind: kind });
     };
-    try { var rf = (GAME.ruin && GAME.ruin.found) ? GAME.ruin.found() : {}; for (var k1 in rf) push(k1, 'ruin'); } catch (e1) { }
+    /* ⛔ v158.25：遗迹地标随遗迹系统退役。 */
     try { var vs = (GAME.state && GAME.state.villages) || {}; for (var k2 in vs) push(k2, 'village'); } catch (e2) { }
     try { var cf = (GAME.camp && GAME.camp.found) ? GAME.camp.found() : {}; for (var k3 in cf) push(k3, 'camp'); } catch (e3) { }
     if (!cand.length) return 0;

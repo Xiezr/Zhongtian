@@ -12803,7 +12803,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'saveidb', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'saveidb', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'duel', 'duel3d', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'district', 'vehicle', 'npc', 'quest', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
@@ -39681,115 +39681,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return j.length < 600;
     })(), (function () { return JSON.stringify(G.state.factions).length + ' 字节'; })());
 
-    console.log('\n===== 291. v92.7 旧世界遗迹 =====');
+    console.log('\n===== 291. v92.7 旧世界遗迹（v158.25 整条退役）=====');
 
-    var ruinN = (function () {
-      G.newGame({ name: '遗迹', cityName: '灰岗' });
-      G.state.ruins = {};
-      return G.ruin.list().length;
-    })();
-
-    check('§291① 候选规模合理（不是遍地都是）',
-      ruinN >= 10 && ruinN <= 500, ruinN + ' 处');
-
-    check('§291② 生成确定性 + 不长在海里', (function () {
-      var list = G.ruin.list();
-      if (!list.length) return false;
-      var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
-      var a = G.ruin.at(list[0]), b = G.ruin.at(list[0]);
-      if (!a || !b || a.kind !== b.kind || a.name !== b.name) return false;
-      for (var i = 0; i < list.length; i++) {
-        var c = SPn.cells[list[i]];
-        if (!c || c.type === 'sea' || c.type === 'ocean') return false;
-      }
-      return true;
-    })(), '首处 ' + (function () {
-      var l = G.ruin.list(); var w = l.length ? G.ruin.at(l[0]) : null;
-      return w ? w.name : 'null';
-    })());
-
-    check('§291③ 未探明不登记', (function () {
-      var list = G.ruin.list();
-      var ci = null;
-      for (var i = 0; i < list.length; i++) if (G.fog.get(list[i]) === 0) { ci = list[i]; break; }
-      if (ci == null) return false;
-      G.state.ruins = {};
-      G.ruin.sweep(true);
-      return !G.state.ruins[ci];
-    })());
-
-    check('§291④ 探明后 sweep 收进来', (function () {
-      var list = G.ruin.list();
-      if (!list.length) return false;
-      var ci = list[0];
-      G.fog.bump(ci, G.fog.ALL);
-      G.state.ruins = {};
-      var n = G.ruin.sweep(true);
-      return n >= 1 && !!G.state.ruins[ci];
-    })());
-
-    check('§291⑤ 离城越远越富（探索的回报落在产出上）', (function () {
-      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
-      var c = G.currentCity();
-      var list = G.ruin.list();
-      var far = -1, fd = 0;
-      for (var i = 0; i < list.length; i++) {
-        var d = s.distOf({ ci: c.ci }, { ci: list[i] });
-        if (d > fd) { fd = d; far = list[i]; }
-      }
-      if (far < 0 || fd < 10) return false;
-      return G.ruin.tierMulOf(far) > G.ruin.tierMulOf(c.ci);
-    })(), '最远处 ×' + (function () {
-      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere)), c = G.currentCity(), list = G.ruin.list();
-      var far = -1, fd = 0;
-      for (var i = 0; i < list.length; i++) {
-        var d = s.distOf({ ci: c.ci }, { ci: list[i] });
-        if (d > fd) { fd = d; far = list[i]; }
-      }
-      return far < 0 ? '?' : (Math.round(G.ruin.tierMulOf(far) * 100) / 100);
-    })());
-
-    var ruinOne = (function () {
-      var list = G.ruin.list();
-      for (var i = 0; i < list.length; i++) {
-        if (G.ruin.at(list[i])) { G.fog.bump(list[i], G.fog.ALL); return list[i]; }
-      }
-      return -1;
-    })();
-
-    check('§291⑥ 翻找 a：真拿到东西（不是空手）', (function () {
-      if (ruinOne < 0) return false;
-      G.state.ruins = {};
-      G.ruin.sweep(true);
-      var r = G.ruin.act(ruinOne, 'a');
-      return r.ok && /×|\+/.test(r.msg || '');
-    })(), (function () {
-      if (ruinOne < 0) return '';
-      var rec = G.ruin.found()[ruinOne];
-      return rec ? (rec.got || '') : '';
-    })());
-
-    check('§291⑦ 互斥且不可撤销（翻过就不能再翻另一样）', (function () {
-      if (ruinOne < 0) return false;
-      var r2 = G.ruin.act(ruinOne, 'b');
-      return !r2.ok && /翻过/.test(r2.msg || '');
-    })());
-
-    check('§291⑧ 翻找 b：资源真进账', (function () {
-      var list = G.ruin.list();
-      var ci = -1;
-      for (var i = 0; i < list.length; i++) {
-        if (G.ruin.at(list[i]) && !G.ruin.found()[list[i]]) { G.fog.bump(list[i], G.fog.ALL); ci = list[i]; break; }
-      }
-      if (ci < 0) return false;
-      G.ruin.sweep(true);
-      var c2 = G.currentCity();
-      c2.res = c2.res || {};
-      var before = (c2.res.iron || 0) + (c2.res.grain || 0) + (c2.res.stone || 0) + (c2.res.wood || 0);
-      var r = G.ruin.act(ci, 'b');
-      var after = (c2.res.iron || 0) + (c2.res.grain || 0) + (c2.res.stone || 0) + (c2.res.wood || 0);
-      return r.ok && after !== before;
-    })());
+    /* ============================================================
+     * 规则变更（v158.25 · 老板「旧军械库所在的分支是什么，无用」→ 选 A 退役）
+     * ------------------------------------------------------------
+     * 原 §291①~⑧（候选规模 / 生成确定性 / 未探明不登记 / sweep 收入 /
+     *   距离倍率 / 翻找 a·b 到账 / 互斥不可撤销）**全部作废** —— 系统已删。
+     * 为什么退役而不是修：内容是真的（实测精铁 0→14 真到账），但**玩家永远遇不到**：
+     *   全图 64 处 · 密度 0.25% · 发现要求"该格已探明" · 开局只探明 0.15%（61 格）
+     *   → 期望 0.15 处，实测 `sweep` 发现 **0 处**。
+     * 这条反向守卫钉住：数据 / 模块 / 面板 / 动作 都不许复活。
+     * ============================================================ */
+    check('§291 遗迹系统已整条退役（DATA.RUIN / GAME.ruin / openRuinModal / ruin-act 全不许复活）',
+      !DATA.RUIN
+      && typeof G.ruin === 'undefined'
+      && !(GAME.ui && GAME.ui.openRuinModal)
+      /* 只看**赋值形态**：墓碑注释里会提到这个名字（说明为什么删），裸正则会把"已删"误判成"还在" */
+      && !/GAME\.doRuinAct\s*=\s*function/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8')),
+      'DATA.RUIN=' + (!!DATA.RUIN) + ' · G.ruin=' + (typeof G.ruin) + ' · openRuinModal=' + (GAME.ui ? typeof GAME.ui.openRuinModal : 'no-ui'));
 
     console.log('\n===== 292. v92.8 年景（历法 = 赛季）=====');
 
@@ -40392,11 +40302,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     check('§302② 全探明后传闻变成"没什么没见过"', (function () {
       /* 把所有候选都点亮并登记 */
-      var cl = G.camp.list(), rl = G.ruin.list();
+      /* v158.25：遗迹随系统退役 —— 传闻只剩营地这一类 */
+      var cl = G.camp.list();
       cl.forEach(function (ci) { G.fog.bump(ci, G.fog.ALL); });
-      rl.forEach(function (ci) { G.fog.bump(ci, G.fog.ALL); });
-      G.state.camps = {}; G.state.ruins = {};
-      G.camp.sweep(true); G.ruin.sweep(true);
+      G.state.camps = {};
+      G.camp.sweep(true);
       var line = G.rumorLineOf();
       return /没什么你没见过/.test(line);
     })());
@@ -40760,12 +40670,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return r ? Math.round(r.pop) + ' 人' : '?';
     })());
 
-    check('§306⑪ 村社/营地/遗迹都不在水上（海洋的 type 是 lake）', (function () {
+    /* 规则变更（v158.25 · 遗迹退役）：原来验"村社/营地/**遗迹**都不在水上"，
+       遗迹没了 → 只验村社/营地（这两个才是现役的水上风险点）。
+       不是因为放宽，是那条数据源已经不存在了。 */
+    check('§306⑪ 村社/营地都不在水上（海洋的 type 是 lake）', (function () {
       var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       if (!sp || !sp.cells) return false;
       var bad = 0, i, ci;
-      var vl = G.village.list(), cl = G.camp.list(), rl = G.ruin.list();
-      [vl, cl, rl].forEach(function (arr) {
+      var vl = G.village.list(), cl = G.camp.list();
+      [vl, cl].forEach(function (arr) {
         for (i = 0; i < arr.length; i++) {
           ci = arr[i];
           if (sp.cells[ci] && sp.cells[ci].type === 'lake') bad++;
@@ -40776,7 +40689,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       if (!sp || !sp.cells) return '?';
       var n = 0;
-      var all = G.village.list().concat(G.camp.list(), G.ruin.list());
+      var all = G.village.list().concat(G.camp.list());
       all.forEach(function (ci) { if (sp.cells[ci] && sp.cells[ci].type === 'lake') n++; });
       /* v139：诊断 —— 报错时要能看出是"名单用错了球面"还是"真的刷到水里" */
       var _bad = [];
@@ -42181,25 +42094,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       };
       try {
         var v = G.village.list().length;
-        var r = G.ruin.list().length;
         G.rival.ensure();
         var teams = G.rival.arr().length;
-        return v > 10 && r > 5 && teams > 0;
+        return v > 10 && teams > 0;      /* v158.25：遗迹数随系统退役，不再参与 */
       } finally { G.mapSphere = bak; }
     })(), (function () {
       var bak = G.mapSphere;
       G.mapSphere = { nv: 0, seed3: function () { return 1; } };
-      var v = G.village.list().length, r = G.ruin.list().length;
+      var v = G.village.list().length;
       G.rival.ensure();
       var t = G.rival.arr().length;
       G.mapSphere = bak;
-      return '村社 ' + v + ' · 遗迹 ' + r + ' · 竞争者 ' + t;
+      return '村社 ' + v + ' · 竞争者 ' + t;
     })());
 
     /* ③ 九个模块都改走统一出口（源码级：不许再有裸的 `mapSphere || sphere`） */
-    check('§320③ 九个空间模块都改走 sphereOf（源码级：没有裸的 mapSphere || sphere）', (function () {
+    check('§320③ 八个空间模块都改走 sphereOf（源码级：没有裸的 mapSphere || sphere）', (function () {
       var fs = require('fs'), path = require('path');
-      var files = ['camp', 'convoy', 'expose', 'faction', 'land', 'relic', 'rival', 'ruin', 'village'];
+      /* v158.25：`ruin` 模块已退役（老板选 A），九个 → 八个 */
+      var files = ['camp', 'convoy', 'expose', 'faction', 'land', 'relic', 'rival', 'village'];
       var bad = [];
       files.forEach(function (f) {
         var src = ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'));
@@ -42209,7 +42122,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (src.indexOf('GAME.sphereOf') < 0) bad.push(f);
       });
       return bad.length === 0;
-    })(), (function () { return '9 个模块全部改走 sphereOf'; })());
+    })(), (function () { return '8 个模块全部改走 sphereOf（ruin v158.25 退役）'; })());
 
     /* ④ 污染：小城能自净，大工业城才涨（240 个月实测 478 → 该为 0） */
     check('§320④ 污染平衡：小城自净（delta<0），大工业城才涨（delta>0）', (function () {
@@ -46654,7 +46567,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ---------- 自带桩：一格平地 + 一套"什么都没有"的查询 ---------- */
     var sv = {
       sphere: G.sphere, mapSphere: G.mapSphere, fog: G.fog, map: G.map,
-      camp: G.camp, village: G.village, ruin: G.ruin, fortOwnAt: G.fortOwnAt
+      camp: G.camp, village: G.village, fortOwnAt: G.fortOwnAt      /* v158.25：ruin 已退役 */
     };
     function stubAll(opts) {
       opts = opts || {};
@@ -46671,7 +46584,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       };
       G.camp = opts.camp ? { isFound: function () { return true; } } : { isFound: function () { return false; } };
       G.village = { at: function () { return null; }, isKnown: function () { return false; } };
-      G.ruin = { isFound: function () { return false; } };
+      /* v158.25：G.ruin 沙坑随遗迹系统退役 */
       G.fortOwnAt = function () { return null; };
     }
     try {
@@ -46714,7 +46627,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         bl ? bl.tasks.join('/') : 'null');
     } finally {
       G.sphere = sv.sphere; G.mapSphere = sv.mapSphere; G.fog = sv.fog; G.map = sv.map;
-      G.camp = sv.camp; G.village = sv.village; G.ruin = sv.ruin; G.fortOwnAt = sv.fortOwnAt;
+      G.camp = sv.camp; G.village = sv.village; G.fortOwnAt = sv.fortOwnAt;
     }
     /* 转义：地形名里若混进标签也不能当 HTML 渲染 */
     var evil = U.mapTipHTML({ icon: '🌿', title: '<img src=x onerror=1>', lv: 1, facts: ['<b>x</b>'], tasks: [], coord: null });
@@ -48886,18 +48799,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var mp = fs.readFileSync(path.join(__dirname, 'js', 'map3d.js'), 'utf8');
     var dt = fs.readFileSync(path.join(__dirname, 'js', 'data.js'), 'utf8');
 
-    check('§586q 来源面：五类色块来源齐全，且「痕迹」不许回填',
+    /* 规则变更（v158.25 · 老板「旧军械库所在的分支是什么，无用」→ 选 A 退役）：
+       原「五类来源」= camp / village / ruin / own / memorial。遗迹系统整条删除后
+       `_tk[ci]='ruin'` 不复存在 → 现役四类。**反向守卫**：ruin / trace 都不许回填。 */
+    check('§586q 来源面：四类色块来源齐全，且「遗迹」「痕迹」都不许回填',
       /var _tk = \{\}, _tkOwn = \{\};/.test(mp)
       && /_tk\[ci\] = 'camp';/.test(mp)
       && /_tk\[_vci\] = 'village';/.test(mp)
-      && /_tk\[ci\] = 'ruin';/.test(mp)
       && /_tk\[_ok\] = _tkOwn\[_ok\] \|\| 'own';/.test(mp)
       && /place\(\{ ci: ci \}, '#9c3b34', 'memorial'\)/.test(mp)
-      /* 下限：至少 4 处 `_tk[` 直接写入（memorial 走 place 传参）*/
-      && (mp.match(/_tk\[/g) || []).length >= 4
-      /* 反向证据：痕迹的涂色写入必须 0 处 */
-      && !/_tk\[_ti\] = 'trace'/.test(mp),
-      '五类来源在岗 · trace 涂色 0 处');
+      /* 下限：至少 3 处 `_tk[` 直接写入（memorial 走 place 传参）*/
+      && (mp.match(/_tk\[/g) || []).length >= 3
+      /* 反向证据：痕迹 / 遗迹 的涂色写入都必须 0 处 */
+      && !/_tk\[_ti\] = 'trace'/.test(mp)
+      && !/_tk\[ci\] = 'ruin'/.test(mp),
+      '四类来源在岗 · trace/ruin 涂色 0 处');
 
     check('§586q 悬停面：未探明统一「还没有记载」· lord 分支在岗 · 不泄露具体',
       /这一带还没有记载/.test(mp)
@@ -48917,16 +48833,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /ui\.openLandModalCi/.test(mp),
       'toast 0 处 · 地块面板仍可达');
 
-    check('§586q 兜底面：任何上了色的格子都说得出来源（TK_DESC 五类齐全 · 无 trace）',
+    /* v158.25：TK_DESC 五类 → 四类（ruin 随遗迹系统退役）；trace 仍不许回填。 */
+    check('§586q 兜底面：任何上了色的格子都说得出来源（TK_DESC 四类齐全 · 无 trace/ruin）',
       /var TK_DESC = \{/.test(mp)
       && /camp: '幸存者营地'/.test(mp)
       && /village: '村社'/.test(mp)
-      && /ruin: '旧世界遗迹'/.test(mp)
       && /own: '我方占领'/.test(mp)
       && /memorial: '阵亡纪念地'/.test(mp)
       && !/trace: '迷雾边缘的动静痕迹'/.test(mp)
+      && !/ruin: '旧世界遗迹'/.test(mp)
       && /out\.facts\.push\('地面标记：' \+ TK_DESC\[_tkK\]\)/.test(mp),
-      '五类映射 + 去重后追加');
+      '四类映射 + 去重后追加');
 
     check('§586q 数据面：DATA.FOG 不再配置 traceChance（概率开关一并下线）',
       !/traceChance/.test(dt) && !/traceChance/.test(mp)
@@ -49632,8 +49549,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           var blk = mnC158.slice(at, at + 600);
           return !/items\.add|state\.items/.test(blk);
         })()
-        && /GAME\.items\.add/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ruin.js'), 'utf8')),
-        '旧路径保留 + E 键不另写背包');
+        /* v158.25：原来这里读 `js/ruin.js` 的 `GAME.items.add` 当"旧路径还在"的证据 ——
+           遗迹系统已退役、文件已删。E 键不另写背包这条判据本身保留（上面两条）。 */
+        , '旧路径保留 + E 键不另写背包');
 
       /* v158.2（P2 · 城市街区 L1）：状态机唯一 / 同源几何 / 入口接线 / 反向证据。
          主观项「没有切换感」由老板实机判定，AI 不结案。 */

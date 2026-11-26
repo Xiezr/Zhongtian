@@ -424,18 +424,7 @@
       return { kind: kind, ci: ci, n: take,
         msg: '🏴 ' + t.name + '进了' + nm + '，带走了 ' + U.numText(take, 0) + ' 个人 —— 这座村子从此不听你的了。' };
     }
-    if (kind === 'ruin') {
-      st.ruins = st.ruins || {};
-      var rr = st.ruins[ci];
-      if (!rr || rr.side) return null;
-      rr.side = 'rival';
-      rr.at = Date.now();
-      rr.got = '被' + t.name + '抢先翻走';
-      t.claims = (t.claims | 0) + 1;
-      var rw = (GAME.ruin && GAME.ruin.at) ? GAME.ruin.at(ci) : null;
-      return { kind: kind, ci: ci,
-        msg: '🏴 ' + t.name + '抢先翻了' + ((rw && rw.name) || '一处遗迹') + '，你去晚了。' };
-    }
+    /* ⛔ v158.25：`kind === 'ruin'`（竞争者抢遗迹）随遗迹系统退役 —— 没有遗迹可抢。 */
     return null;
   }
 

@@ -1,4 +1,4 @@
-/*! Deepseekdb bundle-core — 第 1/3 包（59 个模块）
+/*! Deepseekdb bundle-core — 第 1/3 包（58 个模块）
  *  由 .workbuddy/tools/patch/build_bundle.py 生成，请勿手改。
  *  ⚠️ 三包必须按 core → war → ui 顺序加载（window.GAME 全局共享）。 */
 /* ---- core.js ---- */
@@ -5145,23 +5145,15 @@ window.GAME = window.GAME || {};
     grainMul: 0.8         /* 期间粮产 −20%（只削产量，不碰存量）*/
   };
 
-  DATA.RUIN = {
-    chance: 0.0025,        /* 陆地格约 0.25%（40962 × 0.25% ≈ 100 处）*/
-    kinds: [
-      { id: 'hospital', name: '废弃医院',
-        flavor: '走廊里的应急灯还有电。消毒水的味道压不住别的味道。',
-        a: { label: '搜刮药品', mat: 'mabu', n: 14 },
-        b: { label: '收容幸存者', pop: 600, grain: 3000 } },
-      { id: 'arsenal', name: '旧军械库',
-        flavor: '门是被人从里面焊死的。焊渣还挂在接缝上。',
-        a: { label: '拆走军械', mat: 'jingtie', n: 10 },
-        b: { label: '搬空钢材', res: { iron: 4000, stone: 2000 } } },
-      { id: 'datatower', name: '数据塔',
-        flavor: '塔顶还在转。它不知道战争已经结束了。',
-        a: { label: '拆下晶片', mat: 'qingyu', n: 8 },
-        b: { label: '拆铜卖铁', res: { iron: 3000, grain: 1500 } } }
-    ]
-  };
+  /* ============================================================
+   * ⛔ v158.25（老板「旧军械库所在的分支是什么，无用」→ 选 A 退役）
+   * ------------------------------------------------------------
+   * 这里原本是 `DATA.RUIN`（旧世界遗迹：废弃医院 / 旧军械库 / 数据塔）。
+   * 内容本身是实的（精铁×14 或 铁5600+石2800 都会真到账），但**玩家永远遇不到**：
+   *   全图 64 处 · 密度 0.25% · 发现要求「该格已探明」· 开局只探明 0.15%（61 格）
+   *   → 期望 0.15 处，实测 sweep 发现 0 处。
+   * 老板选 A：整条退役，不留"看得见摸不着"的空设定。
+   * ============================================================ */
 
   /* ============================================================
    * v93.1（老板：「你做的是一整个废土……从大处着眼」）
@@ -12221,7 +12213,7 @@ window.GAME = window.GAME || {};
     /* v92.4：幸存者营地发现（节流 5 秒 · 只扫候选一两百格，不遍历全图） */
     if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
     /* v92.7：旧世界遗迹发现（同一套节流扫描） */
-    if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
+    /* ⛔ v158.25：遗迹扫描随遗迹系统退役（老板选 A）。 */
     /* v92.10（A3）：远方的记忆会淡（每 decayHours 现实小时一次 · 城/前哨不受影响） */
     if (GAME.fog && GAME.fog.decay) GAME.fog.decay();
     /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
@@ -17750,21 +17742,18 @@ window.GAME = window.GAME || {};
    * 不指路、不给坐标 —— 那是"情报"，不是"传闻"。
    * ============================================================ */
   GAME.rumorLineOf = function () {
-    var cm = 0, ru = 0, i;
+    var cm = 0, i;      /* v158.25：`ru`（遗迹计数）随遗迹系统退役 */
     if (GAME.fog && GAME.fog.get) {
       if (GAME.camp && GAME.camp.list) {
         var cl = GAME.camp.list(), cf = GAME.camp.found ? GAME.camp.found() : {};
         for (i = 0; i < cl.length; i++) if (!cf[cl[i]] && GAME.fog.get(cl[i]) === 0) cm++;
       }
-      if (GAME.ruin && GAME.ruin.list) {
-        var rl = GAME.ruin.list(), rf = GAME.ruin.found ? GAME.ruin.found() : {};
-        for (i = 0; i < rl.length; i++) if (!rf[rl[i]] && GAME.fog.get(rl[i]) === 0) ru++;
-      }
+      /* ⛔ v158.25：遗迹统计随遗迹系统退役（老板选 A）。 */
     }
-    if (!cm && !ru) return '传闻：这颗星球上已经没什么你没见过的东西了。';
+    if (!cm) return '传闻：这颗星球上已经没什么你没见过的东西了。';
     var seg = [];
     if (cm) seg.push(cm + ' 处营地');
-    if (ru) seg.push(ru + ' 处旧世界遗迹');
+    /* v158.25：`ru` 随遗迹退役，这里不再有遗迹段。 */
     return '传闻：无人到过的地方还有 ' + seg.join('、') + ' —— 往没亮的地方走。';
   };
 
@@ -32843,192 +32832,6 @@ if (GAME.reg) {
   };
 })();
 
-/* ---- ruin.js ---- */
-/* ============================================================
- * ruin.js — 旧世界遗迹（v92.7 · 构想 A4 遗物埋点 + A9 遗迹剧情）
- * ------------------------------------------------------------
- * 文档原话：
- *   A4「特定格埋遗物/图纸，先点亮 + 满足条件才能挖」
- *   A9「点亮特定区域触发故事（废弃实验室/旧时代纪念碑/幸存者营地）」
- *   第 5 节「叙事选择 ❌ 无（叙事层 v89.218 已删）」—— 这一栏是空的。
- *
- * 和营地（camp.js）的分工：
- *   · 营地 = 人。招人 or 抢物资，代价是名声。
- *   · 遗迹 = **旧世界的东西**。同一处遗迹只能翻一次，翻了这边就没有那边。
- *
- * 取舍在哪（"放弃测试"）：
- *   每处遗迹两个翻法，**互斥**：拿材料的就没有资源，拿资源的就没有材料。
- *   越远的遗迹越富（`tierMulOf`）—— 探索的回报落在产出上，而不是另一个加成。
- *
- * ⚠️ 刻意不做：不给图纸/科技（`DATA.BLUEPRINT` 与科技链都有自己的口径，
- *   在这里塞一份会造出第二个产出源）。遗迹给的是**材料与资源**，
- *   交给现有的锻造/建造去消耗。
- * ============================================================ */
-(function () {
-  'use strict';
-  var GAME = window.GAME = window.GAME || {};
-  var R = GAME.ruin = {};
-  var U = GAME.utils;
-
-  var _list = null, _listSeed = -1, _listN = 0, _sweepAt = 0;   /* v94.1：+格数 */
-
-  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
-    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
-      默认当前星球 → 返回有 cells 的 GAME.sphere）。
-      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
-      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
-  function data() { return (GAME.DATA && GAME.DATA.RUIN) || {}; }
-
-  /* 纯哈希（只吃 ci + seed）：遗迹是固定地标，同一颗球永远那几个 */
-  function h(ci, salt) {
-    var x = (ci * 2654435761 + salt * 40503) >>> 0;
-    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
-    return (x >>> 0) / 4294967296;
-  }
-
-  R.at = function (ci) {
-    var s = SP();
-    if (!s || !s.cells) return null;
-    var cell = s.cells[ci];
-    if (!cell) return null;
-    if (cell.type === 'lake') return null;
-    var sd = (s.seed3 ? s.seed3() : 0) | 0;
-    if (h(ci, sd + 9101) >= (data().chance || 0.0025)) return null;
-    var kinds = data().kinds || [];
-    if (!kinds.length) return null;
-    var k = kinds[Math.floor(h(ci, sd + 9102) * kinds.length) % kinds.length];
-    if (!k) return null;
-    return { ci: ci, kind: k.id, name: k.name, flavor: k.flavor, a: k.a, b: k.b };
-  };
-
-  R.list = function () {
-    var s = SP();
-    if (!s || !s.cells) return [];
-    var sd = (s.seed3 ? s.seed3() : 0) | 0;
-    /* v94.1：同 village —— 只认 seed 不认格数，会把"星球还没建好时算出的空列表"永久缓存 */
-    var nCell = s.cells.length;
-    if (_list && _listSeed === sd && _listN === nCell) return _list;
-    var out = [], n = s.cells.length;
-    for (var ci = 0; ci < n; ci++) {
-      var cell = s.cells[ci];
-      if (!cell) continue;
-      if (cell.type === 'lake') continue;
-      if (h(ci, sd + 9101) < (data().chance || 0.0025)) out.push(ci);
-    }
-    _list = out; _listSeed = sd; _listN = nCell;
-    return out;
-  };
-
-  R.found = function () { return ((GAME.state || {}).ruins) || {}; };
-  R.isFound = function (ci) { return !!R.found()[ci]; };
-
-  /* 远处更富：探索的回报落在产出上，而不是给个加成 */
-  R.tierMulOf = function (ci) {
-    var s = SP();
-    var pc = GAME.currentCity ? GAME.currentCity() : null;
-    if (!s || !pc || pc.ci == null || pc.ci < 0) return 1;
-    var d = s.distOf({ ci: pc.ci }, { ci: ci });
-    return (1 + Math.min(1.5, d / 40)) * (GAME.yearMulOf ? GAME.yearMulOf('ruinMul') : 1);   /* 40 格外封顶 +150% · 兴年再 ×1.3 */
-  };
-
-  /* 与营地同一套节流扫描：候选只有几十处，5 秒扫一次几乎零成本 */
-  R.sweep = function (force) {
-    var st = GAME.state;
-    if (!st || !GAME.fog) return 0;
-    var now = Date.now();
-    if (!force && now - _sweepAt < 5000) return 0;
-    _sweepAt = now;
-    var list = R.list();
-    if (!list.length) return 0;
-    st.ruins = st.ruins || {};
-    var got = 0;
-    for (var i = 0; i < list.length; i++) {
-      var ci = list[i];
-      if (st.ruins[ci]) continue;
-      if (GAME.fog.get(ci) <= 0) continue;
-      var w = R.at(ci);
-      if (!w) continue;
-      st.ruins[ci] = { kind: w.kind, side: null, at: now };
-      got++;
-      if (GAME.log && GAME.log.war) {
-        GAME.log.war('🏚 发现旧世界遗迹：' + w.name + '（地图上标了青点 · 点击可翻找）');
-      }
-    }
-    if (got && GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-    return got;
-  };
-
-  /* ============================================================
-   * act —— 翻找：两种互斥的拿法
-   * ------------------------------------------------------------
-   * a = 材料（锻造用）· b = 资源（建造用）· 少数是人口。
-   * 选了一个，另一个就永远拿不到了 —— 这就是"放弃"。
-   * ============================================================ */
-  R.act = function (ci, side) {
-    var st = GAME.state;
-    if (!st) return { ok: false, msg: '无存档' };
-    var w = R.at(ci);
-    if (!w) return { ok: false, msg: '这里没有遗迹' };
-    st.ruins = st.ruins || {};
-    var rec = st.ruins[ci];
-    if (!rec) return { ok: false, msg: '还没发现这处遗迹' };
-    if (rec.side) return { ok: false, msg: '这处遗迹已经翻过了' };
-    var pick = side === 'a' ? w.a : (side === 'b' ? w.b : null);
-    if (!pick) return { ok: false, msg: '未知的翻找方式' };
-    var city = (GAME.camp && GAME.camp.cityNearOf) ? GAME.camp.cityNearOf(ci)
-      : (GAME.currentCity ? GAME.currentCity() : null);
-    if (!city) return { ok: false, msg: '附近没有己方城市' };
-
-    var mul = R.tierMulOf(ci);
-    var out = [];
-    if (pick.mat) {
-      var n = Math.max(1, Math.round((pick.n || 8) * mul));
-      GAME.items.add(pick.mat, n);
-      var md = GAME.DATA.MATERIAL_BY_ID && GAME.DATA.MATERIAL_BY_ID[pick.mat];
-      out.push((md ? md.name : pick.mat) + '×' + n);
-    }
-    if (pick.res) {
-      city.res = city.res || {};
-      Object.keys(pick.res).forEach(function (k) {
-        var v = Math.max(1, Math.round(pick.res[k] * mul));
-        city.res[k] = (city.res[k] || 0) + v;
-        out.push(({ grain: '粮', wood: '木', stone: '石', iron: '铁' }[k] || k) + '+' + U.numText(v, 0));
-      });
-    }
-    if (pick.pop) {
-      var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      /* ⚠️ v93.5 修既存 bug：人口在 GAME.res(city).pop，不在 city.pop（同 camp） */
-      var RR = GAME.res(city);
-      var before = RR.pop || 0;
-      RR.pop = Math.min(cap || (before + pick.pop), before + Math.round(pick.pop * mul));
-      out.push('幸存者 +' + U.numText(Math.round(RR.pop - before), 0));
-    }
-    if (pick.grain) {
-      /* 有代价的选项：粮食不够就不给做（说清楚，别静默扣成负数）*/
-      var need = Math.round(pick.grain * mul);
-      if (((city.res || {}).grain || 0) < need) {
-        return { ok: false, msg: '要养活他们得先有 ' + U.numText(need, 0) + ' 粮 —— 现在不够' };
-      }
-      city.res.grain -= need;
-      out.push('粮 −' + U.numText(need, 0));
-    }
-
-    rec.side = side;
-    rec.at = Date.now();
-    rec.got = out.join('、');
-    return { ok: true, msg: '在' + w.name + '翻出：' + out.join('、') };
-  };
-
-  R.lineOf = function (ci) {
-    var w = R.at(ci);
-    if (!w) return '';
-    var rec = R.found()[ci];
-    if (!rec) return w.name + '（未发现）';
-    if (rec.side) return w.name + ' · 已翻找（' + (rec.got || '') + '）';
-    return w.name + ' · 待翻找（' + w.a.label + ' / ' + w.b.label + '）';
-  };
-})();
-
 /* ---- faction.js ---- */
 /* ============================================================
  * faction.js — 四个军阀（v92.5 / 构想清单 B1 的最小闭环）
@@ -34188,18 +33991,7 @@ if (GAME.reg) {
       return { kind: kind, ci: ci, n: take,
         msg: '🏴 ' + t.name + '进了' + nm + '，带走了 ' + U.numText(take, 0) + ' 个人 —— 这座村子从此不听你的了。' };
     }
-    if (kind === 'ruin') {
-      st.ruins = st.ruins || {};
-      var rr = st.ruins[ci];
-      if (!rr || rr.side) return null;
-      rr.side = 'rival';
-      rr.at = Date.now();
-      rr.got = '被' + t.name + '抢先翻走';
-      t.claims = (t.claims | 0) + 1;
-      var rw = (GAME.ruin && GAME.ruin.at) ? GAME.ruin.at(ci) : null;
-      return { kind: kind, ci: ci,
-        msg: '🏴 ' + t.name + '抢先翻了' + ((rw && rw.name) || '一处遗迹') + '，你去晚了。' };
-    }
+    /* ⛔ v158.25：`kind === 'ruin'`（竞争者抢遗迹）随遗迹系统退役 —— 没有遗迹可抢。 */
     return null;
   }
 

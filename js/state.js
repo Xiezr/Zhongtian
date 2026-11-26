@@ -4634,7 +4634,7 @@ import './data.js';
     /* v92.4：幸存者营地发现（节流 5 秒 · 只扫候选一两百格，不遍历全图） */
     if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
     /* v92.7：旧世界遗迹发现（同一套节流扫描） */
-    if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
+    /* ⛔ v158.25：遗迹扫描随遗迹系统退役（老板选 A）。 */
     /* v92.10（A3）：远方的记忆会淡（每 decayHours 现实小时一次 · 城/前哨不受影响） */
     if (GAME.fog && GAME.fog.decay) GAME.fog.decay();
     /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
