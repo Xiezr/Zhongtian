@@ -5,10 +5,11 @@
  *        ……画面持续向右移动，显示右方地图。」
  *
  * 判据：
- *   ① 左键拖 240px：相机位置/朝向/状态**一位都不许变**（地表 + 高空各测一次）
- *   ② 指针贴右边缘：相机持续变化（画面在走），且**不是瞬移**（分多帧累积）
- *   ③ 指针离开边缘：立刻停（停手画面不许自己动）
- *   ④ 边缘推镜不推动小人
+ *   ① 左键拖 240px：相机 dir/位置/四元数/yaw **逐位不变**（高空 + 地表各一次）
+ *   ② 指针贴右边缘：`camO.yaw` 按时间累积增长（0.3 秒 ≈ 15.5°），不是瞬移
+ *   ③ 指针离开边缘：yaw / 位置都不再变
+ *   ④ 真帧应用后球心**左移**（右侧地图露出来），且不推动小人
+ *   ⑤ 地表：左键拖不动相机；贴右边缘 = 绕角色转
  * ============================================================ */
 'use strict';
 const { chromium } = require('playwright-core');
@@ -64,12 +65,12 @@ function ok(t, c, d) {
     return {
       surf: !!M._surf,
       dir: M.camO.dir.map((v) => +v.toFixed(5)),
+      yaw: +M.camO.yaw.toFixed(5),
       camPos: [+cam.position.x.toFixed(3), +cam.position.y.toFixed(3), +cam.position.z.toFixed(3)],
       camQ: [cam.quaternion.x, cam.quaternion.y, cam.quaternion.z, cam.quaternion.w].map((v) => +v.toFixed(5)),
       orbitYaw: +(M._surfOrbitYaw || 0).toFixed(4),
       el: +M.SURF_CAM_EL.toFixed(3),
-      pdir: pp.dir.map((v) => +v.toFixed(5)),
-      ptr: M.edgePanProbe ? M.edgePanProbe() : null
+      pdir: pp.dir.map((v) => +v.toFixed(5))
     };
   });
 
@@ -81,47 +82,65 @@ function ok(t, c, d) {
   await p.mouse.up({ button: 'left' });
   await p.waitForTimeout(400);
   const a1 = await snap();
-  const sameCam = JSON.stringify(a0.dir) === JSON.stringify(a1.dir)
+  ok('① 高空左键拖 240px：dir / 位置 / 四元数 / yaw 全部不变',
+    JSON.stringify(a0.dir) === JSON.stringify(a1.dir)
     && JSON.stringify(a0.camPos) === JSON.stringify(a1.camPos)
-    && JSON.stringify(a0.camQ) === JSON.stringify(a1.camQ);
-  ok('① 高空左键拖 240px：相机 dir/位置/四元数全部不变', sameCam,
+    && JSON.stringify(a0.camQ) === JSON.stringify(a1.camQ)
+    && a0.yaw === a1.yaw,
     'dir ' + JSON.stringify(a0.dir) + ' → ' + JSON.stringify(a1.dir));
 
-  /* ── ② 高空：指针贴右边缘 1.2 秒 → 画面持续向右走 ── */
-  const b0 = await snap();
-  await p.mouse.move(1430, 450);              /* 右边缘带内（1440 宽，band≈49） */
+  /* ── ② 贴右边缘：yaw 按时间累积 ── */
+  /* ⚠️ 不能拿"球心"当参照：轨道相机永远 lookAt 球心，它的 NDC 恒 0
+     （第一版就是这么假红的）。要用**球面上的固定点**——取玩家所在位置。 */
+  const ballNdc = () => p.evaluate(() => {
+    const M = GAME.map3d, cam = (M._camObj ? M._camObj() : M._cam);
+    const pp = M.playerPose();
+    const R2 = M.R + (pp.h || 0);
+    cam.updateMatrixWorld();
+    const v = new THREE.Vector3(pp.dir[0] * R2, pp.dir[1] * R2, pp.dir[2] * R2).project(cam);
+    return [+v.x.toFixed(3), +v.y.toFixed(3)];
+  });
+  const ball0 = await ballNdc();
+  await p.mouse.move(1430, 450);
   await p.waitForTimeout(150);
-  /* ⚠️ headless 的 rAF 被节流到 1~2fps，"等 0.6 秒"测不出角速度。
-     改为手动按 1/60 推 36 帧 = 模拟真机 0.6 秒（函数本身是纯逻辑，合法）。 */
   const ticked = await p.evaluate(() => {
     const M = GAME.map3d;
-    const a0 = M.camO.dir.slice();
+    const y0 = M.camO.yaw;
     let n = 0;
     for (let i = 0; i < 18; i++) { if (M.edgePanTick(1 / 60)) n++; }
-    const a1 = M.camO.dir.slice();
-    for (let i = 0; i < 18; i++) { M.edgePanTick(1 / 60); }
-    return { n: n, a0: a0, a1: a1, a2: M.camO.dir.slice() };
+    const y1 = M.camO.yaw;
+    for (let i = 0; i < 18; i++) M.edgePanTick(1 / 60);
+    return { n: n, y0: y0, y1: y1, y2: M.camO.yaw };
   });
-  const b1 = await snap();
-  const b2 = await snap();
-  await p.mouse.move(720, 450);               /* 离开边缘 */
+  const g1 = (ticked.y1 - ticked.y0) * 180 / Math.PI;
+  const g2 = (ticked.y2 - ticked.y1) * 180 / Math.PI;
+  ok('② 贴右边缘：每个 0.3 秒转 ' + g1.toFixed(2) + '° / ' + g2.toFixed(2) + '°（持续、非瞬移）',
+    ticked.n >= 15 && g1 > 5 && g2 > 5 && g1 < 40 && g2 < 40, 'ticked=' + ticked.n);
+  ok('② 方向：yaw 增大 = 相机往东走（右侧地图露出）', g1 > 0, 'Δyaw=' + g1.toFixed(2) + '°');
+
+  /* ── ③ 离开边缘立刻停 ── */
+  await p.mouse.move(720, 450);
+  await p.waitForTimeout(400);
+  const s3 = await snap();
+  await p.waitForTimeout(600);
+  const s4 = await snap();
+  ok('③ 指针离开边缘后立刻停（yaw / 位置都不再变）',
+    s3.yaw === s4.yaw && JSON.stringify(s3.camPos) === JSON.stringify(s4.camPos),
+    'yaw ' + s3.yaw + ' → ' + s4.yaw);
+
+  /* ── ④ 真帧应用后：球心左移（露出右边）+ 不推动小人 ── */
+  await p.mouse.move(1430, 450);
+  await p.waitForTimeout(1500);
+  const ball1 = await ballNdc();
+  await p.mouse.move(720, 450);
   await p.waitForTimeout(300);
-  const b3 = await snap();
-  await p.waitForTimeout(500);
-  const b4 = await snap();
+  ok('④ 地图上的标记点左移（x 变小）——相机往东走、右侧地图露出来',
+    ball1[0] < ball0[0] - 0.01, 'markNdc.x ' + ball0[0] + ' → ' + ball1[0]);
+  const s5 = await snap();
+  ok('④ 边缘推镜不推动小人', JSON.stringify(a0.pdir) === JSON.stringify(s5.pdir));
   await p.screenshot({ path: OUT + '/1_orbit_edge_right.png' });
 
-  const ang = (A, B) => Math.acos(Math.max(-1, Math.min(1,
-    A[0] * B[0] + A[1] * B[1] + A[2] * B[2]))) * 180 / Math.PI;
-  const g1 = ang(ticked.a0, ticked.a1), g2 = ang(ticked.a1, ticked.a2);
-  ok('② 贴右边缘：每个 0.3 秒转 ' + g1.toFixed(2) + '° / ' + g2.toFixed(2) + '°（持续、非瞬移）',
-    ticked.n >= 15 && g1 > 5 && g2 > 5 && g1 < 40 && g2 < 40,
-    'ticked=' + ticked.n + ' ptr=' + JSON.stringify(b1.ptr));
-  ok('③ 指针离开边缘后立刻停（两次采样 0°）',
-    ang(b3.dir, b4.dir) < 0.05, 'after=' + ang(b3.dir, b4.dir).toFixed(3) + '°');
-  ok('② 边缘推镜不推动小人', JSON.stringify(b0.pdir) === JSON.stringify(b4.pdir));
-
-  /* ── ④ 地表：左键拖拽不动相机 + 边缘绕人转 ── */
+  /* ── ⑤ 地表：左键不动相机、贴边绕角色转 ── */
   await p.mouse.move(720, 450);
   for (let i = 0; i < 62; i++) { await p.mouse.wheel(0, -120); await p.waitForTimeout(60); }
   await p.waitForTimeout(1500);
@@ -132,11 +151,10 @@ function ok(t, c, d) {
   await p.mouse.up({ button: 'left' });
   await p.waitForTimeout(400);
   const c1 = await snap();
-  ok('④ 地表左键拖 216px：orbitYaw / 俯角 / 相机位置全不变',
+  ok('⑤ 地表左键拖 216px：orbitYaw / 俯角 / 相机位置全不变',
     c0.orbitYaw === c1.orbitYaw && c0.el === c1.el
     && JSON.stringify(c0.camPos) === JSON.stringify(c1.camPos),
-    'orbit ' + c0.orbitYaw + '→' + c1.orbitYaw + ' · el ' + c0.el + '→' + c1.el
-    + ' · surf=' + c0.surf);
+    'orbit ' + c0.orbitYaw + '→' + c1.orbitYaw + ' · el ' + c0.el + '→' + c1.el + ' · surf=' + c0.surf);
 
   await p.mouse.move(1434, 450);
   await p.waitForTimeout(150);
@@ -147,18 +165,18 @@ function ok(t, c, d) {
     for (let i = 0; i < 42; i++) { if (M.edgePanTick(1 / 60)) n++; }
     return { n: n, y0: y0, y1: M._surfOrbitYaw };
   });
-  const c2 = await snap();
+  const dOrbit = Math.abs(tickedS.y1 - tickedS.y0);
+  ok('⑤ 地表贴右边缘：镜头绕角色转（Δyaw=' + dOrbit.toFixed(3) + '）',
+    tickedS.n >= 30 && dOrbit > 0.2, 'orbit ' + tickedS.y0.toFixed(3) + '→' + tickedS.y1.toFixed(3));
+
   await p.mouse.move(720, 450);
   await p.waitForTimeout(300);
   const c3 = await snap();
-  await p.waitForTimeout(500);
+  await p.waitForTimeout(600);
   const c4 = await snap();
-  await p.screenshot({ path: OUT + '/2_surf_edge_right.png' });
-  const dOrbit = Math.abs(tickedS.y1 - tickedS.y0);
-  ok('④ 地表贴右边缘：镜头绕角色转（Δyaw=' + dOrbit.toFixed(3) + '）',
-    tickedS.n >= 30 && dOrbit > 0.2, 'orbit ' + tickedS.y0.toFixed(3) + '→' + tickedS.y1.toFixed(3));
-  ok('④ 地表离开边缘后立刻停', Math.abs(c4.orbitYaw - c3.orbitYaw) < 0.005,
+  ok('⑤ 地表离开边缘后立刻停', c4.orbitYaw === c3.orbitYaw,
     'Δ=' + Math.abs(c4.orbitYaw - c3.orbitYaw).toFixed(5));
+  await p.screenshot({ path: OUT + '/2_surf_edge_right.png' });
 
   console.log('\n结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   if (errs.length) console.log('页面错误 ' + errs.slice(0, 3).join(' | '));

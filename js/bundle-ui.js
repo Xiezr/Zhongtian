@@ -6570,22 +6570,19 @@
     if (M._surf) {
       /* 地表：相机是被"锁在角色身上"的，平移做不到 —— 用"绕角色转"实现同样的观感：
          指针在右边 → 镜头往右绕，右方的地图进入画面。 */
-      if (dx) M._surfOrbitYaw -= dx * 0.9 * k;
+      /* 指针在右边 → 镜头绕角色往**右**绕（角色右边的地图进入画面）。
+         符号别拍脑袋：`dirCam` 里 e1 是东向，`-=` 会让镜头往左跑（实测球心反而右移）。 */
+      if (dx) M._surfOrbitYaw += dx * 0.9 * k;
       if (dy) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + dy * 0.55 * k));
     } else {
-      var d = new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]).normalize();
-      var up = d.clone();
-      var rt = new THREE.Vector3(0, 1, 0).cross(up);
-      if (rt.lengthSq() < 1e-9) rt.set(1, 0, 0);
-      rt.normalize();
-      if (dx) d.applyAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.9 * k);
-      if (dy) d.applyAxisAngle(rt, dy * 0.55 * k);
-      d.normalize();
-      /* ⚠️ 只写 `camO.dir` + 清姿态缓存，**不在这里反算 yaw/pitch**：
-         v157.48 的规矩是"位置量只取自 camO.dir，不许拿视线当位置"，
-         全文件 `asin` 写点被钉死在 4 处（§586r）。这里多写一次 asin 就翻红。
-         placeCamera 每帧本来就会按 dir 重建姿态。 */
-      camO.dir = [d.x, d.y, d.z];
+      /* ⚠️ 这里**必须写 yaw/pitch**、不能只写 `camO.dir`：
+         `placeCamera` 的 `_dirty` 判据是 `M.CAM_TRACKBALL ? !camO.quat : …`，
+         清掉 quat 之后它会**按 yaw/pitch 重建** —— 只改 dir 的话姿态回退成旧值，
+         实测球心 NDC 0 → 0（画面一动不动，只是数据变了）。
+         同时**不许用 asin 反算 pitch**（§586r 把全文件 asin 写点钉死在 4 处），
+         所以水平只动 yaw（经度）、垂直用增量 —— 两者都不需要反算。 */
+      if (dx) camO.yaw += dx * 0.9 * k;
+      if (dy) camO.pitch = Math.max(-1.55, Math.min(1.55, camO.pitch + dy * 0.55 * k));
       camO.quat = null; camO._euler = null;
     }
     /* ⚠️ 两条都不能要：
@@ -43179,7 +43176,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.28';
+  GAME.VERSION = 'v158.29';
   function boot() {
     fitAppSize();
     try {
