@@ -6535,6 +6535,77 @@
      否则下一帧阻尼会把人拽回旧目标 —— 这是这类动画最常见的坑。 */
   function _syncZoom() { _zoomTarget = camO.dist - R; }
   M._syncZoom = _syncZoom;
+  /* ============================================================
+   * v158.28（老板「左键只选择地图元素，不转动相机。地图位置的变动，
+   *          通过鼠标在地图四周……画面持续向右移动，显示右方地图」）
+   * ------------------------------------------------------------
+   * ① **边缘推镜**（edge pan）：指针停在画面边缘带内 → 画面持续往那一侧走。
+   *    高空：观察点沿切平面滑动（半径不变、滚轮阻尼不受影响）。
+   *    地表：镜头绕角色转（相机锁着人，只能绕，不能平移）。
+   * ② **左键拖拽不再改相机**（见 mousemove：地表分支整段停用、轨道拖拽直接 return），
+   *    左键只剩"点选地块 / 点按钮"。
+   *
+   * ⚠️ 守老板定过的边界（v157.34「停手画面自己动」被否过）：
+   *    **指针不在边缘带里就一动不动**，这是有输入位置依据的移动，不是自动漂移。
+   * ============================================================ */
+  M.LEFT_DRAG_CAM = false;     /* 左键拖拽能不能动相机（老板口径：不能） */
+  M.EDGE_PAN = 1;              /* 边缘推镜总闸 */
+  M.EDGE_PAN_BAND = 0.055;     /* 边缘带：取短边的 5.5%（最小 10px） */
+  M.EDGE_PAN_SPEED = 1.0;      /* 倍率（1 ≈ 水平 0.9 rad/s · 垂直 0.55 rad/s） */
+  M._ptr = null;               /* 指针位置（相对画布，拖动时也更新） */
+  function _tickEdgePan(dt) {
+    if (!M.EDGE_PAN) return false;
+    var pt = M._ptr;
+    if (!pt || pt.out) return false;
+    var w = pt.w, h = pt.h;
+    if (!(w > 8) || !(h > 8)) return false;
+    var band = Math.max(10, Math.round(Math.min(w, h) * M.EDGE_PAN_BAND));
+    var dx = (pt.x > w - band) ? 1 : ((pt.x < band) ? -1 : 0);
+    var dy = (pt.y > h - band) ? 1 : ((pt.y < band) ? -1 : 0);
+    if (!dx && !dy) return false;
+    /* ⚠️ 上限放到 0.12 秒：headless 的 rAF 会节流到 1~2fps，卡 0.05 会让推镜慢 20 倍
+       （探针实测 0.6 秒只转 2.35°，真机是 31°）。真机掉帧时也靠这个上限防跳。 */
+    dt = Math.max(0.001, Math.min(0.12, dt || 0.016));
+    var k = M.EDGE_PAN_SPEED * dt;
+    if (M._surf) {
+      /* 地表：相机是被"锁在角色身上"的，平移做不到 —— 用"绕角色转"实现同样的观感：
+         指针在右边 → 镜头往右绕，右方的地图进入画面。 */
+      if (dx) M._surfOrbitYaw -= dx * 0.9 * k;
+      if (dy) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + dy * 0.55 * k));
+    } else {
+      var d = new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]).normalize();
+      var up = d.clone();
+      var rt = new THREE.Vector3(0, 1, 0).cross(up);
+      if (rt.lengthSq() < 1e-9) rt.set(1, 0, 0);
+      rt.normalize();
+      if (dx) d.applyAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.9 * k);
+      if (dy) d.applyAxisAngle(rt, dy * 0.55 * k);
+      d.normalize();
+      /* ⚠️ 只写 `camO.dir` + 清姿态缓存，**不在这里反算 yaw/pitch**：
+         v157.48 的规矩是"位置量只取自 camO.dir，不许拿视线当位置"，
+         全文件 `asin` 写点被钉死在 4 处（§586r）。这里多写一次 asin 就翻红。
+         placeCamera 每帧本来就会按 dir 重建姿态。 */
+      camO.dir = [d.x, d.y, d.z];
+      camO.quat = null; camO._euler = null;
+    }
+    /* ⚠️ 两条都不能要：
+       ① touch / redraw 是 canvas 事件闭包里的局部函数（7505），本函数在模块作用域
+          —— 调了直接 `touch is not defined`（探针实测 FATAL）。
+       ② `renderMapCanvas()` 会**同步重建界面**，其中又会走到渲染循环 → 再进本函数，
+          形成递归：探针 42 次调用累积出 Δyaw 651 rad（实测）。
+       本函数只改相机状态；绘制由渲染循环本来那一帧负责，不需要在这里催。 */
+    try { M._lastAct = Date.now(); } catch (eT) { }
+    return true;
+  }
+  M.edgePanTick = _tickEdgePan;
+  M.edgePanProbe = function () {
+    var pt = M._ptr;
+    if (!pt) return { on: !!M.EDGE_PAN, ptr: null };
+    var band = Math.max(10, Math.round(Math.min(pt.w, pt.h) * M.EDGE_PAN_BAND));
+    return { on: !!M.EDGE_PAN, w: pt.w, h: pt.h, x: pt.x, y: pt.y, band: band, out: !!pt.out,
+      dx: (pt.x > pt.w - band) ? 1 : ((pt.x < band) ? -1 : 0),
+      dy: (pt.y > pt.h - band) ? 1 : ((pt.y < band) ? -1 : 0) };
+  };
   /* 探针出口（只读纯函数）：滚轮曲线与交班衰减 —— 给 smoke 断言用，
      不在别处调用。`_zoomCurveProbe(agl, dy)` 返回"这一格滚到哪"。 */
   M._zoomCurveProbe = function (agl, dy) { return _zoomStepTo(Math.max(0.6, +agl || 0.6), dy == null ? 100 : dy); };
@@ -7121,6 +7192,13 @@
        整段删除。 */
     M._focus = null;                                      /* 兼容壳：任何残留都清掉 */
     _updateWind();                                        /* v157l：风场时间轴/阵风/风向 */
+    /* v158.28：边缘推镜要在 placeCamera **之前**跑，当帧就生效（否则慢一帧）。 */
+    try {
+      var _epNow = Date.now();
+      var _epDt = Math.min(0.05, (_epNow - (M._epAt || _epNow - 16)) / 1000) || 0.016;
+      M._epAt = _epNow;
+      _tickEdgePan(_epDt);
+    } catch (eEP) { }
     placeCamera();
     /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
        （让地表 patch 跟着人走），绝不碰 quat/dist/lookPitch —— 退出跟随零跳变。 */
@@ -7734,6 +7812,21 @@
     canvas.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
     /* v156.47：右键现在有用了（转头）—— 必须吃掉浏览器右键菜单，否则一拖就弹。 */
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    /* ============================================================
+     * v158.28（老板「地图位置的变动，通过鼠标在地图四周……」）
+     * ------------------------------------------------------------
+     * 边缘推镜要的是**指针位置**，而且拖动中也得更新（既有两个 mousemove
+     * 一个在 drag 时直接 return、一个按 90ms 节流），所以单独记一份只读指针。
+     * ============================================================ */
+    document.addEventListener('mousemove', function (e) {
+      try {
+        var rp = canvas.getBoundingClientRect();
+        if (!rp.width) return;
+        M._ptr = { x: e.clientX - rp.left, y: e.clientY - rp.top,
+          w: rp.width, h: rp.height, out: false };
+      } catch (eP) { }
+    }, { passive: true });
+    canvas.addEventListener('mouseleave', function () { if (M._ptr) M._ptr.out = true; });
     canvas.addEventListener('mousedown', function (e) {
       /* v153f：只有**左键**才算"开始拖动/点击" —— 之前右键/中键也 drag=1，
          于是左键点一下（press）→ 右键点一下（release）会配成"没拖动 = 点击"，
@@ -8018,21 +8111,20 @@
         lx = e.clientX; ly = e.clientY;
         if (Math.abs(_sdx2) + Math.abs(_sdy2) > 3) M._rmbMoved = true;
         /* ============================================================
-         * v158.22（老板「星露谷不就是场景样板吗」）—— 贴地拖拽改成**绕着角色转**。
-         * ------------------------------------------------------------
-         * v158.21 让贴地拖拽改 `_surfDir`（第一人称环视）；但现在镜头被
-         * `_surfAvatarCam` 每帧覆盖，改视线等于白改。
-         * 星露谷的做法本来就是"镜头绕角色、不是眼睛转"：
-         *   左右拖 = 绕过角色一圈（_surfOrbitYaw）
-         *   上下拖 = 抬高/压低俯角（SURF_CAM_EL，夹 14°~77°）
-         * 这样「能拖」和「看得见自己」不再互斥。
+         * v158.28（老板「什么时候左键变成了转动相机角度了？」「左键只选择地图元素，
+         *          不转动相机」）—— **整段停用**。
+         * 这里从 v157.23 起是"地表左键 = 转头"，v158.22 又改成"绕角色转"，
+         * 两次都是"左键转相机"。老板现在的口径是左键**只选**，位移交给边缘推镜
+         * （`_tickEdgePan`）。所以拖拽只标 moved（防松手被当点击），相机一毫米不动。
          * ============================================================ */
-        /* v158.27：灵敏度按"一次拖 200px ≈ 40°"配（原来 0.006/0.004 = 拖 220px 就到底，
-           实测右键上拖一下镜头直接俯冲到 14°、贴地被人自己城门挡住 —— 观感就是"往前冲"）。
-           下限同时从 14° 抬到 24°：再低就只剩城墙/树冠，人也被挡。 */
-        if (_sdx2) M._surfOrbitYaw -= _sdx2 * 0.0035;
-        if (_sdy2) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + _sdy2 * 0.0018));
-        touch(); redraw(); return;
+        /* v158.22 的"绕角色转"整段收进开关里：默认 `LEFT_DRAG_CAM = false` —— 左键不动相机。
+           要恢复旧手感只改这一个常量（不是删代码，也不是留不可达分支）。 */
+        if (M.LEFT_DRAG_CAM) {
+          if (_sdx2) M._surfOrbitYaw -= _sdx2 * 0.0035;
+          if (_sdy2) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + _sdy2 * 0.0018));
+          touch(); redraw();
+        }
+        return;
       }
       if (M._surf && drag && !lookDrag) {
         var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
@@ -8166,6 +8258,9 @@
         /* 轨道里左键拖动 = 换了地方看球。上一处地表的视线不再有意义，
            清空它，下次落地重新按当前朝向推导（否则会带着旧城市的朝向落地）。 */
         M._surfDir = null; M._surfRight = null; M._surfAnchor = null;
+        /* v158.28：老板「左键只选择地图元素，不转动相机」—— 高空拖拽也停用，
+           看别处改由**边缘推镜**（指针贴边）或右键绕中心。 */
+        if (M.LEFT_DRAG_CAM === false) { touch(); redraw(); return; }
       }
       if (M._surf && M._panDrag) {
         /* ============================================================
@@ -43084,7 +43179,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.27';
+  GAME.VERSION = 'v158.28';
   function boot() {
     fitAppSize();
     try {

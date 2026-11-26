@@ -50687,6 +50687,58 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+  /* ============================================================
+   * §616 v158.28 · 左键只选、地图位移靠「边缘推镜」
+   * ------------------------------------------------------------
+   * 老板：「什么时候左键变成了转动相机角度了？」
+   *        「左键只选择地图元素，不转动相机。地图位置的变动，通过鼠标在地图
+   *          四周……画面持续向右移动，显示右方地图。」
+   * 规则变更：
+   *   ① 左键拖拽**不再改相机**（地表/高空都一样），只剩点选；开关 `M.LEFT_DRAG_CAM`。
+   *   ② 指针停在画面边缘带 → 画面持续往那一侧走（高空平移观察点 / 地表绕角色转）。
+   *   ③ 指针不在边缘带 → **一动不动**（v157.34「停手画面自己动」的边界不能破）。
+   * ============================================================ */
+  check('§616① 左键拖拽默认不动相机（两个模式都守）', (function () {
+    return /M\.LEFT_DRAG_CAM = false;/.test(_m3d608)
+      /* 地表分支：开关关闭时直接 return，不写 orbitYaw/EL */
+      && /if \(M\.LEFT_DRAG_CAM\) \{\n\s*if \(_sdx2\) M\._surfOrbitYaw/.test(_m3d608)
+      /* 轨道分支：同一个开关守卫 */
+      && /if \(M\.LEFT_DRAG_CAM === false\) \{ touch\(\); redraw\(\); return; \}/.test(_m3d608)
+      && /if \(M\.LEFT_DRAG_CAM === false\) \{ touch\(\); redraw\(\); return; \}\n      \}/.test(_m3d608);
+  })());
+
+  check('§616② 边缘推镜在渲染循环里、且在 placeCamera 之前（当帧生效）', (function () {
+    var i = _m3d608.indexOf('_tickEdgePan(_epDt)');
+    var j = _m3d608.indexOf('placeCamera();', i);
+    return i > 0 && j > i && (j - i) < 400;
+  })());
+
+  check('§616③ 边缘带宽/速度常量在册，且「不在边缘就 return」', (function () {
+    var i = _m3d608.indexOf('function _tickEdgePan');
+    var blk = i >= 0 ? _m3d608.slice(i, i + 900) : '';
+    return /M\.EDGE_PAN = 1;/.test(_m3d608)
+      && /M\.EDGE_PAN_BAND = 0\.055;/.test(_m3d608)
+      && /M\.EDGE_PAN_SPEED = 1\.0;/.test(_m3d608)
+      && /if \(!dx && !dy\) return false;/.test(blk)
+      /* 反向守卫：tick 里不许再叫 renderMapCanvas（会递归进渲染循环，实测 Δyaw 651 rad） */
+      && !/renderMapCanvas/.test(blk)
+      && !/touch\(\)/.test(blk);        /* touch 在闭包里，模块作用域调它 = ReferenceError */
+  })());
+
+  check('§616④ 指针位置单独记录（拖动中也更新，否则拖到边缘不推）', (function () {
+    return /document\.addEventListener\('mousemove', function \(e\) \{/.test(_m3d608)
+      && /M\._ptr = \{ x: e\.clientX - rp\.left/.test(_m3d608)
+      && /canvas\.addEventListener\('mouseleave', function \(\) \{ if \(M\._ptr\) M\._ptr\.out = true; \}/.test(_m3d608);
+  })());
+
+  (function () {                    /* 数值面：0.3 秒 ≈ 14°，且方向可解释 */
+    var perSec = 0.9;               /* 水平角速度（rad/s） */
+    var deg = perSec * 0.3 * 180 / Math.PI;
+    check('§616⑤ 数值面：贴边 0.3 秒转 12~17°（不是瞬移，也不是没反应）',
+      deg > 12 && deg < 17, '0.3s = ' + deg.toFixed(2) + '°');
+  })();
+
   /* ============================================================
    * §615 v158.27 · 右键：从「转头」改回「绕球心 / 绕角色」
    * ------------------------------------------------------------
