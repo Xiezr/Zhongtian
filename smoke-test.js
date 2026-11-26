@@ -46487,8 +46487,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        旧版这里要求「点击必须先经 openCellMenu」，本轮**反向** —— 中间菜单整条退役。
        正向：pickAt 直达 openCellPanel（一层）；反向：openCellMenu 无赋值无调用、
        cell-menu-* 四个 action case 全清。 */
-    check('§580② 点地块直达面板（pickAt 调 openCellPanel · 无中间菜单 · v157.72 反向 v157.57）',
-      /M\.openCellPanel\(ci\);/.test(md)
+    /* 规则变更（v158.30 · 老板「左键一点就弹地块信息，那这还能走吗」）：
+       原来点**任何**格都 openCellPanel。现在野地只走（按 E 才开），
+       有实体的格才直调面板 —— 「直达、无中间菜单」这条语义不变。 */
+    check('§580② 点地块直达面板（实体格直调 openCellPanel · 野地只走 · 无中间菜单）',
+      /if \(kind !== 'wild'\) M\.openCellPanel\(ci\);/.test(md)
       && !/ui\.openCellMenu\s*=\s*function/.test(um)
       && !/ui\.openCellMenu\s*\(/.test(um)
       && md.indexOf('ui.openCellMenu(') < 0,
@@ -49548,7 +49551,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§589ae 走近操作：提示条挂 GAME.ui.* + E 键直达原面板（不新开面板）',
         /ui\.renderInteractHint = function \(hit\)/.test(umC1581)
         && /getElementById\('interact-hint'\)/.test(umC1581)
-        && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+        /* 规则变更（v158.30 · 老板「左键一点就弹地块信息，那这还能走吗」）：
+           E 键原来只认 `FOLLOW`，地表走 `_surf` —— 把野地面板入口收到 E 之后，
+           这一条必须同时认地表，否则 E 在地表是死的（面板入口被一起关死）。 */
+        && /_avCode === 'KeyE' && \(_mkAv\.FOLLOW \|\| _mkAv\._surf\)/.test(mnC158)
         && /_mkAv\.nearestInteractable && _mkAv\.nearestInteractable\(\)/.test(mnC158)
         && /_mkAv\.openCellPanel\(_near\.ci\)/.test(mnC158),
         '提示条 + E 键 + openCellPanel 同出口');
@@ -49603,7 +49609,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§589aj 反向证据：P0/P1 与旧 3D 入口逐字保留 · 街区键不写 GAME._keys',
         /* v158.22：位姿推进条件扩到「FOLLOW 或 地表」，其余 P0/P1 语义逐字不动 */
         /if \(\(M\.FOLLOW \|\| M\._surf\) && M\.PLAYER_AVATAR\)/.test(mpC158)
-        && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+        && /_avCode === 'KeyE' && \(_mkAv\.FOLLOW \|\| _mkAv\._surf\)/.test(mnC158)
         && /case 'city-enter-3d'/.test(mnC158)
         && /case 'city-enter'/.test(mnC158)
         && (function () {
@@ -49642,7 +49648,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         '同源碰撞 + 子步进上限 + 撞停 + 不新增高度计算');
 
       check('§589am 反向证据：P0/P1/P2 逐字保留 · 载具键三级隔离 · D.step 本体未改 · 载具态 P1 提示静默（v158.14 写键统一走 _avKey）',
-        /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+        /_avCode === 'KeyE' && \(_mkAv\.FOLLOW \|\| _mkAv\._surf\)/.test(mnC158)
         && /if \(_mkAv\.DISTRICT && GAME\.district && GAME\.district\.active\) \{/.test(mnC158)
         /* v158.14：方向键别名后，三级写入统一用归一化后的 _avKey
            （ArrowUp→w 等），不再各写 _avCode.charAt(3) —— 那正是方向键漏掉的根因。 */
@@ -49797,7 +49803,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\.INTERACT_RANGE = 1/.test(mpC158)
       && /M\.DISTRICT = true/.test(mpC158)
       && /M\.VEHICLE = true/.test(mpC158)
-      && /_avCode === 'KeyE' && _mkAv\.FOLLOW/.test(mnC158)
+      && /_avCode === 'KeyE' && \(_mkAv\.FOLLOW \|\| _mkAv\._surf\)/.test(mnC158)
       /* v158.14：同 §589am —— 方向键别名统一归一化后再写状态位。 */
       && /GAME\.vehicle\.keys\[_avKey\] = 1/.test(mnC158)
       && /V\.toggle = function \(\)/.test(vC1583)
@@ -49936,7 +49942,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§589aw P5-b 观察器不拦截：E 键分派仍是 P3→P4→P1 · 钩子只后置登记 · 不新增按键分支',
       /_avCode === 'KeyE' && !e\.shiftKey && _mkAv\.DISTRICT/.test(mnC1585)
       && /_avCode === 'KeyE' && !e\.shiftKey && _mkAv\.NPC !== false/.test(mnC1585)
-      && /_avCode === 'KeyE' && _mkAv\.FOLLOW && !e\.shiftKey/.test(mnC1585)
+      && /_avCode === 'KeyE' && \(_mkAv\.FOLLOW \|\| _mkAv\._surf\) && !e\.shiftKey/.test(mnC1585)
       && !/questline\.interact|questline\.nearest/.test(mnC1585)
       && /GAME\.questline && GAME\.questline\.onLook\) GAME\.questline\.onLook\(\)/.test(mpC1586)
       && /G\.questline && G\.questline\.onEnter\) G\.questline\.onEnter\(\)/.test(dcC1586)
@@ -50687,6 +50693,34 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §617 v158.30 · 左键只走、E 才看（键位不再互相覆盖）
+   * ------------------------------------------------------------
+   * 老板：「那为什么左键一点啊，就弹出来地块的信息，那这还能走吗？
+   *        就是这些键位全他妈是冲突的，全是」
+   * 病根：`pickAt` 的野地分支走完 `walkTo` 又无条件 `openCellPanel` ——
+   *   一块大面板盖住地图中央，想接着点/走都得先关它。左键同时是"走"和"弹窗"。
+   * 规则变更：
+   *   ① 野地点击 = **只走过去**，不弹面板；到地方按 **E** 才打开这一格。
+   *   ② 城/据点/营地/村社 = 打开它（那是"看目标"，本来也不该把人拽过去）。
+   *   ③ E 键必须在地表生效（原来只认 FOLLOW，地表走 `_surf`，E 是死的）。
+   * ============================================================ */
+  check('§617① 野地点击只走不弹（面板入口不覆盖走路）', (function () {
+    return /if \(kind !== 'wild'\) M\.openCellPanel\(ci\);/.test(_m3d608)
+      && /M\.walkTo\(ci\)/.test(_m3d608)
+      /* 反向守卫：不许再出现"无条件 openCellPanel + walkTo"那种写法 */
+      && !/try \{ M\.walkTo\(ci\); \} catch \(eWk2\) \{ \}\n[\s\S]{0,600}?M\.openCellPanel\(ci\);/ .test(_m3d608);
+  })());
+
+  check('§617② 只有野地才走过去（城/据点不该把人拽过去）', (function () {
+    return /if \(_kindEarly === 'wild'\) \{ try \{ M\.walkTo\(ci\); \}/.test(_m3d608);
+  })());
+
+  check('§617③ E 键在地表也生效（FOLLOW || _surf）', (function () {
+    return /\(_mkAv\.FOLLOW \|\| _mkAv\._surf\) && !e\.shiftKey/.test(_mn608);
+  })());
 
   /* ============================================================
    * §616 v158.28 · 左键只选、地图位移靠「边缘推镜」

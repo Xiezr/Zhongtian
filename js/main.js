@@ -4179,7 +4179,10 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         /* v158.1（P1 大世界）：E = 对正前方 ≤1 格的实物打开**原来那个面板**。
            没有目标就静默（不弹 toast、不误触）；走 openCellPanel 同一出口，
            鼠标点格的旧路径逐字不变。 */
-        if (_avCode === 'KeyE' && _mkAv.FOLLOW && !e.shiftKey) {
+        /* v158.30（老板「左键一点就弹地块信息，那这还能走吗」）：野地点击改成"只走"，
+           查看/操作全部收到 **E** 上。但这里原来只认 `FOLLOW`，而地表走的是 `_surf`
+           —— 不放开这一条，E 在地表根本不响应（等于把面板入口一起关死了）。 */
+        if (_avCode === 'KeyE' && (_mkAv.FOLLOW || _mkAv._surf) && !e.shiftKey) {
           var _near = _mkAv.nearestInteractable && _mkAv.nearestInteractable();
           if (_near) {
             if (_mkAv.openCellPanel) _mkAv.openCellPanel(_near.ci);
@@ -4487,7 +4490,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.29';
+  GAME.VERSION = 'v158.30';
   function boot() {
     fitAppSize();
     try {
