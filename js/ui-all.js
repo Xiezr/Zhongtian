@@ -16856,6 +16856,31 @@ import './ui.js';
    *      → 这条条子在实际游戏里根本不出现。
    * 现在：文案按**真实键位**重写；显隐改跟**地表状态**（见 map3d 的 `_applySurf`）。
    * ============================================================ */
+  /* ============================================================
+   * v158.34（老板「画面太卡」）：F2 自测条 —— 左上角一行小字
+   * `60fps · 16.7ms · p95 18 · 重建 27ms`
+   * 卡的时候一眼能分清是"渲染慢"还是"整层重建"。
+   * ============================================================ */
+  ui.perfHud = function (st) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('perf-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'perf-hud';
+      el.style.cssText = 'position:absolute;left:12px;top:44px;z-index:2200;'
+        + 'pointer-events:none;font:12px/1.5 ui-monospace,Consolas,monospace;'
+        + 'background:rgba(8,12,18,.78);color:#9fe3c0;border:1px solid rgba(120,200,160,.35);'
+        + 'border-radius:6px;padding:4px 8px;white-space:pre;';
+      root.appendChild(el);
+    }
+    var on = !!(GAME.map3d && GAME.map3d.PERF);
+    el.style.display = on ? 'block' : 'none';
+    if (!on) return el;
+    el.textContent = st.fps + 'fps · ' + st.ms.toFixed(1) + 'ms · p95 ' + st.p95
+      + 'ms · 重建 ' + (st.rebuildMs || 0).toFixed(1) + 'ms';
+    return el;
+  };
   ui.renderFollowHud = function (on) {
     var root = (ui.layerRoot && ui.layerRoot()) || null;
     if (!root || !root.appendChild) return null;

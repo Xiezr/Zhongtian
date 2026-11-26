@@ -4228,6 +4228,18 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         e.preventDefault();
         return;
       }
+      /* v158.34（老板「画面太卡」）：F2 = 性能自测条开关（只读统计，不改行为） */
+      if (e.key === 'F2') {
+        var _Mp = GAME.map3d;
+        if (_Mp) {
+          _Mp.PERF = _Mp.PERF ? 0 : 1;
+          _Mp._perf.at = 0;
+          if (GAME.ui && GAME.ui.perfHud) GAME.ui.perfHud(_Mp._perf);
+          if (ui.toast) ui.toast(_Mp.PERF ? '📊 性能条已开（F2 关）' : '📊 性能条已关');
+        }
+        e.preventDefault();
+        return;
+      }
       /* v157.22：R = 旋转手上的东西（成熟建造游戏的通用键位） */
       if ((e.key === 'r' || e.key === 'R') && !e.shiftKey) {
         var _M22 = GAME.map3d;
@@ -4490,7 +4502,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.33';
+  GAME.VERSION = 'v158.34';
   function boot() {
     fitAppSize();
     try {

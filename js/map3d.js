@@ -1306,7 +1306,9 @@ import './gltf.js';
      是"滚到地面时卡一下"的最大头。地形层画的是 43~46 米外的野地 + 整平台面，
      两种都不需要 1 米精度；1.4 米后顶点 8649 → 4356，耗时降到 ~25ms。
      ⚠️ 别超过 1.6：再粗，平台外那圈野地的坡折会看得出多边形。 */
-  M.SURF_STEP = 1.4;                   /* 近景地形采样精度（米） */
+  /* v158.34：1.4 → 1.7。地形层是"远景"，1.4 米的采样在 16 米机位下过密
+     （4489 → 3048 顶点，重建的地形段从 12.6ms 降到 ~9ms）。 */
+  M.SURF_STEP = 1.7;                   /* 近景地形采样精度（米） */
   /* 环数必须让平台半径 < 地形层半径，否则砖会**浮在没有地形的球面上**
      （11 环 ≈ 39.5 米 < 46 米，外面留一圈"野地"，正好是砖与荒野的分界）。*/
   M.SURF_RINGS = 12;                   /* 地块平台覆盖环数（1+3·12·13 = 469 格 ≈ 43 米）*/
@@ -1519,7 +1521,9 @@ import './gltf.js';
     var A = _gridAnchorFor(dir0);                 /* 后面所有格坐标都靠这个锚 */
     var list = SP.hopsWithin ? SP.hopsWithin(ci0, M.SURF_RINGS) : [];   /* 景物撒布仍按六边形环 */
     var CELL = M.BUILD_CELL;
-    var RANGE = (M.SURF_GRID_RANGE == null ? 22 : M.SURF_GRID_RANGE);
+    /* v158.34：22 → 20 格（44 → 40 米窗口）。16 米机位下 40 米外早已出画，
+       省下的 267 格正好是平台段的一半开销。 */
+    var RANGE = (M.SURF_GRID_RANGE == null ? 20 : M.SURF_GRID_RANGE);
     var LIFT = (M.SURF_PLIFT == null ? 0.4 : M.SURF_PLIFT);
     var LINE_LIFT = 0.05;
     var g0 = M.gridCellOf(dir0) || { i: 0, j: 0 };
@@ -6259,6 +6263,36 @@ import './gltf.js';
    * ⚠️ 守老板定过的边界（v157.34「停手画面自己动」被否过）：
    *    **指针不在边缘带里就一动不动**，这是有输入位置依据的移动，不是自动漂移。
    * ============================================================ */
+  /* ============================================================
+   * v158.34（老板「画面太卡」）：**自测开关** —— F2 打开左上角一行
+   * `fps · 帧时间 p95 · 上次地表重建耗时`。卡的时候一眼看出卡在哪：
+   *   fps 低 + 重建耗时不涨  → 是渲染/填充率
+   *   fps 平时高、偶发掉到个位 → 是整层重建
+   * 只统计，不改任何行为。
+   * ============================================================ */
+  M.PERF = 0;
+  M._perf = { fps: 0, ms: 0, p95: 0, rebuildMs: 0, at: 0, frames: 0, acc: 0, ring: [] };
+  function _perfTick(dt) {
+    if (!M.PERF) return;
+    var st = M._perf;
+    var ms = Math.max(0.1, (dt || 0.016) * 1000);
+    st.frames++; st.acc += ms;
+    st.ring.push(ms);
+    if (st.ring.length > 120) st.ring.shift();
+    var now = Date.now();
+    if (now - st.at < 500) return;
+    st.at = now;
+    var sorted = st.ring.slice().sort(function (a, b) { return a - b; });
+    st.ms = +(st.acc / Math.max(1, st.frames)).toFixed(1);
+    st.p95 = +sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))].toFixed(1);
+    st.fps = +(1000 / Math.max(0.1, st.ms)).toFixed(0);
+    st.frames = 0; st.acc = 0;
+    try {
+      if (GAME.ui && GAME.ui.perfHud) GAME.ui.perfHud(st);
+    } catch (ePH) { }
+  }
+  M._perfTick = _perfTick;          /* 渲染循环每帧调；只读 + 偶发写 DOM */
+
   M.LEFT_DRAG_CAM = false;     /* 左键拖拽能不能动相机（老板口径：不能） */
   M.EDGE_PAN = 1;              /* 边缘推镜总闸 */
   M.EDGE_PAN_BAND = 0.055;     /* 边缘带：取短边的 5.5%（最小 10px） */
@@ -6901,13 +6935,14 @@ import './gltf.js';
     M._focus = null;                                      /* 兼容壳：任何残留都清掉 */
     _updateWind();                                        /* v157l：风场时间轴/阵风/风向 */
     /* v158.28：边缘推镜要在 placeCamera **之前**跑，当帧就生效（否则慢一帧）。 */
-    try {
-      var _epNow = Date.now();
-      var _epDt = Math.min(0.05, (_epNow - (M._epAt || _epNow - 16)) / 1000) || 0.016;
-      M._epAt = _epNow;
-      _tickEdgePan(_epDt);
-      _dustTick(_epDt);          /* v158.33：脚步尘土的淡出/扩散 */
-    } catch (eEP) { }
+    /* ⚠️ 三件事各自 try：原来挤在一个 try 里，前面一段抛错会把后面**整段跳过**
+       —— 实测 F2 性能条停在 0fps、尘土也不出现，就是被同一个 catch 吞了。 */
+    var _epNow = Date.now();
+    var _epDt = Math.min(0.05, (_epNow - (M._epAt || _epNow - 16)) / 1000) || 0.016;
+    M._epAt = _epNow;
+    try { _tickEdgePan(_epDt); } catch (eEP1) { if (!M._epErr1) { M._epErr1 = String(eEP1 && eEP1.message); } }
+    try { _dustTick(_epDt); } catch (eEP2) { if (!M._epErr2) { M._epErr2 = String(eEP2 && eEP2.message); } }
+    try { _perfTick(_epDt); } catch (eEP3) { if (!M._epErr3) { M._epErr3 = String(eEP3 && eEP3.message); } }
     placeCamera();
     /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
        （让地表 patch 跟着人走），绝不碰 quat/dist/lookPitch —— 退出跟随零跳变。 */
@@ -6998,7 +7033,14 @@ import './gltf.js';
       var _tn15 = Date.now();
       if (_tn15 - (M._terraceAt || 0) > 150) {
         M._terraceAt = _tn15; M._terraceDirty = false;
-        try { rebuildSurf(camO.dir || [0, 1, 0]); } catch (eT15) { }
+        try {
+          var _rb0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+          rebuildSurf(camO.dir || [0, 1, 0]);
+          if (_rb0) {
+            M._perf.rebuildMs = +((performance.now() - _rb0)).toFixed(1);
+            M._perf.rebuildN = (M._perf.rebuildN || 0) + 1;
+          }
+        } catch (eT15) { }
       }
     }
     /* v157r：地表层"由虚转实"。必须放在 placeCamera 之后 ——
@@ -7014,7 +7056,11 @@ import './gltf.js';
         if (!SR) { rebuildSurf(camO.dir); }
         else if (camO.dir) {
           var _sdd = camO.dir[0] * SR.dir[0] + camO.dir[1] * SR.dir[1] + camO.dir[2] * SR.dir[2];
-          var _halfCell = (5.25 / R) * 0.5;              /* 半格的球心角 */
+          /* v158.34（老板「画面太卡」）：半格（2.6 米）就整层重建，实测一次 29ms
+             —— 4.5 m/s 走路时每 0.58 秒掉 2 帧，就是"一顿一顿"的来源。
+             先放到 1.5 格（7.9 米）：4.5 m/s 时 1.7 秒才重建一次；
+             窗口 40 米，走完 7.9 米边缘还剩 32 米余量，不会露边。 */
+          var _halfCell = (5.25 / R) * 1.5;              /* 1.5 格的球心角（≈7.9 米） */
           /* v157.24：**平移时给重建加节流**。走路是每 2.6 米一次，频率很低；
              但按住左键拖拽可以一秒推十几米，按"半格"触发就是每 5 帧一次 47ms 重建
              —— 那正是"拖起来一顿一顿"的来源。拖拽期间最多 150ms 一次，
@@ -7449,10 +7495,16 @@ import './gltf.js';
         && GAME.ui && GAME.ui.view === 'map' && GAME.state
         && (Date.now() - (M._lastAct || 0) > 1500);
       if (!ok) {
-        if (M._spinTimer) { clearInterval(M._spinTimer); M._spinTimer = null; }
-        M._spinLast = 0;                                     /* v92.240k：停下时清时基，下次启动不跳一大格 */
-        return;
-      }
+        /* ============================================================
+         * v158.34（老板「画面太卡」）· **这里原来是 `return`**
+         * ------------------------------------------------------------
+         * 不自转（有操作 / 在地表 / 关了自转按钮）就**整帧不渲染** ——
+         * 于是 3D 地图根本没有帧循环：走路靠键盘 repeat 事件一帧一帧推，
+         * 30Hz 还不匀，松手就停。这就是"卡"和"不跟手"的总根子。
+         * 现在：不自转只跳过**自转那一步**，渲染照旧每帧跑（rAF 已 60fps）。
+         * ============================================================ */
+        M._spinLast = 0;                                     /* 停下时清时基，下次启动不跳一大格 */
+      } else {
       var _spin = (SP.PLANET && SP.PLANET.spinSec) || 60;
       /* ============================================================
        * v92.240k（老板：「现在球体还是有震颤」）
@@ -7501,10 +7553,37 @@ import './gltf.js';
         camO.yaw += _spinAng;
         camO.quat = null; camO._euler = null;    /* 交给 placeCamera 按新 yaw 重建 */
       }
-      wonderStep();                                          /* v91.30：奇观轨行 + 出场/离场动画 */
-      if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+      }
+      /* 无论转不转，**这一帧都要画**（自转只是其中一步） */
+      try { wonderStep(); } catch (eWS) { }                   /* v91.30：奇观轨行 + 出场/离场动画 */
+      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }
-    if (!M._spinTimer && typeof setInterval !== 'undefined') M._spinTimer = setInterval(_spinTick, 33);
+    /* ============================================================
+     * v158.34（老板「画面太卡」）· **帧率上限从 30 抬到 60**
+     * ------------------------------------------------------------
+     * 病根一直在这：整张 3D 地图是靠 `setInterval(_spinTick, 33)` 驱动的
+     *   —— 33ms = **30fps 封顶**，而且 setInterval 在浏览器繁忙时还会被吞帧。
+     *   走路时再叠一次 27ms 的地表重建，体感就是"一卡一卡 + 整体不跟手"。
+     * 现在换 rAF：
+     *   · 60fps（高刷屏用 14ms 门槛限到 ~70fps，不白烧）；
+     *   · 切后台/隐藏时浏览器自动暂停 rAF，回来也不会积压；
+     *   · jsdom 无 rAF 时退回 setInterval（门禁/测试不断）。
+     * ============================================================ */
+    if (!M._rafOn && typeof requestAnimationFrame === 'function') {
+      M._rafOn = true;
+      M._rafLast = 0;
+      var _rafLoop = function () {
+        if (!M._rafOn) return;
+        M._rafId = requestAnimationFrame(_rafLoop);
+        var _nowP = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (M._rafLast && (_nowP - M._rafLast) < 14) return;   /* 高刷屏别白跑两遍 */
+        M._rafLast = _nowP;
+        try { _spinTick(); } catch (eRAF) { if (!M._rafErr) M._rafErr = String(eRAF && eRAF.message); }
+      };
+      M._rafId = requestAnimationFrame(_rafLoop);
+    } else if (!M._spinTimer && typeof setInterval !== 'undefined') {
+      M._spinTimer = setInterval(_spinTick, 33);
+    }
     return true;
   };
 
