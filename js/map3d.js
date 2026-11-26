@@ -8544,7 +8544,9 @@ import './gltf.js';
   function animateFigureWalk(fg, dt, moving) {
     if (!fg) return;
     M._figMoving = !!moving;
-    if (moving) M._figPhase = (M._figPhase || 0) + dt * (M.WALK_SPEED / 1.5) * Math.PI;
+    /* v158.32：相位跟**真实速度**，不是写死的 WALK_SPEED（慢走/刹车时腿速要跟着变） */
+    var _spdNow = (avOut && isFinite(avOut.spd)) ? Math.abs(avOut.spd) : (moving ? M.WALK_SPEED : 0);
+    if (_spdNow > 0.12) M._figPhase = (M._figPhase || 0) + dt * (_spdNow / 1.5) * Math.PI;
     else M._figPhase = 0;
     var sw = moving ? Math.sin(M._figPhase) * 0.6 : 0;
     var legs = fg.userData && fg.userData.legs;
@@ -8608,6 +8610,7 @@ import './gltf.js';
    * ============================================================ */
   M.teleportTo = function (ci) {
     ci = ci | 0;
+    M._spd = 0;                    /* v158.32：传送必须清速度，否则落地点会先"滑"一段 */
     if (!(_tileCells && _tileCells[ci])) return false;
     if (!GAME.state) return false;
     var d = _tileCells[ci].dir;
@@ -8879,6 +8882,19 @@ import './gltf.js';
   /* 胶囊半径（世界单位）：皮肤宽度 0.03 = 半径的 10%，照 Unity CharacterController 口径。 */
   M.CAPSULE_R = 0.3;
   M.WALK_SPEED = 4.5;
+  /* ============================================================
+   * v158.32（老板「我只是想要人物操纵感」）
+   * ------------------------------------------------------------
+   * 病根不是键位，是**人是个开关**：`step = move * WALK_SPEED * dt` 一帧满速、
+   * 松手一帧归零，`p.v` 恒 [0,0,0] —— 观感就是"贴地滑行的方块"，
+   * 按下去和松开之间没有任何重量。
+   * 现在给速度一个一阶状态：起步 ~0.25 秒到全速、松手 ~0.17 秒停住；
+   * 撞上陡坡/被挡时速度直接归零（不许顶着山继续"蓄力"）。
+   * ============================================================ */
+  M.WALK_ACCEL = 18;           /* m/s²：0 → 4.5 约 0.25 秒 */
+  M.WALK_BRAKE = 26;           /* m/s²：4.5 → 0 约 0.17 秒 */
+  M.BACK_RATE = 0.62;          /* 后退只给 62% 速度 */
+  M._spd = 0;                  /* 当前沿朝向的速度（m/s，带符号） */
   M.SLIDE_SPEED = 3.0;
   M.SLOPE_LIMIT = 40;
 
@@ -8902,7 +8918,16 @@ import './gltf.js';
        原来 103°/s，转 90° 要 0.87 秒（真人快速转身约 0.5 秒）—— 按下 A/D 像"磨"，
        是"痴呆感"的第二来源。3.0 rad/s = 172°/s，转 90° 约 0.52 秒。 */
     if (turn) yaw += turn * 3.0 * dt;
-    var step = move * M.WALK_SPEED * dt;
+    /* ---- v158.32：速度是一阶状态（有起步/刹车），不是一个开关 ---- */
+    var _tgtSpd = move * M.WALK_SPEED * (move < 0 ? M.BACK_RATE : 1);
+    if (M._spd == null || !isFinite(M._spd)) M._spd = 0;
+    var _dv = _tgtSpd - M._spd;
+    var _rate = (Math.abs(_tgtSpd) > Math.abs(M._spd)) ? M.WALK_ACCEL : M.WALK_BRAKE;
+    var _cap = _rate * dt;
+    if (_dv > _cap) _dv = _cap; else if (_dv < -_cap) _dv = -_cap;
+    M._spd += _dv;
+    if (!move && Math.abs(M._spd) < 0.03) M._spd = 0;   /* 收尾别留 0.02 的"蠕" */
+    var step = M._spd * dt;
     if (Math.abs(step) > 1e-9) {
       var nd = [
         p.dir[0] + fwd[0] * step / R,
@@ -8925,6 +8950,7 @@ import './gltf.js';
         p.dir = [sd[0] / sL, sd[1] / sL, sd[2] / sL];
         p.h = M._groundAtUnit(p.dir);
         out.slide = 1; out.blocked = 1;
+        M._spd = 0;                            /* 顶住了就是顶住了，不许继续蓄速 */
       } else {
         p.dir = nd; p.h = g1; out.moved = 1;
       }
@@ -8935,7 +8961,11 @@ import './gltf.js';
       out.ground = p.h;
     }
     p.yaw = yaw;
-    p.v = [0, 0, 0];                             // kinematic：不保留瞬时动量
+    /* v158.32：`p.v` 从"恒 [0,0,0]"改成**真实速度向量** —— 动画相位、镜头滞后、
+       探针都该读它，而不是读那个写死的 WALK_SPEED。 */
+    p.v = [fwd[0] * M._spd, fwd[1] * M._spd, fwd[2] * M._spd];
+    out.spd = +M._spd.toFixed(4);
+    if (Math.abs(M._spd) > 0.15) out.moved = 1;
     M.setPlayerPose(p);
     var chk = M.playerPose();
     out.gap = +Math.abs(chk.h - M._groundAtUnit(chk.dir)).toFixed(4);
