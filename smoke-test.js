@@ -50596,12 +50596,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        但同样必须摆腿，否则近看是"人贴地滑行"。
        断言因此改为钉**公用出口**本体，并要求两个调用方都在岗。 */
     var i = _m3d608.indexOf('M.syncAvatarFigure = function');
-    var blk = i >= 0 ? _m3d608.slice(i, i + 1800) : '';
+    /* 窗口 1800 → 3200：v158.33 在这个函数里加了手臂/躯干/尘土三段，
+       1800 字会把最后那段（_dustSpawn）切出去 —— 判据没放宽，只是采样窗口对齐。 */
+    var blk = i >= 0 ? _m3d608.slice(i, i + 3200) : '';
+    /* 规则变更（v158.33 · 老板「我只是想要人物操纵感」）：
+       相位从写死的 `M.WALK_SPEED/1.5` 改成**跟真实速度** `_spd/1.5`（起步/刹车时腿要跟着变），
+       并补上手臂反相摆、躯干前倾、脚步尘土 —— 原来整个人只有腿在动。 */
     return /M\.syncAvatarFigure = function \(dt, avOut\)/.test(_m3d608)
       && /M\._figPhase/.test(blk)
       && /userData\.legs/.test(blk)
       && /legs\[0\]\.rotation\.x = _sw/.test(blk)
-      && /M\.WALK_SPEED \/ 1\.5/.test(blk)            /* 相位跟速度，不是写死 */
+      && /_spd \/ 1\.5/.test(blk)                     /* 相位跟真实速度，不是写死 */
+      && /userData\.arms/.test(blk)                    /* 手臂反相摆 */
+      && /arms\[0\]\.rotation\.x = -_sw/.test(blk)
+      && /userData\.torso/.test(blk)                   /* 躯干随速度前倾 */
+      && /_dustSpawn\(/.test(blk)                      /* 脚步尘土 */
       && /M\.syncAvatarFigure\(dt, avOut\)/.test(_m3d608)          /* followAvatar 调它 */
       && /M\.syncAvatarFigure\(M\._lastAvDt/.test(_m3d608);        /* 地表渲染循环也调它 */
   })());
@@ -50611,8 +50620,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\.followAvatar\(_avDt, _avOut\)/.test(_m3d608);
   })());
 
-  check('§609③ 转向 3.0 rad/s（≈172°/s，90° 约 0.52s；大世界与街区同一把尺）', (function () {
-    return /yaw \+= turn \* 3\.0 \* dt/.test(stripComment(_m3d608))
+  check('§609③ 转向：目标 3.0 rad/s，但**带加减速**（0.2s 起转 / 0.18s 收住）', (function () {
+    /* 规则变更（v158.33）：原来 `yaw += turn * 3.0 * dt` 是恒速 —— 按下去立刻满转、
+       松手立刻停，像转盘不像人。现在走 `M._yawSpd` 一阶状态，上限仍是 3.0 rad/s。
+       街区（district）仍是恒速，两个坐标系各自独立，这里分别钉。 */
+    var code = stripComment(_m3d608);
+    return /var _tgtYaw = turn \* 3\.0;/.test(code)
+      && /M\._yawSpd \+= _dyaw;/.test(code)
+      && /if \(M\._yawSpd\) yaw \+= M\._yawSpd \* dt;/.test(code)
       && /D\.yaw \+= turn \* 3\.0 \* dt/.test(stripComment(_di609));
   })());
 
@@ -51037,7 +51052,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        现在看**镜头锚点 A**（滞后于玩家），玩家因此在画面里真的会往前挪。
        反向守卫：`lookAt(P` 不许回来。 */
     return /M\._surfAvatarCam = function/.test(_m3d608)
-      && /M\.SURF_CAM_DIST = 26/.test(_m3d608)
+      /* v158.33：26 米时角色只有 25 像素高（动作全看不见），拉近到 16 米 → 约 40 像素、
+         视野约 3.7 格（底栏写的就是「视野 4 格」）。判据同步改 16，不是放宽。 */
+      && /M\.SURF_CAM_DIST = 16/.test(_m3d608)
       && /M\.SURF_CAM_EL = 1\.0/.test(_m3d608)
       && /M\.playerPose\(\)/.test(blk)
       && /cam\.lookAt\(A\.x, A\.y, A\.z\)/.test(blk)

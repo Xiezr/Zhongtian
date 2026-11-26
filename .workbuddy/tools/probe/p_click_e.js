@@ -73,29 +73,40 @@ function ok(t, c, d) {
   });
 
   /* 找一个**屏幕内**的野地格（用投影筛） */
-  const pickWild = () => p.evaluate(() => {
-    const M = GAME.map3d, cam = (M._camObj ? M._camObj() : M._cam);
-    const cells = (M._collider && M._collider.cells) || [];
-    const ci0 = M.playerCi ? M.playerCi() : -1;
-    cam.updateMatrixWorld();
-    let best = null;
-    for (let i = 0; i < cells.length; i++) {
-      const c = cells[i];
-      if (!c || !c.dir) continue;
-      if ((M.cellKind && (M.cellKind[i] || 'wild') !== 'wild')) continue;
-      if (ci0 >= 0 && i === ci0) continue;
-      const R2 = M.R + 3;
-      const v = new THREE.Vector3(c.dir[0] * R2, c.dir[1] * R2, c.dir[2] * R2);
-      if (cam.position.distanceTo(v) > 46) continue;        /* 只在近景里找 */
-      const s = v.clone().project(cam);
-      if (Math.abs(s.x) > 0.55 || Math.abs(s.y) > 0.35 || s.z > 1) continue;
-      const d = cam.position.distanceTo(v);
-      if (!best || d < best.d) best = { d: d, ci: i, x: (s.x * 0.5 + 0.5) * 1440, y: (-s.y * 0.5 + 0.5) * 900 };
-    }
-    return best;
-  });
 
-  const w = await pickWild();
+  /* 先按 W 走一段，截"走路中"的图（手臂/尘土/前倾要看这个） */
+  await p.mouse.move(720, 450);
+  await p.keyboard.down('KeyW');
+  await p.waitForTimeout(650);
+  await p.screenshot({ path: OUT + '/0_walking.png' });
+  await p.keyboard.up('KeyW');
+  await p.waitForTimeout(400);
+
+  /* ⚠️ 镜头拉近后（16 米），用 `dir*R` 投出来的屏幕点会落到**别的格**上
+     —— 实测点中的是城格（弹面板、不走路）。改成"从屏幕点反查真实格"再筛。 */
+  const pickWild = await p.evaluate(() => {
+    const M = GAME.map3d;
+    const cv = document.getElementById('mapCanvas');
+    const r = cv.getBoundingClientRect();
+    for (let gy = 0.30; gy <= 0.72; gy += 0.04) {
+      for (let gx = 0.22; gx <= 0.78; gx += 0.04) {
+        const cx = r.left + r.width * gx, cy = r.top + r.height * gy;
+        const nx = gx * 2 - 1, ny = -(gy * 2 - 1);
+        const rc = new THREE.Raycaster();
+        rc.setFromCamera(new THREE.Vector2(nx, ny), M._camObj ? M._camObj() : M._cam);
+        const hit = rc.intersectObject(M._collider, false);
+        if (!hit.length) continue;
+        const pt = hit[0].point;
+        const ci = M.pickCiByRay ? M.pickCiByRay(rc, pt) : -1;
+        if (ci < 0) continue;
+        if ((M.cellKind && (M.cellKind[ci] || 'wild')) !== 'wild') continue;
+        const self = M.playerCi ? M.playerCi() : -1;
+        if (ci === self) continue;
+        return { ci: ci, x: Math.round(cx), y: Math.round(cy) };
+      }
+    }
+    return null;
+  });
   console.log('—— 目标野地 ' + JSON.stringify(w));
   if (!w) { console.log('FATAL 近景找不到野地格'); await b.close(); return; }
 
@@ -103,7 +114,9 @@ function ok(t, c, d) {
   await p.mouse.click(w.x, w.y);
   await p.waitForTimeout(600);
   const s1 = await state();
+  await p.waitForTimeout(500);                          /* 让尘土/摆臂走到中段 */
   await p.screenshot({ path: OUT + '/1_click_wild.png' });
+  await p.screenshot({ path: OUT + '/1b_walking.png' });
   ok('① 点野地：面板不弹', s1.modal === false, 'modal=' + s1.modal + ' text=' + s1.modalText);
   ok('① 点野地：真的开始走过去（walkTarget 有值）', s1.walk >= 0, 'walk=' + s1.walk + ' (点的是 ci=' + w.ci + ')');
 

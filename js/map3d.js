@@ -6906,6 +6906,7 @@ import './gltf.js';
       var _epDt = Math.min(0.05, (_epNow - (M._epAt || _epNow - 16)) / 1000) || 0.016;
       M._epAt = _epNow;
       _tickEdgePan(_epDt);
+      _dustTick(_epDt);          /* v158.33：脚步尘土的淡出/扩散 */
     } catch (eEP) { }
     placeCamera();
     /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
@@ -8473,6 +8474,69 @@ import './gltf.js';
   var figRoot = null, figCache = {};
   var figLastT = (typeof Date.now !== 'undefined') ? Date.now() : 0;   /* 骨骼角色每帧 mixer 推进用 dt 时钟 */
   M._standVer = '';
+  /* ============================================================
+   * v158.33 · 脚步尘土（老板「半分用户体验都没有」）
+   * ------------------------------------------------------------
+   * 走路只有腿在摆、脚下什么都没有 —— 这是"贴地滑行"最后的破绽：
+   * 真人每一步都会踢起一点土，哪怕只是淡淡一团。
+   * 做法：8 个 Sprite 的池子，每"半步"（相位跨 π）在脚下生成一个，
+   *   0.55 秒内放大 1.4 倍、淡出到 0。只在走起来时生成（站着不冒烟）。
+   * 不用粒子系统：8 个 Sprite 就是 8 个 draw call，比 `Points` 还好调。
+   * ============================================================ */
+  var _dustPool = null, _dustTex = null, _dustNext = 0;
+  function _dustInit() {
+    if (_dustPool) return true;
+    if (!scene || !THREE) return false;
+    try {
+      var cv = document.createElement('canvas');
+      cv.width = 64; cv.height = 64;
+      var cx = cv.getContext('2d');
+      var gdc = cx.createRadialGradient(32, 32, 2, 32, 32, 30);
+      gdc.addColorStop(0, 'rgba(216,203,170,0.9)');
+      gdc.addColorStop(0.5, 'rgba(200,184,152,0.38)');
+      gdc.addColorStop(1, 'rgba(200,184,152,0)');
+      cx.fillStyle = gdc; cx.fillRect(0, 0, 64, 64);
+      _dustTex = new THREE.CanvasTexture(cv);
+      _dustPool = [];
+      for (var i = 0; i < 8; i++) {
+        var sp = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: _dustTex, transparent: true, opacity: 0, depthWrite: false
+        }));
+        sp.visible = false;
+        sp.scale.setScalar(0.6);
+        scene.add(sp);
+        _dustPool.push({ s: sp, t: -1, sc: 1 });
+      }
+    } catch (eD0) { _dustPool = null; return false; }
+    return true;
+  }
+  function _dustSpawn(pos, sc) {
+    if (!_dustInit() || !pos) return;
+    var it = _dustPool[_dustNext % _dustPool.length];
+    _dustNext++;
+    it.t = 0;
+    it.sc = sc || 1;
+    /* 抬高 0.35 米：贴地（0.06）会被地形面片挡住，实测截图里完全看不到 */
+    it.s.position.set(pos.x, pos.y + 0.35, pos.z);
+    it.s.visible = true;
+    it.s.material.opacity = 0.62;
+    it.s.scale.setScalar(0.8 * (sc || 1));
+  }
+  function _dustTick(dt) {
+    if (!_dustPool) return;
+    for (var i = 0; i < _dustPool.length; i++) {
+      var it = _dustPool[i];
+      if (it.t < 0) continue;
+      it.t += dt;
+      var k = it.t / 0.55;
+      if (k >= 1) {
+        it.t = -1; it.s.visible = false; it.s.material.opacity = 0;
+        continue;
+      }
+      it.s.material.opacity = 0.55 * (1 - k) * (1 - k);
+      it.s.scale.setScalar((0.8 + k * 1.9) * (it.sc || 1));
+    }
+  }
   function makeFigure(color, scale, actorName) {
     var g = new THREE.Group();
     var mat = new THREE.MeshBasicMaterial({ color: color });
@@ -8486,11 +8550,19 @@ import './gltf.js';
     var legL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.16), dark);
     legL.position.set(-0.11, 0.16, 0);
     var legR = legL.clone(); legR.position.x = 0.11;
-    var armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.5, 0.13), mat);
+    /* v158.33：手臂原来和躯干**同一个材质** —— 从背后看跟身体连成一块，
+       摆动完全看不出来（截图确认：整个人就是一根橙条）。用略深的同色系分开。 */
+    var armMat = new THREE.MeshBasicMaterial({ color: color });
+    try { armMat.color.multiplyScalar(0.72); } catch (eAM) { }
+    var armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.5, 0.13), armMat);
     armL.position.set(-0.27, 0.66, 0);
     var armR = armL.clone(); armR.position.x = 0.27;
     g.add(body, head, legL, legR, armL, armR);
     g.userData.legs = [legL, legR];
+    /* v158.33（老板「我只是想要人物操纵感」）：手臂和躯干也要能被动画驱动。
+       原来建了手臂就没人再用 —— 走路只有腿在摆，上半身整个是块木板。 */
+    g.userData.arms = [armL, armR];
+    g.userData.torso = body;
     g.userData.baseScale = scale || 1;
     /* v2026xxxx：骨骼角色替身（序章君主用 RobotExpressive 作示范）。
        加载成功后挂到 g 上、缩放对齐方块人高度、隐藏方块人；失败则留方块人兜底。 */
@@ -8654,7 +8726,11 @@ import './gltf.js';
    * 平台层以 `camO.dir` 为中心重建，所以 placeCamera 开头会把 camO 对齐玩家；
    * 这里只负责把"最终机位"摆到玩家斜上方。
    * ============================================================ */
-  M.SURF_CAM_DIST = 26;        /* 相机到角色的距离（米）——格子 5.25 米，26 米约看 6 格宽 */
+  /* v158.33（老板「半分用户体验都没有」）：26 米时角色只有 **25 像素高** ——
+     摆臂、尘土、前倾这些全都白做，玩家根本看不见。拉近到 16 米：
+     角色约 40 像素、视野约 3.7 格（底栏写的就是「视野 4 格」），
+     这才是"能看见自己在走"的距离。 */
+  M.SURF_CAM_DIST = 16;        /* 相机到角色的距离（米）——5.25 米一格，约看 3.7 格 */
   M.SURF_CAM_EL = 1.0;         /* 仰角（弧度）≈ 57°：更俯视，能看进楼群/林间，不被墙挡 */
   M._surfOrbitYaw = 0;         /* 绕过角色一圈（左键拖） */
   M._surfCamE1 = null;         /* 水平基准，进地表定一次、之后固定（走动时画面不旋转） */
@@ -8917,7 +8993,17 @@ import './gltf.js';
     /* v158.19（老板「走的好像老年痴呆一样」）：转向 1.8 → 3.0 rad/s。
        原来 103°/s，转 90° 要 0.87 秒（真人快速转身约 0.5 秒）—— 按下 A/D 像"磨"，
        是"痴呆感"的第二来源。3.0 rad/s = 172°/s，转 90° 约 0.52 秒。 */
-    if (turn) yaw += turn * 3.0 * dt;
+    /* v158.33：转身也带加减速 —— 原来按 A/D 是**恒速 3.0 rad/s**，
+       按下去立刻满转、松手立刻停，像转盘不像人。现在 0.2 秒起转、0.18 秒收住。 */
+    var _tgtYaw = turn * 3.0;
+    if (M._yawSpd == null || !isFinite(M._yawSpd)) M._yawSpd = 0;
+    var _dyaw = _tgtYaw - M._yawSpd;
+    var _yrate = (Math.abs(_tgtYaw) > Math.abs(M._yawSpd)) ? 12 : 16;
+    var _ycap = _yrate * dt;
+    if (_dyaw > _ycap) _dyaw = _ycap; else if (_dyaw < -_ycap) _dyaw = -_ycap;
+    M._yawSpd += _dyaw;
+    if (!turn && Math.abs(M._yawSpd) < 0.05) M._yawSpd = 0;
+    if (M._yawSpd) yaw += M._yawSpd * dt;
     /* ---- v158.32：速度是一阶状态（有起步/刹车），不是一个开关 ---- */
     var _tgtSpd = move * M.WALK_SPEED * (move < 0 ? M.BACK_RATE : 1);
     if (M._spd == null || !isFinite(M._spd)) M._spd = 0;
@@ -9092,16 +9178,40 @@ import './gltf.js';
     placeFigureAtDir(fg, p.dir, (p.yaw || 0) * 180 / Math.PI);
     var _mv = !!(avOut && avOut.moved);
     M._figMoving = _mv;                            /* v158.19：figureOf().walking 读它 */
-    if (_mv) M._figPhase = (M._figPhase || 0) + dt * (M.WALK_SPEED / 1.5) * Math.PI;
+    /* v158.33：相位跟**真实速度**（v158.32 加了起步/刹车，慢走腿要慢、刹车腿要收） */
+    var _spd = (avOut && isFinite(avOut.spd)) ? Math.abs(avOut.spd) : (_mv ? M.WALK_SPEED : 0);
+    if (_spd > 0.12) M._figPhase = (M._figPhase || 0) + dt * (_spd / 1.5) * Math.PI;
     else M._figPhase = 0;
-    var _sw = _mv ? Math.sin(M._figPhase) * 0.6 : 0;
+    /* 摆幅也跟速度：起步那一下是"小步"，不是一上来就甩大腿 */
+    var _amp = 0.6 * Math.min(1, 0.25 + _spd / Math.max(0.1, M.WALK_SPEED));
+    var _sw = _spd > 0.12 ? Math.sin(M._figPhase) * _amp : 0;
     var _legs = fg.userData && fg.userData.legs;
     if (_legs && _legs.length) {
       _legs[0].rotation.x = _sw;
       if (_legs[1]) _legs[1].rotation.x = -_sw;
     }
+    /* 手臂反相摆（左腿前 → 右臂前），幅度略小于腿 */
+    var _arms = fg.userData && fg.userData.arms;
+    if (_arms && _arms.length) {
+      _arms[0].rotation.x = -_sw * 0.85;
+      if (_arms[1]) _arms[1].rotation.x = _sw * 0.85;
+    }
+    /* 躯干随速度前倾（最多 ~7°）：站着笔直、跑起来前压 —— 人味儿的一半在这 */
+    var _tor = fg.userData && fg.userData.torso;
+    if (_tor) {
+      var _lean = Math.min(0.12, (_spd / Math.max(0.1, M.WALK_SPEED)) * 0.12);
+      _tor.rotation.x = _lean;
+    }
     /* 3cm 上下颠簸（与街区同一口径）：纯滑行最大的观感破绽是"身体高度完全不抖"。 */
-    if (_mv) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
+    if (_mv && _spd > 0.12) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
+    /* 脚步声的视觉那半：相位每过 π = 一步，脚下踢一团土 */
+    if (_spd > 0.45) {
+      var _si = Math.floor(M._figPhase / Math.PI);
+      if (M._figStepIdx == null) M._figStepIdx = _si;
+      else if (_si !== M._figStepIdx) { M._figStepIdx = _si; _dustSpawn(fg.position, fg.userData.baseScale || 1); }
+    } else {
+      M._figStepIdx = null;
+    }
     return fg;
   };
 
