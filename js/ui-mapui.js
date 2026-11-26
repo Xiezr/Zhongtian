@@ -1116,6 +1116,18 @@ import './ui.js';
    *   挂左下角（右下是街区 HUD、中下是交互提示，互不遮挡）。
    * 显隐由 M.setFollow() 唯一出口驱动，与底栏「🧍 人物」高亮同一个开关。
    * ============================================================ */
+  /* ============================================================
+   * v158.31（老板「怎么走，怎么交互，乱七八糟」）
+   * ------------------------------------------------------------
+   * 这是**屏幕上唯一的操作说明**，原来写的是
+   *   `W A S D 或 ↑↓←→ 走动 · A/D 转向 · E 交互 · Tab 退出`
+   * 三处都不对：
+   *   ① 「Tab 退出」—— 人物模式 v158.20 已退役，Tab 什么都不做；
+   *   ② 左键（点哪走哪）/ 右键（转视角）/ 滚轮（高度）/ 鼠标贴边（推进地图）一个字没提；
+   *   ③ 它只由 `M.setFollow()` 驱动，人物模式退役后基本不再被调用
+   *      → 这条条子在实际游戏里根本不出现。
+   * 现在：文案按**真实键位**重写；显隐改跟**地表状态**（见 map3d 的 `_applySurf`）。
+   * ============================================================ */
   ui.renderFollowHud = function (on) {
     var root = (ui.layerRoot && ui.layerRoot()) || null;
     if (!root || !root.appendChild) return null;
@@ -1128,7 +1140,9 @@ import './ui.js';
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:8px 12px;font-weight:700;">'
-        + 'W / A / S / D 或 ↑ ↓ ← → 走动　·　A / D 转向　·　E 交互　·　Tab 退出</span>';
+        + 'W A S D　或　↑ ↓ ← → 走动'
+        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　E 看这一格　·　'
+        + '右键拖 转视角　·　滚轮 高度　·　鼠标贴边 推进地图</span></span>';
       root.appendChild(el);
     }
     el.style.display = on ? 'block' : 'none';

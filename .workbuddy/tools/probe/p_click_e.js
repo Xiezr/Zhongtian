@@ -120,6 +120,15 @@ function ok(t, c, d) {
   ok('③ 按 E：面板弹出（查看入口还在）', s2.modal === true,
     'modal=' + s2.modal + ' text=' + s2.modalText + ' near=' + eRes.near);
 
+  /* ④ 屏幕上必须有操作说明，且文案是当前键位 */
+  const hud = await p.evaluate(() => {
+    const el = document.getElementById('follow-hud');
+    return el ? { d: el.style.display, t: (el.textContent || '').replace(/\s+/g, ' ') } : null;
+  });
+  ok('④ 地表显示操作条（屏幕上唯一的操作说明）',
+    !!hud && hud.d === 'block' && /左键 点哪走哪/.test(hud.t || ''),
+    JSON.stringify(hud));
+
   console.log('\n结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   if (errs.length) console.log('页面错误 ' + errs.slice(0, 3).join(' | '));
   await b.close();

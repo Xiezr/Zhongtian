@@ -1177,6 +1177,10 @@ import './gltf.js';
       /* v157e：压暗已并入 globe 顶点色，不再有独立图层要开关。
          落地后地形由地表层（不压暗）呈现，globe 只剩远景，压暗与否都不影响近处观感。 */
       if (M._surf) {
+        /* v158.31（老板「怎么走，怎么交互」）：操作条原来只由 `M.setFollow` 驱动，
+           而人物模式已退役 → **屏幕上没有任何操作说明**。改成跟着地表状态走：
+           落到地面就亮，升空就收。 */
+        try { if (GAME.ui && GAME.ui.renderFollowHud) GAME.ui.renderFollowHud(true); } catch (eHud0) { }
         /* v158.22：进地表重置跟随相机的水平基准 —— 换一片地方后
            "北"必须按新位置的切平面重算，否则镜头会歪着看人。 */
         M._surfCamE1 = null;
@@ -1194,6 +1198,7 @@ import './gltf.js';
         _surfKillPending = false;
         _surfApplyAlpha(_surfFade);
       } else if (_surfFade > 0.005) {
+        try { if (GAME.ui && GAME.ui.renderFollowHud) GAME.ui.renderFollowHud(false); } catch (eHud1) { }
         /* 还有余影 → 先淡出，淡完由 _tickSurfFade 调 destroySurf */
         _surfKillPending = true;
       } else {

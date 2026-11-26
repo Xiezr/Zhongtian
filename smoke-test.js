@@ -50011,7 +50011,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && (function () {
         var i = umFh15814.indexOf('ui.renderFollowHud = function');
         if (i < 0) return false;
-        var body = umFh15814.slice(i, i + 1400);
+        /* ⚠️ 窗口 1400 → 2600：v158.31 给这条条子换了文案（两行、把左键/右键/滚轮/
+           贴边推进都写进去），光 `cssText` 就占 700+ 字，1400 会把文案切出去。
+           判据本身没放宽（仍是"有 id / 有方向键字样 / 无按钮"三件），只是采样窗口对齐。 */
+        var body = umFh15814.slice(i, i + 2600);
         return /getElementById\('follow-hud'\)/.test(body)
           && /↑ ↓ ← → 走动/.test(body)
           && !/data-action=/.test(body);

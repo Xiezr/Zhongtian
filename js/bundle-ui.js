@@ -1471,6 +1471,10 @@
       /* v157e：压暗已并入 globe 顶点色，不再有独立图层要开关。
          落地后地形由地表层（不压暗）呈现，globe 只剩远景，压暗与否都不影响近处观感。 */
       if (M._surf) {
+        /* v158.31（老板「怎么走，怎么交互」）：操作条原来只由 `M.setFollow` 驱动，
+           而人物模式已退役 → **屏幕上没有任何操作说明**。改成跟着地表状态走：
+           落到地面就亮，升空就收。 */
+        try { if (GAME.ui && GAME.ui.renderFollowHud) GAME.ui.renderFollowHud(true); } catch (eHud0) { }
         /* v158.22：进地表重置跟随相机的水平基准 —— 换一片地方后
            "北"必须按新位置的切平面重算，否则镜头会歪着看人。 */
         M._surfCamE1 = null;
@@ -1488,6 +1492,7 @@
         _surfKillPending = false;
         _surfApplyAlpha(_surfFade);
       } else if (_surfFade > 0.005) {
+        try { if (GAME.ui && GAME.ui.renderFollowHud) GAME.ui.renderFollowHud(false); } catch (eHud1) { }
         /* 还有余影 → 先淡出，淡完由 _tickSurfFade 调 destroySurf */
         _surfKillPending = true;
       } else {
@@ -32285,6 +32290,18 @@ ui.openDuel = function (fid, moveId) {
    *   挂左下角（右下是街区 HUD、中下是交互提示，互不遮挡）。
    * 显隐由 M.setFollow() 唯一出口驱动，与底栏「🧍 人物」高亮同一个开关。
    * ============================================================ */
+  /* ============================================================
+   * v158.31（老板「怎么走，怎么交互，乱七八糟」）
+   * ------------------------------------------------------------
+   * 这是**屏幕上唯一的操作说明**，原来写的是
+   *   `W A S D 或 ↑↓←→ 走动 · A/D 转向 · E 交互 · Tab 退出`
+   * 三处都不对：
+   *   ① 「Tab 退出」—— 人物模式 v158.20 已退役，Tab 什么都不做；
+   *   ② 左键（点哪走哪）/ 右键（转视角）/ 滚轮（高度）/ 鼠标贴边（推进地图）一个字没提；
+   *   ③ 它只由 `M.setFollow()` 驱动，人物模式退役后基本不再被调用
+   *      → 这条条子在实际游戏里根本不出现。
+   * 现在：文案按**真实键位**重写；显隐改跟**地表状态**（见 map3d 的 `_applySurf`）。
+   * ============================================================ */
   ui.renderFollowHud = function (on) {
     var root = (ui.layerRoot && ui.layerRoot()) || null;
     if (!root || !root.appendChild) return null;
@@ -32297,7 +32314,9 @@ ui.openDuel = function (fid, moveId) {
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:8px 12px;font-weight:700;">'
-        + 'W / A / S / D 或 ↑ ↓ ← → 走动　·　A / D 转向　·　E 交互　·　Tab 退出</span>';
+        + 'W A S D　或　↑ ↓ ← → 走动'
+        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　E 看这一格　·　'
+        + '右键拖 转视角　·　滚轮 高度　·　鼠标贴边 推进地图</span></span>';
       root.appendChild(el);
     }
     el.style.display = on ? 'block' : 'none';
@@ -43196,7 +43215,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.30';
+  GAME.VERSION = 'v158.31';
   function boot() {
     fitAppSize();
     try {
