@@ -50672,6 +50672,64 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+  /* ============================================================
+   * §614 v158.26 · 「相机+人物移动」，不是「整个世界在动」
+   * ------------------------------------------------------------
+   * 老板原话：「为啥移动整个世界都在动，而不是相机+人物移动」
+   *
+   * 实测根因：镜头每帧 `cam.position = 玩家位置 + 固定偏移` + `lookAt(玩家)`，
+   *   玩家永远钉在画面正中（NDC 恒 0,0）——走动时唯一在动的只有背景。
+   *   世界本身是静止的：走 37 米后**起点格的世界坐标漂移 0.000 米**，
+   *   地表根节点世界矩阵恒等，地砖位置由绝对格号决定。
+   * 规则变更：镜头锚点带时间常数（走动 0.26s / 停下 0.07s），
+   *   走动时玩家在画面里真的往前挪约 5~7% 屏高，停下迅速归位。
+   * ============================================================ */
+  check('§614① 镜头锚点会在走动时滞后（不是硬贴玩家）', (function () {
+    var _m614 = _m3d608.match(/M\._surfAvatarCam = function[\s\S]*?\n  \};/);
+    var blk = _m614 ? _m614[0] : '';
+    return /M\.SURF_CAM_LAG = 0\.26/.test(_m3d608)
+      && /M\.SURF_CAM_LAG_STOP = 0\.07/.test(_m3d608)
+      && /M\._surfCamAnchor\.lerp\(P/.test(blk)
+      && /_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk)   /* 贴回球壳，不许往地里沉 */
+      && /cam\.position\.copy\(A\)/.test(blk);
+  })());
+
+  (function () {                    /* 外层只算，判定交给唯一的 check（避免同名双条） */
+    /* 复现 lerp 数学：锚点每帧向玩家走 k = 1-exp(-dt/tau)。
+       走速 4.5m/s、60fps、tau=0.26 → 稳态落后 = v*tau ≈ 1.17 米。
+       判据带下限（0.3 米）：`0 > 0` 这种平凡解不许过。 */
+    function lagAfter(n, tau) {
+      var dt = 1 / 60, step = 4.5 * dt, lag = 0, k = 1 - Math.exp(-dt / tau);
+      for (var i = 0; i < n; i++) lag = lag * (1 - k) + step;   /* 玩家走一步、锚点追一步 */
+      return lag;
+    }
+    /* ⚠️ 20 帧（0.33s）只是 0.72 个时间常数 → 滞后才 0.87 米，会被判红。
+       稳态 1 秒（60 帧）才到 v·tau ≈ 1.17 米 —— 这条量的是"走动中"的滞后。 */
+    var walkLag = lagAfter(60, 0.26);
+    var stop = walkLag, kStop = 1 - Math.exp(-(1 / 60) / 0.07);
+    for (var j = 0; j < 24; j++) stop *= (1 - kStop);            /* 停 0.4 秒 */
+    check('§614② 数值面：走动时锚点落后 1.0~1.4 米，停 0.4 秒后 < 0.05 米',
+      walkLag > 1.0 && walkLag < 1.4 && stop < 0.05,
+      'walkLag=' + walkLag.toFixed(3) + 'm · stopLag=' + stop.toFixed(4) + 'm');
+  })();
+
+  check('§614③ 进地表重置锚点（否则从上一片地方一帧飞过来）', (function () {
+    return /M\._surfCamAnchor = null;\n\s*\/\* v158\.26/.test(_m3d608)
+      || /M\._surfCamAnchor = null;/.test(_m3d608.slice(_m3d608.indexOf('M._surfCamE1 = null;'), _m3d608.indexOf('M._surfCamE1 = null;') + 400));
+  })());
+
+  check('§614④ 世界是静止的参照物：地砖位置只由绝对格号决定（不许读玩家位置）', (function () {
+    /* 取 `_surfPlateGeo` 里算角点的那一行：必须走 `_gridDirOf(格号…)`，
+       不许出现 `playerPose` / `dir0 *` 这类"按玩家位置铺砖"的写法。 */
+    var i = _m3d608.indexOf('function _surfPlateGeo');
+    /* ⚠️ `_surfTerrainGeo` 定义在 `_surfPlateGeo` **之前**，拿它当结尾会切出空串
+       （第一版就这么假红的）。用定长窗口，只覆盖角点+铺砖那段。 */
+    var blk = i >= 0 ? _m3d608.slice(i, i + 5000) : '';
+    return /_gridDirOf\(\(gi \- _gridOrigin\.i/.test(blk)
+      && !/playerPose/.test(blk);
+  })());
+
   /* ============================================================
    * §613 v158.24 · 「走近勘探」从假承诺变成真机制
    * ------------------------------------------------------------
@@ -50829,16 +50887,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /hopsWithin\(ci, 2\)/.test(_st608);
   })());
 
-  check('§611④ 地表跟随相机：只读位姿、站在角色斜上方、不碰 camO.dist', (function () {
+  check('§611④ 地表跟随相机：只读位姿、站在角色斜上方、镜头锚点带滞后', (function () {
     /* 只取**函数体**：连带后面的注释块会把「位姿唯一写入口：M.setPlayerPose」
        这行说明框进来，误判成镜头函数在写位姿。 */
     var _m611 = _m3d608.match(/M\._surfAvatarCam = function[\s\S]*?\n  \};/);
     var blk = _m611 ? _m611[0] : '';
+    /* 规则变更（v158.26 · 老板「为啥移动整个世界都在动，而不是相机+人物移动」）：
+       原来是**硬跟随** —— `lookAt(P)` 把玩家钉在画面正中，走动时只有背景在动。
+       现在看**镜头锚点 A**（滞后于玩家），玩家因此在画面里真的会往前挪。
+       反向守卫：`lookAt(P` 不许回来。 */
     return /M\._surfAvatarCam = function/.test(_m3d608)
       && /M\.SURF_CAM_DIST = 26/.test(_m3d608)
       && /M\.SURF_CAM_EL = 1\.0/.test(_m3d608)
       && /M\.playerPose\(\)/.test(blk)
-      && /cam\.lookAt\(P\.x, P\.y, P\.z\)/.test(blk)
+      && /cam\.lookAt\(A\.x, A\.y, A\.z\)/.test(blk)
+      && !/cam\.lookAt\(P\.x/.test(blk)
       /* 反向守卫：镜头函数里**不许**写位姿/改 camO.dist（那是另一本账） */
       && !/setPlayerPose/.test(blk) && !/camO\.dist\s*=/.test(blk);
   })());

@@ -1476,6 +1476,8 @@
         M._surfCamE1 = null;
         M._surfOrbitYaw = 0;
         M.SURF_CAM_EL = 1.0;
+        /* v158.26：镜头锚点也要重置 —— 否则从上一片地方"飞"过来（一帧跨几十公里）。 */
+        M._surfCamAnchor = null;
         /* v157.18（推翻 v157.17 的"延后到 45 米"）：**就在进入这一刻建**。
            那时候 fade 还是 0（55 米 = SURF_FADE_FAR，地表层全透明），
            构建的卡顿发生在"画面里还没有地面"的时候 —— 玩家感知不到。
@@ -8844,6 +8846,22 @@
   M.SURF_CAM_EL = 1.0;         /* 仰角（弧度）≈ 57°：更俯视，能看进楼群/林间，不被墙挡 */
   M._surfOrbitYaw = 0;         /* 绕过角色一圈（左键拖） */
   M._surfCamE1 = null;         /* 水平基准，进地表定一次、之后固定（走动时画面不旋转） */
+  /* ============================================================
+   * v158.26（老板「为啥移动整个世界都在动，而不是相机+人物移动」）
+   * ------------------------------------------------------------
+   * 病根是**硬跟随**：每帧 `cam.position = 玩家位置 + 固定偏移` + `lookAt(玩家)`，
+   * 于是玩家永远钉在画面正中、一像素不动 —— 走动时唯一在动的只有背景。
+   * 观感就是"世界在搬运，人没走"。
+   *
+   * 现在给镜头锚点一个**时间常数**：走动时锚点落后玩家约 `速度×LAG`，
+   * 玩家因此真的会在画面里往前挪一段；停下后 0.07s 迅速归位
+   * （静止时不长时间自漂 —— v157.34 的"停手画面自己动"是被否过的）。
+   *
+   * 只改**镜头锚点**，不改位姿、不改世界坐标：世界依旧是静止的参照物。
+   * ============================================================ */
+  M.SURF_CAM_LAG = 0.26;       /* 走动中：锚点时间常数（秒）→ 4.5m/s 时落后约 1.2 米 */
+  M.SURF_CAM_LAG_STOP = 0.07;  /* 停下后：快速归位（不做长时间自漂） */
+  M._surfCamAnchor = null;     /* 镜头锚点（世界坐标，滞后于玩家） */
   M._surfAvatarCam = function () {
     var ci = M.playerCi();
     if (ci < 0) return false;
@@ -8868,9 +8886,27 @@
     var dirCam = up.clone().multiplyScalar(Math.sin(el))
       .addScaledVector(e1, Math.cos(el) * Math.cos(ay))
       .addScaledVector(e2, Math.cos(el) * Math.sin(ay));
-    cam.position.copy(P).addScaledVector(dirCam, M.SURF_CAM_DIST);
+
+    /* ---- 镜头锚点：走动时滞后，停下立刻归位 ---- */
+    var _dt = Math.max(0.001, Math.min(0.05, M._lastAvDt || 0.016));
+    var _moving = !!(M._lastAvOut && M._lastAvOut.moved);
+    if (!M._surfCamAnchor || !isFinite(M._surfCamAnchor.x)) {
+      M._surfCamAnchor = P.clone();
+    } else {
+      var _tau = _moving ? Math.max(0.02, M.SURF_CAM_LAG) : Math.max(0.02, M.SURF_CAM_LAG_STOP);
+      var _k = 1 - Math.exp(-_dt / _tau);
+      M._surfCamAnchor.lerp(P, Math.min(1, _k));
+      /* 贴回球壳：两帧之间走的是**弦**，不修正会一路往地里沉。
+         只修长度、不动方向 —— 角度上的滞后（= 观感里的"人往前挪"）完整保留。 */
+      var _aL = M._surfCamAnchor.length() || 1;
+      M._surfCamAnchor.multiplyScalar(R2 / _aL);
+    }
+    var A = M._surfCamAnchor;
+    cam.position.copy(A).addScaledVector(dirCam, M.SURF_CAM_DIST);
     cam.up.copy(up);
-    cam.lookAt(P.x, P.y, P.z);
+    /* 看**锚点**而不是玩家：玩家因此在画面里偏向前进方向（约 5% 屏高），
+       走动时"人真的在走"，停下后锚点归位、玩家回到正中。 */
+    cam.lookAt(A.x, A.y, A.z);
     return true;
   };
 
@@ -43041,7 +43077,7 @@ ui.openDuel = function (fid, moveId) {
    * 旧的 `bump_version.py --bump` 是数字 BUILD 时代的工具，v156.61 改用 hash 后
    * 它的自检必然报"脚本未挂 ?v=数字"—— 不要照它的提示去改 ?v=，那会退回去。
    * ============================================================ */
-  GAME.VERSION = 'v158.24';
+  GAME.VERSION = 'v158.26';
   function boot() {
     fitAppSize();
     try {
