@@ -7472,26 +7472,28 @@ import './gltf.js';
        * 双击右键 = 视角回正。
        * ============================================================ */
       if (e.button === 2) {
-        /* ⛔ v157.48（老板「转动依然不是全向可用」的真凶）：
-           原判据只看**两次按下的时间差**（<320ms 就 resetView），完全不看有没有拖动。
-           于是"连续两次微调视角"必然被当成双击 → 直接 resetView → 弹回轨道（实测 alt 3.6→570），
-           玩家体验就是"转两下镜头就飞了、不能再转"。
-           现在：① 判定搬到 **mouseup**（那时才知道这一下有没有拖过）；
-                 ② 必须**两次都没拖动**才算双击；
-                 ③ 地表模式下"回正"= 视线回到水平朝前（俯角 -15°），**不再 resetView**
-                    —— 贴地时把人弹到 570 米高空，等于把操作毁掉。 */
-        lookDrag = 2;                      /* 2 = 右键转头（1 = 中键），两者行为一致 */
-        lx = e.clientX; ly = e.clientY;
+        /* ============================================================
+         * v158.27（老板「垃圾操作，右键往前？？？」）—— **规则变更：右键回到"绕球心"**
+         * ------------------------------------------------------------
+         * 老板 v156.55 原话：「右键的相机，我希望是相机**绕球心**运动，
+         *   而不是在视野内摆弄球体」。v157c 又把它改成"以相机为支点转头"，
+         *   结果右拖时球在画面里滑出去 —— 体感就是"整个世界往前"。
+         *
+         * 现在：右键**直接落到左键那条抓取式轨道**（arcball，绕球心），
+         *   松手时不许当"点击选格"。转头能力没丢：**中键**仍是转头。
+         * 地表模式下右键因此也走"绕角色一圈"（见 mousemove 的 _surf 分支）。
+         * ============================================================ */
+        M._rmbOrbit = true;
         M._rmbDownAt = Date.now(); M._rmbMoved = false;
-        touch(); e.preventDefault(); return;
-      }
-      if (e.button === 1) {                                    /* 中键 = 自由转头 */
+        /* 不 return —— 继续落下去初始化为"抓球拖拽"（与左键同一条路） */
+      } else if (e.button === 1) {                             /* 中键 = 自由转头 */
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
       }
-      if (e.button !== 0) return;
+      if (e.button !== 0 && e.button !== 2) return;
       /* v157.15：建造模式 + 整平铲子 → 左键是**刷地**，不转球
          （转球/选格在拖刷期间全让位，否则一边刷一边把镜头甩走）。 */
-      if (M.mode === M.MODE_BUILD && M.TOOL === M.TOOL_TERRACE && M._surf) {
+      /* v158.27：右键现在也走这条路径，但**只有左键**才是刷地（右键仍只转镜头）。 */
+      if (e.button === 0 && M.mode === M.MODE_BUILD && M.TOOL === M.TOOL_TERRACE && M._surf) {
         M._terraceDrag = true;
         M._terraceLastP = null;
         lx = e.clientX; ly = e.clientY;
@@ -7731,8 +7733,11 @@ import './gltf.js';
          *   上下拖 = 抬高/压低俯角（SURF_CAM_EL，夹 14°~77°）
          * 这样「能拖」和「看得见自己」不再互斥。
          * ============================================================ */
-        if (_sdx2) M._surfOrbitYaw -= _sdx2 * 0.006;
-        if (_sdy2) M.SURF_CAM_EL = Math.max(0.25, Math.min(1.35, M.SURF_CAM_EL + _sdy2 * 0.004));
+        /* v158.27：灵敏度按"一次拖 200px ≈ 40°"配（原来 0.006/0.004 = 拖 220px 就到底，
+           实测右键上拖一下镜头直接俯冲到 14°、贴地被人自己城门挡住 —— 观感就是"往前冲"）。
+           下限同时从 14° 抬到 24°：再低就只剩城墙/树冠，人也被挡。 */
+        if (_sdx2) M._surfOrbitYaw -= _sdx2 * 0.0035;
+        if (_sdy2) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + _sdy2 * 0.0018));
         touch(); redraw(); return;
       }
       if (M._surf && drag && !lookDrag) {
@@ -7796,30 +7801,22 @@ import './gltf.js';
          * ============================================================ */
         if (M._surf) {
           if (Math.abs(_dx) + Math.abs(_dy) > 3) M._rmbMoved = true;
-          var _radS = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
-          var _dS = (M._surfDir ? M._surfDir.clone()
-            : new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion)).normalize();
-          if (_dx) {
-            /* 水平：d 与 right **一起**绕径向转 —— 两者夹角保持 90°，right 永不失向 */
-            var _aY = TURN.lookYaw.surf * _dx * M.TURN_K_LOOK;
-            /* ⛔ v157.48：视线与径向**几乎共线**时（正对脚下 / 正对天顶），
-               "绕径向转 d" 是绕自身转 = 空操作 —— 玩家会觉得"左右拖死了"。
-               这时改成**绕视线转 right**：画面自旋，和第一人称低头时一样。
-               这条是"全向"的最后一块：任何俯仰角下，左右拖都有反应。 */
-            if (Math.abs(_dS.dot(_radS)) > 0.999) {
-              if (M._surfRight) M._surfRight.applyAxisAngle(_dS, _aY).normalize();
-            } else {
-              _dS.applyAxisAngle(_radS, _aY).normalize();
-              if (M._surfRight) M._surfRight.applyAxisAngle(_radS, _aY).normalize();
-            }
-          }
-          if (_dy) {
-            /* 垂直：绕**固定的 right** 转 d。不重算 right，所以天顶附近不会乱跳，
-               且 d 能连续越过天顶绕整圈（这就是"360 度无死角"的实现点）。 */
-            var _rS = _surfRightOf(_dS, _radS);
-            _dS.applyAxisAngle(_rS, -TURN.lookPitch.surf * _dy * M.TURN_K_SURF).normalize();
-          }
-          M._surfDir = _dS;
+          /* ============================================================
+           * v158.27（老板「垃圾操作，右键往前？？？」）
+           * ------------------------------------------------------------
+           * 病根：星露谷相机只读 `_surfOrbitYaw` / `SURF_CAM_EL`，
+           *   而这里原来写的是 `M._surfDir` —— **写了没人读**。
+           *   实测：右键上拖 220px，`_surfDir` 从 (-0.51,-0.46,-0.72) 变成
+           *   (0.44,-0.49,-0.76)，而相位移 **0.00 米**、画面零变化。
+           *   玩家的体感就是"右键按下去什么都不对"。
+           *
+           * 现在右键与左键同一套语义（绕角色一圈 + 抬压俯角）：
+           *   左右拖 = 绕角色转（星露谷那种"镜头绕着人走"）
+           *   上下拖 = 抬高/压低镜头（夹 14°~77°，钻不到地下）
+           * 两个键都有效，且都不会推动小人（位姿只由 WASD/走路驱动）。
+           * ============================================================ */
+          if (_dx) M._surfOrbitYaw -= _dx * 0.0035;
+          if (_dy) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + _dy * 0.0018));
           M._surfHold = true;          /* 用户接管过视角：落地过渡立刻让位 */
           _surfTilt = null;
           touch(); redraw(); return;
@@ -8137,6 +8134,38 @@ import './gltf.js';
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
+      /* ============================================================
+       * v158.27：右键 = 抓球拖拽（绕球心）。松手只有三件事：
+       *   ① 清状态；② 双击回正（两次都没拖）；③ 补一次地表重建。
+       * **永远不当"点击选格"** —— 否则松手会顺手把小人送到鼠标那一格
+       * （这正是"右键往前"最脏的一种可能）。
+       * ============================================================ */
+      if (M._rmbOrbit) {
+        M._rmbOrbit = false;
+        M._panBasis = null;
+        M._panDrag = false;        /* 右键也走左键那条初始化，必须把它清掉，
+                                      否则下一次左键点击会被 `if (M._panDrag)` 吞掉 */
+        /* ⚠️ 只认本次的 `moved`：`_rmbMoved` 会被中键/其它分支残留成 true，
+           导致"右键单击"永远被判成"拖过"、双击回正失效（实测）。 */
+        var _movedR = !!moved;
+        drag = 0; moved = false;
+        if (!_movedR) {
+          var _nowRmb = Date.now();
+          if (_nowRmb - (M._lastRmbUp || 0) < 320) {
+            M._lastRmbUp = 0;
+            if (M._surf) { M._surfOrbitYaw = 0; M.SURF_CAM_EL = 1.0; }
+            else if (M.resetView) M.resetView();
+            else { camO.lookYaw = 0; camO.lookPitch = 0; }
+            touch(); redraw();
+          } else {
+            M._lastRmbUp = _nowRmb;
+          }
+        } else {
+          M._lastRmbUp = 0;
+          if (M._surf) { try { rebuildSurf(camO.dir); } catch (ePR2) { } }
+        }
+        return;
+      }
       if (M._terraceDrag) {
         M._terraceDrag = false;
         M._terraceLastP = null;
@@ -8148,33 +8177,10 @@ import './gltf.js';
         return;
       }
       if (lookDrag) {
-        /* v157.48：右键"回正"搬到松手判定 —— 只有**这一次没拖动**、
-           且距上一次"没拖动的右键松手"<320ms，才算双击。拖过的永不触发。 */
-        if (e.button === 2 && !M._rmbMoved) {
-          var _nowUp = Date.now();
-          if (_nowUp - (M._lastRmbUp || 0) < 320) {
-            M._lastRmbUp = 0;
-            if (M._surf && M._surfDir) {
-              /* 地表：回正 = 视线抬到水平朝前（俯角 -15°），人的位置不动、不弹回轨道 */
-              var _upR = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
-              var _hR = M._surfDir.clone().addScaledVector(_upR, -M._surfDir.dot(_upR));
-              if (_hR.lengthSq() > 1e-6) {
-                _hR.normalize();
-                var _elR = -15 * Math.PI / 180;
-                M._surfDir = _hR.multiplyScalar(Math.cos(_elR))
-                  .addScaledVector(_upR, Math.sin(_elR)).normalize();
-                M._surfRight = new THREE.Vector3().crossVectors(M._surfDir, _upR).normalize();
-              }
-            } else {
-              if (M.resetView) M.resetView(); else { camO.lookYaw = 0; camO.lookPitch = 0; }
-            }
-            touch(); redraw();
-          } else {
-            M._lastRmbUp = _nowUp;
-          }
-        } else if (e.button === 2) {
-          M._lastRmbUp = 0;                 /* 拖过 → 不算双击的第一下 */
-        }
+        /* ⛔ v158.27：右键改走 `M._rmbOrbit`（抓球拖拽，见 mouseup 开头那段），
+           所以这里只剩**中键转头** —— 松手即结束。
+           原「右键双击回正」逻辑整体搬到 `_rmbOrbit` 分支（判定改用 moved，
+           否则右键永远不进 lookDrag，那段就是死代码）。 */
         lookDrag = 0; return;
       }
       /* 平移结束：补一次重建，让几何对齐到最终位置（节流期间可能欠了一帧）。
@@ -8587,7 +8593,8 @@ import './gltf.js';
     if (e1.lengthSq() < 1e-9) e1.set(1, 0, 0).addScaledVector(up, -up.x);
     e1.normalize();
     var e2 = new THREE.Vector3().crossVectors(up, e1).normalize();
-    var el = Math.max(0.25, Math.min(1.35, M.SURF_CAM_EL));
+    /* v158.27：与拖拽下限一致（0.42 ≈ 24°）—— 低于这个角，镜头会贴地被人自己的城挡住。 */
+    var el = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL));
     var ay = M._surfOrbitYaw;
     var dirCam = up.clone().multiplyScalar(Math.sin(el))
       .addScaledVector(e1, Math.cos(el) * Math.cos(ay))

@@ -36701,19 +36701,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        *   ③ 离开地表时把**视线**当成**相机位置**写进 camO.yaw/pitch → 相机瞬移到星球另一侧。
        *      现在位置量只取 `camO.dir`。
        * ============================================================ */
-      c243('§243①n 落地**不**强制抬到 -15°（v157.60 反向 v157.48 · 老板「去除接近地面自动转向水平」），天底自转兜底仍保留', (function () {
-        /* 反向守卫：进入地表不再构造 _surfTilt 的 -15° 过渡（保留进入前真实视角）；
-           天底自转兜底（近乎垂直看地时自转避奇异点）仍在 6549-6569。 */
+      c243('§243①n 落地**不**强制抬到 -15°（v157.60 · 老板「去除接近地面自动转向水平」），天底自转兜底保留', (function () {
+        /* 反向守卫：进入地表不再构造 _surfTilt 的 -15° 过渡（保留进入前真实视角）。
+           规则变更（v158.27 · 老板「右键往前」）：跟随镜头接管后**右键不再转自由视线**，
+           所以天底自转兜底只留在"第一人称贴地"那条分支（`_dS2` / `_radS2`）——
+           判据改钉那条，不能因为右键改道就把这个保护一起判成"删了"。 */
         return !/var _elWant = -15 \* Math\.PI \/ 180;/.test(m243)
-          && /Math\.abs\(_dS\.dot\(_radS\)\) > 0\.999/.test(m243);
+          && /Math\.abs\(_dS2\.dot\(_radS2\)\) > 0\.999/.test(m243);
       })());
-      c243('§243①o 右键回正必须在 mouseup 且两次都没拖动（v157.48）', (function () {
+      c243('§243①o 右键回正必须在 mouseup、且两次都没拖动（v158.27 改判 moved）', (function () {
         var md = m243.indexOf("if (e.button === 2) {");
         var seg = (md >= 0) ? m243.slice(md, md + 900) : '';
-        /* ⚠️ 查**调用** `M.resetView(`，不查裸词 —— 上面那段注释里提到了 resetView，
-           按裸词判会把"已搬走"误判成"还在"。 */
+        /* ⚠️ 查**调用** `M.resetView(`，不查裸词 —— 上面那段注释里提到了 resetView。
+           规则变更（v158.27）：右键改走抓球路径，回正逻辑整体搬进 `M._rmbOrbit` 分支，
+           判定从 `_rmbMoved` 改成**本次的** `moved`（`_rmbMoved` 会被中键残留污染，
+           实测导致双击回正永远不触发）。 */
         return seg.indexOf('M.resetView(') < 0
-          && /e\.button === 2 && !M\._rmbMoved/.test(m243);
+          && /var _movedR = !!moved;/.test(m243)
+          && /if \(!\s*_movedR\) \{/.test(m243);
       })());
       c243('§243①p 位置量必须取自 camO.dir、不得拿视线当位置（v157.48）· v157.81 起零每帧反算', (function () {
         /* 规则变更（§0.7 三件套）：v157.48 的规则本身不变 —— 位置量取 camO.dir，
@@ -48044,10 +48049,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && Math.abs(s604a.x - s604b.x) < 1e-9
         && Math.abs(s604a.z - s604b.z) < 1e-9;
     })(), '真调 panBasisOf / panStepOf · 90 帧轨迹');
-    check('§600③ 地表右键转的是自由视线（不夹 ±90°、不用 lookPitch 折回）',
-      /_dS\.applyAxisAngle\(_rS, -TURN\.lookPitch\.surf \* _dy \* M\.TURN_K_SURF\)/.test(mV)
-        && !/Math\.max\(-Math\.PI \/ 2, Math\.min\(Math\.PI \/ 2/.test(mV)
-        && !/camO\.lookPitch = _wp/.test(mV),
+    /* 规则变更（v158.27 · 老板「垃圾操作，右键往前」）：
+       原来地表右键转的是 `_surfDir`（自由视线，±180° 无夹）。
+       但星露谷跟随相机**只读 `_surfOrbitYaw` / `SURF_CAM_EL`**，
+       写 `_surfDir` = 写了没人读 → 实测拖 220px 相位移 0.00 米、画面零变化。
+       现在右键驱动的是跟随镜头真读的两个量，且**仍不夹 ±90°**（水平可绕任意圈）。 */
+    check('§600③ 地表右键驱动跟随镜头（orbitYaw + 俯角），不再写没人读的 _surfDir',
+      /M\._surfOrbitYaw -= _dx \* 0\.0035/.test(mV)
+        && /M\.SURF_CAM_EL = Math\.max\(0\.42, Math\.min\(1\.35/.test(mV)
+        && !/_surfDir = _dS;/.test(mV),
       'lookDrag 的地表分支');
     check('§600④ 地表右键放开、轨道仍限 ±89°',
       /if \(M\._surf\) \{[\s\S]{0,400}?M\._surfHold = true/.test(mV)
@@ -48249,8 +48259,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /Math\.abs\(r\.dot\(d\)\) < 1e-4/.test(segR)
       && /addScaledVector\(d, -r\.dot\(d\)\)/.test(segR),
       '段长 ' + segR.length);
-    check('§601② 水平旋转时 d 与 right 同步绕径向转',
-      /M\._surfRight\.applyAxisAngle\(_radS, _aY\)/.test(m), 'lookDrag 水平分支');
+    /* 规则变更（v158.27）：跟随镜头接管后，这条只对**第一人称贴地**分支有意义
+       （那里仍要"d 与 right 一起绕径向转"，否则 right 失向 → 画面翻）。
+       变量名从 `_radS/_aY` 改成 `_radS2/_aY2`（右键搬走后重命名）。 */
+    check('§601② 水平旋转时 d 与 right 同步绕径向转（第一人称贴地分支）',
+      /M\._surfRight\.applyAxisAngle\(_radS2, _aY2\)/.test(m), '贴地自由视线分支');
     check('§601③ 地表垂直旋转无夹紧（可越过天顶）',
       !/Math\.max\(-1\.15, Math\.min\(1\.15/.test(m)
         && !/Math\.max\(-Math\.PI \/ 2, Math\.min\(Math\.PI \/ 2/.test(m),
@@ -50672,6 +50685,44 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §615 v158.27 · 右键：从「转头」改回「绕球心 / 绕角色」
+   * ------------------------------------------------------------
+   * 老板：「垃圾操作，右键往前？？？」
+   * 病根两处：
+   *   ① 地表：星露谷相机只读 `_surfOrbitYaw` / `SURF_CAM_EL`，而右键写的是
+   *      `M._surfDir` —— 写了没人读。实测右键上拖 220px，相机位移 **0.00 米**、画面零变化。
+   *   ② 轨道：右键 = 转头（`camO.lookYaw/lookPitch`），球在画面里滑出去 ——
+   *      正是老板 v156.55 说的「在视野内摆弄球体」。
+   * 规则变更：右键回到「绕中心转」（与左键同一条抓球路径），转头交给中键。
+   * ============================================================ */
+  check('§615① 右键不再走 lookDrag（转头），改为抓球拖拽', (function () {
+    return /M\._rmbOrbit = true;/.test(_m3d608)
+      && !/lookDrag = 2;/.test(_m3d608)                  /* 反向守卫：右键转头不许回来 */
+      && /if \(M\._rmbOrbit\) \{/.test(_m3d608);
+  })());
+
+  check('§615② 地表右键驱动镜头真读的两个量（orbitYaw + SURF_CAM_EL）', (function () {
+    var i = _m3d608.indexOf('if (M._surf) {', _m3d608.indexOf('if (lookDrag) {'));
+    if (i < 0) return false;
+    var blk = _m3d608.slice(i, i + 1400);
+    return /M\._surfOrbitYaw -= _dx \* 0\.0035/.test(blk)
+      && /SURF_CAM_EL = Math\.max\(0\.42, Math\.min\(1\.35/.test(blk)
+      && /M\._surfHold = true;/.test(blk);
+  })());
+
+  check('§615③ 右键松手永不当「点击选格」（否则松手就把小人送过去）', (function () {
+    var i = _m3d608.indexOf('if (M._rmbOrbit) {');
+    var j = _m3d608.indexOf('_terraceDrag', i);
+    var blk = (i >= 0 && j > i) ? _m3d608.slice(i, j) : '';
+    return /return;/.test(blk) && !/pickAt/.test(blk);
+  })());
+
+  check('§615④ 整平刷地只认左键（右键现在也走 mousedown 主路径）', (function () {
+    return /if \(e\.button === 0 && M\.mode === M\.MODE_BUILD && M\.TOOL === M\.TOOL_TERRACE && M\._surf\)/.test(_m3d608);
+  })());
 
   /* ============================================================
    * §614 v158.26 · 「相机+人物移动」，不是「整个世界在动」
