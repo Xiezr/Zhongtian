@@ -72,6 +72,31 @@ import './ui.js';
     /* v89.113（老板需求 3）：城主（文治）与守将（武功）同级并列 */
     var mayor = GAME.mayorGeneralOf ? GAME.mayorGeneralOf(city) : null;
     var lv = GAME.buildingLevel(city, 'guanfu') || 1;
+    /* ============================================================
+     * v158.41（老板「总是分层，不要立即出征」）：**敌方城（名城/行政城）也走本面板**。
+     * ------------------------------------------------------------
+     * 点一座敌方城，第一层必须是「🏙 看这座城」的观察视角（守军/库藏/守将/建筑），
+     * 出征（侦查/掠夺/占领）只是面板底部的一组按钮 —— 与野地、己方城统一分层，
+     * 从源头消灭「点城直接弹出 ⚔️出征界面」。
+     * 这里算好敌方城详情所需的数据（openAttackModal 退役后由本面板承接），
+     * body / foot 两个分支共用；同时落 `ui._attackNpc` 保住「派将挑衅」等后续链路
+     * （provoke-city 读 `ui._attackNpc`，openAttackModal 原来就设这个）。 */
+    var _enemy = null;
+    if (!isOwn) {
+      ui._attackNpc = city;                       /* 挑衅 / 侦查等动作的城快照（与 openAttackModal 同源） */
+      ui._expMode = 'occupy';
+      ui._expTarget = { kind: 'city', id: city.id, npc: city };
+      var _nci = GAME.npcCityInfo(city);
+      var _tier = GAME.cityTierName(city) || '聚落';
+      var _g = city.garrison || {}, _gNum = 0;
+      for (var _gk in _g) _gNum += _g[_gk];
+      var _ng = _nci.guard;
+      var _myc = GAME.currentCity();
+      var _dist = _myc ? GAME.cityDist(_myc, city) : null;
+      var _blv = GAME.npcBuildLvOf(city);
+      var _bcap = DATA.MAX_BLEVEL + GAME.cityBuildBonus(city);
+      _enemy = { nci: _nci, tier: _tier, gNum: _gNum, ng: _ng, dist: _dist, blv: _blv, bcap: _bcap };
+    }
     var rows = GAME.TRANSPORT_KEYS.map(function (k) {
       var meta = null;
       DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
@@ -82,7 +107,9 @@ import './ui.js';
       /* v89.135（老板 7）：逐秒刷新（驻军/资源/幸存者实时；有输入焦点时自动跳过） */
       live: function () { ui.openCityPanel(city); },
       title: (isOwn ? '🏯 ' : '🏙 ') + U.escape(city.name),
-      sub: ui.cityTierName(city.type) + '　政务厅 Lv' + lv + '　' + GAME.map.coordText(city.x, city.y) +
+      sub: ui.cityTierName(city.type) +
+        (isOwn ? '　政务厅 Lv' + lv : '　城等级 Lv' + GAME.cityLvOf(city)) +
+        '　' + GAME.map.coordText(city.x, city.y) +
         (GAME.isFamousCity(city) ? '　·　名城' : ''),
       body:
         /* 档位优势（需求 5）：名城与自建城的差别写在这里 —— 玩家点开一座城
@@ -162,7 +189,35 @@ import './ui.js';
                 Math.round((ga.atkPct || 0) * 100) + '%　防 +' + Math.round((ga.defPct || 0) * 100) +
                 '%</span>';
             })() : '<span class="ui-sub">未任命</span>') + '</span></div>'
-          : '<div class="q-empty">尚未据有此地。</div>') +
+          : (function () {
+              /* v158.41：敌方城详情 —— 承接 openAttackModal 的观察信息，但标题是「看城」不是「⚔️出征」。
+                 守军/城防/守将/库藏/建筑等级都在这一层；出征按钮下沉到 foot。 */
+              if (!_enemy) return '<div class="q-empty">尚未据有此地。</div>';
+              var nci = _enemy.nci, ng = _enemy.ng;
+              var h = '<div class="attr"><span class="k">⚔ 守军</span><span class="v">约 ' +
+                _enemy.gNum.toLocaleString() + ' 名　城防 <b style="color:var(--gold-light)">' +
+                (city.def || 0) + '</b></span></div>';
+              if (ng) {
+                var _fv = GAME.battle.fearOf({ npc: city });
+                h += '<div class="attr"><span class="k">🎖 守将</span><span class="v">' +
+                  U.escape(ng.name) + '（' + U.escape(ng.title || '守将') + ' Lv' + ng.level + '）</span></div>' +
+                  '<div style="text-align:center;margin:4px 0 8px;">' +
+                  '<button class="btn" data-action="provoke-city">⚔ 派将挑衅</button>' +
+                  (_fv > 0
+                    ? ('<span style="color:var(--gold-light);font-size:var(--fs-cap);margin-left:8px;">守军胆寒中（−' +
+                      Math.round(_fv * 100) + '%）</span>')
+                    : '<span style="color:var(--text-dim);font-size:var(--fs-cap);margin-left:8px;">赢了：该城守军胆寒 24 小时</span>') +
+                  '</div>';
+              }
+              h += '<div class="attr"><span class="k">🏛 建筑</span><span class="v">Lv' + _enemy.blv + '（' +
+                (_enemy.blv >= _enemy.bcap ? '该档上限 · 满配' : ('按城等级 · 该档上限 Lv' + _enemy.bcap)) + '）</span></div>' +
+                '<div class="attr"><span class="k">📦 库藏</span><span class="v">净水 <b>' + U.fmt(nci.res.grain) + '</b>' +
+                '　生物质 ' + U.fmt(nci.res.wood) + '　电能 ' + U.fmt(nci.res.stone) +
+                '　废钢 ' + U.fmt(nci.res.iron) + '　旧币 <b>' + U.fmt(nci.res.gold) + '</b>' +
+                '　幸存者 ' + U.fmt(nci.res.pop) + '</span></div>' +
+                '<div class="attr"><span class="k">🏆 攻占收益</span><span class="v">攻占后库藏尽归我有</span></div>';
+              return h;
+            })()) +
         /* 名城专属选项（v60 · 需求 5）：只有名城才有的额外操作。
            冷却与代价写在悬停里（弹窗正文高度是最稀缺的资源，说明文字不上正文）。 */
         (isOwn ? (function () {
@@ -232,6 +287,15 @@ import './ui.js';
           ? '<button class="btn red" data-action="city-abandon-ask" data-city="' + city.id +
             '" title="只有自建城可以放弃；主城需先迁都，名城不可放弃">🗑️ 放弃城市</button>'
           : '') +
+        /* v158.41：敌方城的出征按钮 —— 下沉到 foot，与野地/己方城统一「先看详情再点按钮出征」。
+           侦查/掠夺/占领三键（含领地到顶时占领置灰），复用 exp-open → doOpenExp → openExpModal 唯一出口。 */
+        (!isOwn && _enemy ? (function () {
+          var _ccAtk = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
+          return '<button class="btn gold" data-action="exp-open" data-kind="city" data-mode="scout">🔭 侦查</button>' +
+            '<button class="btn gold" data-action="exp-open" data-kind="city" data-mode="raid">🔥 掠夺</button>' +
+            '<button class="btn gold" data-action="exp-open" data-kind="city" data-mode="occupy"' +
+            (_ccAtk.ok ? '' : ' disabled title="' + U.escape(_ccAtk.msg) + '"') + '>🚩 占领</button>';
+        })() : '') +
         '<button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };

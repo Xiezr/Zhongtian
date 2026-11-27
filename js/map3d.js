@@ -176,8 +176,10 @@ import './gltf.js';
        避免未探明格靠 cellKind 兜底漏进野地详情。观察钩子仍在末尾统一登记。 */
     if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0 && ui.openFogModalCi) ui.openFogModalCi(ci);
     else if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
-    else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
-    else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
+    /* v158.41（老板「总是分层，不要立即出征」）：名城/行政城（敌方城）不再直跳 ⚔️出征界面，
+       改走 openCityPanel（🏙 看城详情 + 底部侦查/掠夺/占领按钮），与己方城、野地统一分层。 */
+    else if (kind === 'npc' && ref && ui.openCityPanel) ui.openCityPanel(ref);
+    else if (kind === 'adm' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     else if (kind === 'fort' && GAME.map.fortAt) {
       var ff = GAME.map.fortAt(ci, GAME.map._pctx(GAME.mapPlanetOf ? GAME.mapPlanetOf().id : null));
       if (ff && ui.openFortModal) ui.openFortModal(ff);

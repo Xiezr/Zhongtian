@@ -3832,8 +3832,10 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (GAME.map3d && GAME.map3d.walkTo && hit.ci != null) {
           try { GAME.map3d.walkTo(hit.ci); } catch (eW) { }
         }
+        /* v158.41（老板「总是分层，不要立即出征」）：点敌方城不再直跳 ⚔️出征界面，
+           改走 openCityPanel（🏙 看城详情 + 底部侦查/掠夺/占领按钮），与 3D 同口径分层。 */
         if (hit.kind === 'npc') {
-          ui.openAttackModal(hit.city);
+          ui.openCityPanel(hit.city);
         } else if (hit.kind === 'player') {
           /* v60（需求 4）：老板：「**不要一点击地图就直接进入城市**」。
              改前点自己的城会立刻 setView('city') + setCity（副作用：当前城被换掉、

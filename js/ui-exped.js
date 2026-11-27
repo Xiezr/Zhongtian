@@ -2043,79 +2043,16 @@ import './ui.js';
     if (box) box.innerHTML = ui.expLimitsHTML();
   };
 
-  /* 旧接口兼容 */
-  /* v89.58（老板「侦查/掠夺/占领 的选项做在 野地/城市/名城 的点击界面中」）：
-     点 NPC 城不再直进大面板，先给「城市点击界面」—— 摘要 + 三个方式按钮，选完再进出征面板。 */
-  ui.openAttackModal = function (npcCity) {
-    ui._attackNpc = npcCity;
-    ui._expMode = 'occupy';
-    ui._expTarget = { kind: 'city', id: npcCity.id, npc: npcCity };
-    var nci = GAME.npcCityInfo(npcCity);
-    var tier = npcCity.type === 'capital' ? '旧都' : npcCity.type === 'zhou' ? '首府'
-      : npcCity.type === 'jun' ? '重镇' : '聚落';
-    var g = npcCity.garrison || {}, gNum = 0;
-    for (var k in g) gNum += g[k];
-    var ng = nci.guard;
-    var html = '<div class="gold-heading">⚔️ ' + U.escape(GAME.cityFullName(npcCity)) +
-      '（' + tier + ' · <b>城等级 Lv' + GAME.cityLvOf(npcCity) + '</b>）</div>';
-    /* v89.73（老板：「地图点选城市时，弹窗界面显示其坐标」）——
-       坐标 + 距主城格数一起给：前者用于报点/对齐，后者用于估行军耗时。
-       （v71 那条"城市属性不显示坐标"说的是**自己的城市面板**，与这里的
-        "点地图上别人家的城"是两回事，不冲突。） */
-    var _myc = GAME.currentCity();
-    var _dist = _myc ? GAME.cityDist(_myc, npcCity) : null;
-    html += '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">' +
-      '📍 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(npcCity.x, npcCity.y) : ('(' + npcCity.x + ', ' + npcCity.y + ')')) +
-      (_dist != null ? '　·　距主城 ' + _dist + ' 格' : '') +
-      '　·　守军约 ' + gNum.toLocaleString() + ' 名　·　城防 <b style="color:var(--gold-light)">' +
-      (npcCity.def || 0) + '</b></div>';
-    /* v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）——
-       有守将才可叫阵；已经胆寒的城显示剩余效果。 */
-    if (ng) {
-      var _fv = GAME.battle.fearOf({ npc: npcCity });
-      html += '<div style="text-align:center;margin:0 0 10px;">'
-        + '<button class="btn" data-action="provoke-city">⚔ 派将挑衅</button>'
-        + (_fv > 0
-          ? ('<span style="color:var(--gold-light);font-size:var(--fs-cap);margin-left:8px;">'
-            + '守军胆寒中（−' + Math.round(_fv * 100) + '%）</span>')
-          : '<span style="color:var(--text-dim);font-size:var(--fs-cap);margin-left:8px;">赢了：该城守军胆寒 24 小时</span>')
-        + '</div>';
-    }
-    /* v89.74（老板：「究竟是显示问题还是等级没有按上表执行变更？」）：这里回答它。
-       弹窗里是**两个不同的量**，现在两处都带上了名字，不再让人误以为是同一个数写错：
-         · **城等级**（标题）→ 这座城本身的等级，1~10 分布（v89.72 老板要的"越低越弱"），
-           守军 / 库藏 / 自动出征的"威胁等级"筛选都按它算；
-         · **建筑等级**（下一行）→ 城内建筑盖到几级，**按档位固定**（v89.76 老板：
-           聚落 12 · 重镇 16 · 首府 20 · 旧都 24，与城等级无关）。
-       两者混进同一个数字里，就会反复出现"Lv16 的城怎么守军才 26 万"这类错觉。 */
-    var _blv = GAME.npcBuildLvOf(npcCity);
-    var _bcap = DATA.MAX_BLEVEL + GAME.cityBuildBonus(npcCity);
-    html += '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:8px;">' +
-      '城内建筑 Lv' + _blv + '（' +
-      (_blv >= _bcap ? '该档上限 · 满配' : ('按城等级 · 该档上限 Lv' + _bcap)) + '）</div>';
-    if (ng) {
-      html += '<div class="exp-info exp-info-l" style="margin-bottom:6px;">守将　<b>' + U.escape(ng.name) + '</b>（' +
-        U.escape(ng.title || '守将') + ' Lv' + ng.level + '）</div>';
-    }
-    html += '<div class="exp-info exp-info-l" style="margin-bottom:6px;">库藏　净水 <b>' + U.fmt(nci.res.grain) + '</b>' +
-      '　生物质 ' + U.fmt(nci.res.wood) + '　电能 ' + U.fmt(nci.res.stone) + '　废钢 ' + U.fmt(nci.res.iron) +
-      '　旧币 <b>' + U.fmt(nci.res.gold) + '</b>　幸存者 ' + U.fmt(nci.res.pop) + '</div>';
-    html += '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:8px;">' +
-      U.escape(nci.perk.name) + '：' + U.escape(nci.perk.desc) + '　·　攻占后库藏尽归我有</div>';
-    /* v89.108（老板）：领地上限 —— 到顶时「占领」当场置灰 + 写明原因
-       （与 battle.prepare 的硬闸同一判据 cityCapChk；侦查/掠夺不受影响，它们不产城）。 */
-    var _ccAtk = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
-    if (!_ccAtk.ok) {
-      html += '<div class="note-warn" style="margin-bottom:6px;">' + U.escape(_ccAtk.msg) + '</div>';
-    }
-    html += '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
-      '<button class="btn gold" data-action="exp-open" data-kind="city" data-mode="scout">🔭 侦查</button>' +
-      '<button class="btn gold" data-action="exp-open" data-kind="city" data-mode="raid">🔥 掠夺</button>' +
-      '<button class="btn gold" data-action="exp-open" data-kind="city" data-mode="occupy"' +
-        (_ccAtk.ok ? '' : ' disabled title="' + U.escape(_ccAtk.msg) + '"') + '>🚩 占领</button>' +
-      '<button class="btn" data-action="close-modal">关闭</button></div>';
-    ui.openModal(html);
-  };
+  /* ============================================================
+   * ⛔ v158.41 退役：`ui.openAttackModal`（点敌方城 → 「⚔️出征」选方式界面）。
+   * ------------------------------------------------------------
+   * 老板「总是分层，不要立即出征」：点名城/行政城第一层必须是「看城详情」，
+   * 出征（侦查/掠夺/占领）只是面板底部按钮。此面板的观察信息（守军/城防/守将/
+   * 库藏/建筑等级）与「侦查/掠夺/占领」按钮已并入 `ui.openCityPanel` 的敌方城分支
+   * （见 ui-mapui.js openCityPanel 的 `_enemy` 段），敌方城路由（map3d._openCellPanel
+   * 的 npc/adm 分支、main.js 2D 兜底 npc 分支）改走 openCityPanel。
+   * 挑衅链路已由 openCityPanel 里 `ui._attackNpc = city` 保住（provoke-city 仍读它）。
+   * 如需恢复：本函数见 `backup/v89133/ui-exped.js`（判据：`ui.openAttackModal` 定义）。 */
 
 
   /* --------- 任务 --------- */

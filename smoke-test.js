@@ -13331,7 +13331,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var cleanU = stripComment(uS);
     return /var lv = GAME\.cityLvOf\(city\);/.test(mapS)
       && /GAME\.cityLvOf\(t\.npc\)/.test(cleanU)
-      && /GAME\.cityLvOf\(npcCity\)/.test(cleanU)
+      /* v158.41 规则变更：点击界面（点敌方城）从退役的 openAttackModal（参数 npcCity）
+         迁到 openCityPanel 敌方城详情（sub 行「城等级 Lv」+ 参数 city） */
+      && /城等级 Lv' \+ GAME\.cityLvOf\(city\)/.test(cleanU)
       /* 旧写法（直接读字段 / 已退役的 npcLevelOf 别名）不得复活 */
       && !/npcLevelOf/.test(cleanU) && !/npcLevelOf/.test(mapS)
       && !/\(t\.npc\.level \|\| 1\)/.test(cleanU)
@@ -13360,8 +13362,10 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* 自建城/据点不是名城 → 按自身等级，不许被"满配"污染 */
     return bad.length === 0 && G.npcBuildLvOf({ type: 'self', level: 6 }) === 6
       && G.npcBuildLvOf({ type: 'fort', level: 4 }) === 4
-      /* 城市界面那行仍走唯一出口；"满配"二字只在到顶时印 */
-      && /城内建筑 Lv' \+ _blv/.test(uS) && /_blv >= _bcap \? '该档上限 · 满配'/.test(uS);
+      /* v158.41 规则变更：建筑等级那行从退役的 openAttackModal 迁到 openCityPanel 敌方城详情
+         （🏛 建筑 · 变量 _blv/_bcap → _enemy.blv/_enemy.bcap）；"满配"二字仍只在到顶时印 */
+      && /🏛 建筑<\/span><span class="v">Lv' \+ _enemy\.blv/.test(uS)
+      && /_enemy\.blv >= _enemy\.bcap \? '该档上限 · 满配'/.test(uS);
   })());
   check('v89.79：派生（守军/库藏/幸存者）全部按**档位**，且同一城可重复复现', (function () {
     /* ⛔ 已退役的旧口径：`npcCityRes` 按 `city.level` 复利、`genGarrison` 乘据点守军 ——
@@ -25435,8 +25439,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* v94.2：窗口从 30K 放大到 45K —— 城面板里新增了污染/温度/补给三行（约 1.2K），
          把「弃城」按钮推出了旧窗口。这个窗口是**位置型断言**，函数一变长就要跟着调；
          真要根治得改成结构取体，但函数体里有大量 HTML 字符串的花括号，
-         括号配平不可靠（本行上面的注释就是这么来的）。 */
-      var seg = uc.slice(_i, _i + 45000);   /* openCityPanel 体长 ~30K（含名城专属段 + 三条线） */
+         括号配平不可靠（本行上面的注释就是这么来的）。
+         v158.41：再放大到 52K —— 新增敌方城详情（守军/守将/库藏/建筑 + 出征按钮，
+         约 4K），「弃城」按钮又被推出 45K 窗口。 */
+      var seg = uc.slice(_i, _i + 52000);   /* openCityPanel 体长 ~48K（含敌方城详情段 + 三条线） */
       return /ui\.setView\('city'\)/.test(mc) && /case 'city-enter'/.test(mc)
         && /case 'city-dispatch-exp'/.test(mc) && /hint: 'dispatch'/.test(mc)
         && /hint: 'cargo'/.test(mc) && /city-abandon-arm/.test(seg)
@@ -46528,10 +46534,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && um.indexOf("'🗺 地块操作'") < 0
       && !/data-action="' \+ b\[1\]/.test(um));
     check('§580③ 2D 兜底同样直调面板（npc/fort/wild 三个分支都没有中转）',
-      /hit\.kind === 'npc'\) \{\s*\n\s*ui\.openAttackModal\(hit\.city\);/.test(mj)
+      /hit\.kind === 'npc'\) \{\s*\n\s*ui\.openCityPanel\(hit\.city\);/.test(mj)
       && /ui\.openFortModal\(hit\.fort\);/.test(mj)
       && /ui\.openLandModalCi\(hit\.ci\);/.test(mj)
-      && mj.indexOf('mapBarTry2D') < 0);
+      && mj.indexOf('mapBarTry2D') < 0
+      && mj.indexOf('openAttackModal(') < 0);
+    /* v158.41（老板「总是分层，不要立即出征」）：敌方城（名城/行政城）点开第一层
+       必须是「看城详情」而非 ⚔️出征界面 —— openAttackModal 整条退役，
+       npc/adm 城路由到 openCityPanel（详情 + 底部侦查/掠夺/占领按钮）。 */
+    check('§580③b 敌方城不直弹出征（openAttackModal 无定义无调用 · npc/adm 走 openCityPanel）',
+      uj.indexOf('ui.openAttackModal = function') < 0
+      && uj.indexOf('openAttackModal(') < 0
+      && /kind === 'npc' && ref && ui\.openCityPanel\) ui\.openCityPanel\(ref\);/.test(md)
+      && /kind === 'adm' && ref && ui\.openCityPanel\) ui\.openCityPanel\(ref\);/.test(md));
     check('§580④ ui 里没有手势条实现（openMapBar / mapBarDetail 都不在）',
       uj.indexOf('ui.openMapBar = function') < 0 && uj.indexOf('ui.mapBarDetail = function') < 0);
     check('§580⑤ 三个退役动作不会复活（main.js 无 mapbar-* case）',
@@ -47617,7 +47632,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * 口径：地图上真正的**省/市/区**（`map3d._settle` 的 provOf/marketOf/districtOf，
    *   UI 检索栏那三个下拉就是它），不是 DATA.NPC_CITIES 的 13 州出生区。
    *   行政中心城 `M.admCities` 带 admLevel，且 map3d 本来就允许出征它
-   *   （`kind==='adm' → ui.openAttackModal`）。
+   *   （`kind==='adm' → ui.openCityPanel`，出征按钮在敌方城详情面板底部，v158.41）。
    *
    * ⚠️ 这一节在 node 里只能验到**逻辑层**：`_settle` 要 three + genSettlements 才有，
    *   门禁环境没有。所以：
