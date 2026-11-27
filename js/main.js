@@ -3865,11 +3865,12 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         } else {
           /* v151（老板「地图就是本体」）：2D 兜底路径也要给未探明格一个手势 ——
              与 3D 的 map3d.pickAt 同口径：点雾里 = 派队过去看看。 */
-          /* v158.38（老板「统一」）：未探明格也先开一级详情面板（雾格专属出口），
-             已探明格仍走原地块面板；两者都由底部按钮再进出征调配。 */
-          var _fog38 = GAME.fog && GAME.fog.get && GAME.fog.get(hit.ci) === 0;
-          if (_fog38 && ui.openFogModalCi) ui.openFogModalCi(hit.ci);
-          else ui.openLandModalCi(hit.ci);
+          /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）规则变更：
+             雾格一级详情面板（openFogModalCi）退役 —— 按诉求 2 拍板口径
+             「常规点击地面无响应」，2D 点未探明格静默（不弹、不 toast）；
+             勘探入口在建造模式。 */
+          var _fog43 = GAME.fog && GAME.fog.get && GAME.fog.get(hit.ci) === 0;
+          if (!_fog43) ui.openLandModalCi(hit.ci);
         }
       }
     }

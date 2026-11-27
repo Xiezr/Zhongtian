@@ -16267,31 +16267,12 @@ import './ui.js';
      整函数删除 —— 这就是老板说的「前传的任务机制」那排按钮。
      现在 `openLandModalCi` 只有一套面板（正式阶段：守军/侦察/掠夺/占领）。 */
 
-  /* ============================================================
-   * v158.38（老板「统一」）：未探明格的一级详情面板。
-   * ------------------------------------------------------------
-   * 改前：3D/2D 点未探明格直接 openExpModal（将领/目标/兵力调配），
-   *       已探明格却是"先看详情、再点按钮进出征" —— 两套入口，玩家晕。
-   * 改后：所有地块统一先开一层详情：未探明就明说未探明，只给坐标和
-   *       「派队探索」按钮（复用 exp-open 唯一出口）再进出征调配面板。
-   * ⛔ 独立出口、不放进 openLandModalCi：那个出口还被程序化调用（造局/测试/
-   *   面板内跳转），它们不该被迷雾截住；只有玩家点图的分派才走这里。
-   * ⛔ 未探明时不泄露地形/守军/产出。
-   * ============================================================ */
-  ui.openFogModalCi = function (ci) {
-    ui._expTarget = { kind: 'wild', ci: ci };
-    ui._expMode = 'occupy';
-    ui.openModal(
-      '<div class="gold-heading">🌫 未探明地块</div>' +
-      '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:8px;">' +
-        '🧭 球系坐标 ' + GAME.map.coordTextCi(ci) + '</div>' +
-      '<div class="q-empty">这一带还没有记载。派一队过去，抵达后周围就会显现；' +
-        '未探明时看不到地形、守军与产出。</div>' +
-      '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
-        '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="occupy"' +
-          ' title="在出征面板选将、选方式、调兵；抵达后这一带就会显现">🚶 派队探索</button>' +
-        '<button class="btn" data-action="close-modal">关闭</button></div>');
-  };
+  /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）：
+     `ui.openFogModalCi`（v158.38 未探明一级详情面板）整条退役 ——
+     按诉求 2 拍板口径「常规情况下左键点击地面无需响应」，雾格点击静默
+     （map3d pickAt 雾分支 + _openCellPanel 雾守卫都不再弹窗）。
+     原面板唯一行动「🚶 派队探索」入口随之退役；未探明格勘探走建造模式
+     （点左键自动勘探，v158.43 诉求 3 已打通）。 */
 
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;

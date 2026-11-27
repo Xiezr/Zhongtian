@@ -465,11 +465,16 @@
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
     var reg = M.regionAt ? M.regionAt(ci) : null;
     var ref = M.cellRef && M.cellRef[ci];
-    /* v158.38（老板「统一」）：未探明格先开一级详情面板（ui.openFogModalCi），
-       与已探明格一样"先看再行动"；行动按钮才进出征调配。放在 kind 分派之前，
-       避免未探明格靠 cellKind 兜底漏进野地详情。观察钩子仍在末尾统一登记。 */
-    if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0 && ui.openFogModalCi) ui.openFogModalCi(ci);
-    else if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
+    /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）：v158.38 的
+       未探明一级详情面板（ui.openFogModalCi）整条退役 —— 按诉求 2 拍板口径
+       「常规点击地面无响应」，雾格点击不弹任何面板。E 键已由 nearestInteractable
+       过滤雾格、walkTo 到达不开面板，此分支无调用者，随面板一起撤。
+       雾格守卫：任何残留路径（面板内跳转等）点到未探明格也静默返回，
+       不落进 kind 分派弹野地面板。 */
+    try {
+      if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0) return;
+    } catch (eFg43) { }
+    if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     /* v158.41（老板「总是分层，不要立即出征」）：名城/行政城（敌方城）不再直跳 ⚔️出征界面，
        改走 openCityPanel（🏙 看城详情 + 底部侦查/掠夺/占领按钮），与己方城、野地统一分层。 */
     else if (kind === 'npc' && ref && ui.openCityPanel) ui.openCityPanel(ref);
@@ -10788,15 +10793,13 @@
     /* v92：**未探明的格子点不进去** —— 这是迷雾真正的玩法后果。
        不做成"点开发现是空的"：那只是把信息藏一层，玩家照样能靠点击扫图。
        整片未探明 = 地图上没有这一带，得先派人过去（这里连地形都不给看）。 */
+    /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）规则变更：
+       雾格点击**不再弹任何面板**（v158.38 的一级详情面板 openFogModalCi 整条退役）。
+       按诉求 2 已拍板口径「常规情况下左键点击地面无需响应」—— 未探明格也是地面，
+       点击静默；勘探入口在建造模式（点左键自动勘探，v158.43 诉求 3 已打通）。
+       _cell/_cellKind 仍记录（探针可观测），不弹窗、不 toast。 */
     if (fogHides(ci)) {
       M._cell = cell; M._cellKind = 'unknown';
-      /* v152（老板：「点哪都是'那边还没探明'」）：未探明**不再是一次性提示**，
-         而是一个能落地的选择 —— 派队过去（抵达即显形），而不是把人挡在门外。
-         前传另有 P.mapClick 在上面先接走（走过去本身就是探路）。 */
-      /* v158.38（老板「统一」）：未探明格**不再直达**出征调配面板 —— 与已探明格一样
-         先走一级详情面板（ui.openLandModalCi 内的未探明分支：坐标 + 派队探索按钮），
-         要行动再由按钮走 exp-open → openExpModal。面板出口仍是 M.openCellPanel 一个。 */
-      M.openCellPanel(ci);
       if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
       return;
     }
@@ -32356,31 +32359,12 @@ ui.openDuel = function (fid, moveId) {
      整函数删除 —— 这就是老板说的「前传的任务机制」那排按钮。
      现在 `openLandModalCi` 只有一套面板（正式阶段：守军/侦察/掠夺/占领）。 */
 
-  /* ============================================================
-   * v158.38（老板「统一」）：未探明格的一级详情面板。
-   * ------------------------------------------------------------
-   * 改前：3D/2D 点未探明格直接 openExpModal（将领/目标/兵力调配），
-   *       已探明格却是"先看详情、再点按钮进出征" —— 两套入口，玩家晕。
-   * 改后：所有地块统一先开一层详情：未探明就明说未探明，只给坐标和
-   *       「派队探索」按钮（复用 exp-open 唯一出口）再进出征调配面板。
-   * ⛔ 独立出口、不放进 openLandModalCi：那个出口还被程序化调用（造局/测试/
-   *   面板内跳转），它们不该被迷雾截住；只有玩家点图的分派才走这里。
-   * ⛔ 未探明时不泄露地形/守军/产出。
-   * ============================================================ */
-  ui.openFogModalCi = function (ci) {
-    ui._expTarget = { kind: 'wild', ci: ci };
-    ui._expMode = 'occupy';
-    ui.openModal(
-      '<div class="gold-heading">🌫 未探明地块</div>' +
-      '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:8px;">' +
-        '🧭 球系坐标 ' + GAME.map.coordTextCi(ci) + '</div>' +
-      '<div class="q-empty">这一带还没有记载。派一队过去，抵达后周围就会显现；' +
-        '未探明时看不到地形、守军与产出。</div>' +
-      '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
-        '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="occupy"' +
-          ' title="在出征面板选将、选方式、调兵；抵达后这一带就会显现">🚶 派队探索</button>' +
-        '<button class="btn" data-action="close-modal">关闭</button></div>');
-  };
+  /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）：
+     `ui.openFogModalCi`（v158.38 未探明一级详情面板）整条退役 ——
+     按诉求 2 拍板口径「常规情况下左键点击地面无需响应」，雾格点击静默
+     （map3d pickAt 雾分支 + _openCellPanel 雾守卫都不再弹窗）。
+     原面板唯一行动「🚶 派队探索」入口随之退役；未探明格勘探走建造模式
+     （点左键自动勘探，v158.43 诉求 3 已打通）。 */
 
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;
@@ -43349,11 +43333,12 @@ ui.openDuel = function (fid, moveId) {
         } else {
           /* v151（老板「地图就是本体」）：2D 兜底路径也要给未探明格一个手势 ——
              与 3D 的 map3d.pickAt 同口径：点雾里 = 派队过去看看。 */
-          /* v158.38（老板「统一」）：未探明格也先开一级详情面板（雾格专属出口），
-             已探明格仍走原地块面板；两者都由底部按钮再进出征调配。 */
-          var _fog38 = GAME.fog && GAME.fog.get && GAME.fog.get(hit.ci) === 0;
-          if (_fog38 && ui.openFogModalCi) ui.openFogModalCi(hit.ci);
-          else ui.openLandModalCi(hit.ci);
+          /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）规则变更：
+             雾格一级详情面板（openFogModalCi）退役 —— 按诉求 2 拍板口径
+             「常规点击地面无响应」，2D 点未探明格静默（不弹、不 toast）；
+             勘探入口在建造模式。 */
+          var _fog43 = GAME.fog && GAME.fog.get && GAME.fog.get(hit.ci) === 0;
+          if (!_fog43) ui.openLandModalCi(hit.ci);
         }
       }
     }

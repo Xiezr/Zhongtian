@@ -1,6 +1,8 @@
 'use strict';
-/* v158.38（老板「统一」）：未探明格必须**先弹一级详情面板**，点「派队探索」才进出征调配。
-   真实开局 → 真点未探明格 → 真点面板按钮；不直接调内部函数伪造点击。
+/* v158.43（老板「不要再弹出这个了『未探明地块』」）：点未探明格**静默**——
+   不弹一级面板、不弹出征调配、不 toast。按诉求 2 拍板口径「常规点击地面无响应」。
+   （v158.38 版本曾断言"先弹一级面板→派队探索"，面板已整条退役。）
+   真实开局 → 真射线找雾格 → 真点 → 断言零弹窗。
    跑法：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" \
          node .workbuddy/tools/probe/p_fog_panel.js */
 const { chromium } = require('playwright-core');
@@ -33,14 +35,11 @@ const EXE = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win
     return {
       open: !!m,
       head: m ? ((m.querySelector('.gold-heading') || {}).textContent || '').trim() : '',
-      txt: txt,
-      fogButton: !!m && !!m.querySelector('[data-action="exp-open"]'),
-      fogButtonText: m ? (((m.querySelector('[data-action="exp-open"]') || {}).textContent || '').trim()) : '',
-      closeButton: !!m && !!m.querySelector('[data-action="close-modal"]')
+      txt: txt.slice(0, 120)
     };
   });
 
-  /* ① 找一块玩家视野里 fog=0 的格子（与 p_unfog 同口径：真射线拾取，真屏幕坐标） */
+  /* ① 找一块玩家视野里 fog=0 的格子（真射线拾取，真屏幕坐标） */
   const fogTile = await p.evaluate(() => {
     const M = GAME.map3d, SP = GAME.mapSphere;
     const cv = document.getElementById('mapCanvas'), r = cv.getBoundingClientRect();
@@ -62,44 +61,16 @@ const EXE = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win
     await p.mouse.click(fogTile.x, fogTile.y);
     await p.waitForTimeout(900);
     const a = await snap();
-    console.log('未探明格点击后 modal:', JSON.stringify({ head: a.head, txt: a.txt.slice(0, 220) }));
-    check('② 未探明格先弹一级详情面板（不是出征调配）', a.open && /未探明地块/.test(a.head)
-      && !/出征方式|主将|⚔️/.test(a.txt), 'head=' + a.head);
-    check('③ 一级面板给「派队探索」且复用 exp-open 出口', a.fogButton && /派队探索/.test(a.fogButtonText), a.fogButtonText);
-
-    if (a.fogButton) {
-      await p.click('.modal-mask [data-action="exp-open"]');
-      await p.waitForTimeout(900);
-      const c = await snap();
-      console.log('派队探索后 modal:', JSON.stringify({ head: c.head, txt: c.txt.slice(0, 220) }));
-      check('④ 点派队探索才进出征面板（将领/目标/兵力）', c.open && /出征方式/.test(c.txt)
-        && /主将/.test(c.txt) && /⚔️/.test(c.head), 'head=' + c.head);
-      check('⑤ 未探明入口提示没丢', /未探明 —— 派一队过去/.test(c.txt));
-      if (c.closeButton) { await p.click('.modal-mask [data-action="close-modal"]'); await p.waitForTimeout(400); }
-    }
+    const cellMark = await p.evaluate(() => GAME.map3d._cellKind);
+    console.log('未探明格点击后: modal=' + JSON.stringify(a) + ' cellKind=' + cellMark);
+    check('② 点未探明格零弹窗（无一级面板、无出征调配）',
+      !a.open, 'open=' + a.open + ' head=' + a.head);
+    check('③ 点击仍被记录（_cellKind=unknown，静默≠没点到）',
+      cellMark === 'unknown', 'cellKind=' + cellMark);
+    /* 对照口径：战略态点野地无响应由 v158.43 §617② + p_fly_v15843⑩ 已覆盖，
+       这里只守雾格这条（本需求核心）。 */
   }
-
-  /* ② 对照：已探明且未占的野地仍走原一级面板（按钮齐全） */
-  const exploredCi = await p.evaluate(() => {
-    const cells = GAME.sphere.cells;
-    for (let ci = 0; ci < cells.length; ci++) {
-      if (GAME.fog && GAME.fog.get(ci) > 0 && !GAME.map.wildAt(ci)
-        && (GAME.map3d.cellKind && GAME.map3d.cellKind[ci] || 'wild') === 'wild') return ci;
-    }
-    return -1;
-  });
-  if (exploredCi >= 0) {
-    await p.evaluate((ci) => GAME.ui.openLandModalCi(ci), exploredCi);
-    await p.waitForTimeout(500);
-    const e = await snap();
-    check('⑥ 已探明野地仍是一级面板（勘探/侦查/掠夺/占领/传送齐全）',
-      e.open && /侦查/.test(e.txt) && /掠夺/.test(e.txt) && /占领/.test(e.txt) && /传送/.test(e.txt)
-      && !/出征方式|主将/.test(e.txt), 'ci=' + exploredCi + ' head=' + e.head);
-  } else {
-    check('⑥ 找到已探明野地靶位', false, 'no explored wild cell');
-  }
-
   console.log('结果：' + pass + ' 通过 / ' + fail + ' 失败');
   await b.close();
   process.exit(fail ? 1 : 0);
-})().catch((e) => { console.error('FATAL', e); process.exit(1); });
+})().catch((e) => { console.error('FATAL', e); process.exit(2); });

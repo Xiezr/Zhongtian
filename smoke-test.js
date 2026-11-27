@@ -46363,15 +46363,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        不再直接开出征面板，而是先弹「未探明地块」一级面板，点「派队探索」才进出征。
        旧断言钉 `openExpModal({ kind:'wild' })` 直达，已失效——降级成了实现类待修。
        补正确口径：雾格 → openFogModalCi 一级面板 → exp-open → doOpenExp → openExpModal。 */
-    check('§576⑥ 点迷雾格 → 先弹未探明一级面板（派队探索才进出征，不是直弹出征/一句话）', (function () {
+    /* ⛔ v158.43 规则变更（老板「不要再弹出这个了『未探明地块』」）：一级面板退役，
+       按诉求 2 拍板口径「常规点击地面无响应」—— 点迷雾格**零面板调用**（静默）。 */
+    check('§576⑥（v158.43 口径）点迷雾格静默：不弹一级面板、不直弹出征、不 toast', (function () {
       var fs576 = require('fs'), ph576 = require('path');
       var m3 = fs576.readFileSync(ph576.join(__dirname, 'js', 'map3d.js'), 'utf8');
       var um = fs576.readFileSync(ph576.join(__dirname, 'js', 'ui-mapui.js'), 'utf8');
-      var seg = m3.slice(m3.indexOf('if (fogHides(ci))'), m3.indexOf('if (fogHides(ci))') + 900);
-      /* pickAt 雾分支不再直调 openExpModal，改走 openCellPanel；一级面板出口是 openFogModalCi */
-      return /if \(fogHides\(ci\)\) \{[\s\S]{0,400}?M\.openCellPanel\(ci\)/.test(seg)
-        && !/openExpModal\(\{ kind: 'wild', ci: ci \}/.test(seg)
-        && /ui\.openFogModalCi = function/.test(um);
+      var seg = m3.slice(m3.indexOf('if (fogHides(ci))'), m3.indexOf('if (fogHides(ci))') + 700);
+      return /M\._cellKind = 'unknown'/.test(seg)
+        && !/M\.openCellPanel\(ci\)/.test(seg)
+        && !/openExpModal/.test(seg)
+        && !/ui\.openFogModalCi = function/.test(um);
     })());
 
     check('§576⑦ 一键出征：动作注册 + 唯一出口（march.dispatch）', (function () {
@@ -51417,34 +51419,39 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ⛔ 雾面板是独立出口，不塞进 openLandModalCi：那里还被造局/测试程序化调用，
    *    塞进去会让"已占野地/采集区"等断言被迷雾误截（e2e 19 红的真凶）。
    * 用 stripComment：注释里保留了旧行为说明，不剥注释会误判"还有旧调用"。
+   * ------------------------------------------------------------
+   * ⛔ v158.43 规则变更（老板「不要再弹出这个了『未探明地块』」）：
+   *    雾格一级详情面板（openFogModalCi）**整条退役** —— 按诉求 2 拍板口径
+   *    「常规情况下左键点击地面无需响应」，雾格点击静默（不弹、不 toast）。
+   *    旧五条断言按新口径重写：3D/2D 点雾格零面板调用；面板函数零残留；
+   *    doOpenExp 的未探明 hint（出征面板内文字）保留；openCellPanel 雾守卫
+   *    静默 return、不漏进野地详情。
    * ============================================================ */
   var _m3d621 = stripComment(_m3d608);
   var _um621 = stripComment(_um608);
   var _mn621 = stripComment(_mn608);
 
-  check('§621① 3D 未探明格点击改走一级面板出口（旧 openExpModal 直达零残留）', (function () {
+  check('§621①（v158.43 口径）3D 雾格点击静默：pickAt 雾分支零面板调用（无弹窗、无 toast）', (function () {
     var i = _m3d621.indexOf('if (fogHides(ci))');
-    var j = i >= 0 ? _m3d621.indexOf('M.centerOn', i) : -1;
+    var j = i >= 0 ? _m3d621.indexOf('var kind = (M.cellKind', i) : -1;
     var seg = i >= 0 && j > i ? _m3d621.slice(i, j) : '';
-    return /M\.openCellPanel\(ci\)/.test(seg) && !/openExpModal/.test(seg);
+    return /M\._cellKind = 'unknown'/.test(seg)
+      && !/M\.openCellPanel\(ci\)/.test(seg)
+      && !/openExpModal/.test(seg)
+      && !/toast/.test(seg);
   })());
 
-  check('§621② 2D 未探明格也开一级面板（旧 _fh 直达分支零残留）', (function () {
+  check('§621②（v158.43 口径）2D 雾格静默不弹：openLandModalCi 只对非雾格；旧 _fh 分支零残留', (function () {
     return !/var _fh = GAME\.fog/.test(_mn621)
       && !/ui\.openExpModal\(\{\s*kind:\s*'wild',\s*ci:\s*hit\.ci/.test(_mn621)
-      && /ui\.openFogModalCi\(hit\.ci\)/.test(_mn621)
-      && /ui\.openLandModalCi\(hit\.ci\)/.test(_mn621);
+      && !/openFogModalCi/.test(_mn621)
+      && /if \(!_fog43\) ui\.openLandModalCi\(hit\.ci\)/.test(_mn621);
   })());
 
-  check('§621③ 一级面板有未探明分支：坐标 + 派队探索(exp-open)，不泄露地形/守军', (function () {
-    var i = _um621.indexOf('ui.openFogModalCi = function (ci)');
-    var j = i >= 0 ? _um621.indexOf('ui.openLandModalCi = function (ci)', i) : -1;
-    var blk = i >= 0 && j > i ? _um621.slice(i, j) : '';
-    return /未探明地块/.test(blk)
-      && /data-action="exp-open"/.test(blk)
-      && /派队探索/.test(blk)
-      && !/openExpModal/.test(blk)
-      && !/wildDefenseAt|守军约/.test(blk);
+  check('§621③（v158.43 口径）雾格一级面板退役：openFogModalCi 函数与「未探明地块」标题零残留', (function () {
+    return !/ui\.openFogModalCi = function/.test(_um621)
+      && !/未探明地块/.test(_um621)
+      && !/派队探索/.test(_um621);
   })());
 
   check('§621④ 派队探索仍走 doOpenExp 唯一出口，且未探明提示没丢', (function () {
@@ -51456,13 +51463,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && (blk.match(/ui\.openExpModal\(/g) || []).length >= 1;
   })());
 
-  check('§621⑤ openCellPanel 在 kind 分派之前先截未探明格（不漏进野地详情）', (function () {
+  check('§621⑤（v158.43 口径）openCellPanel 雾守卫静默 return（不弹面板、不漏进野地详情）', (function () {
     var i = _m3d621.indexOf('function _openCellPanel(ci)');
     var j = i >= 0 ? _m3d621.indexOf('if (GAME.questline && GAME.questline.onLook)', i) : -1;
     var blk = i >= 0 && j > i ? _m3d621.slice(i, j) : '';
     var fog = blk.indexOf('GAME.fog.get(ci) === 0');
     var own = blk.indexOf("kind === 'own'");
-    return fog >= 0 && own > fog && /ui\.openFogModalCi\(ci\)/.test(blk)
+    return fog >= 0 && own > fog && /return;/.test(blk.slice(fog, own))
+      && !/openFogModalCi/.test(blk)
       && !/openExpModal/.test(blk);
   })());
 

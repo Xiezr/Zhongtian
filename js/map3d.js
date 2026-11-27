@@ -171,11 +171,16 @@ import './gltf.js';
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
     var reg = M.regionAt ? M.regionAt(ci) : null;
     var ref = M.cellRef && M.cellRef[ci];
-    /* v158.38（老板「统一」）：未探明格先开一级详情面板（ui.openFogModalCi），
-       与已探明格一样"先看再行动"；行动按钮才进出征调配。放在 kind 分派之前，
-       避免未探明格靠 cellKind 兜底漏进野地详情。观察钩子仍在末尾统一登记。 */
-    if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0 && ui.openFogModalCi) ui.openFogModalCi(ci);
-    else if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
+    /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）：v158.38 的
+       未探明一级详情面板（ui.openFogModalCi）整条退役 —— 按诉求 2 拍板口径
+       「常规点击地面无响应」，雾格点击不弹任何面板。E 键已由 nearestInteractable
+       过滤雾格、walkTo 到达不开面板，此分支无调用者，随面板一起撤。
+       雾格守卫：任何残留路径（面板内跳转等）点到未探明格也静默返回，
+       不落进 kind 分派弹野地面板。 */
+    try {
+      if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0) return;
+    } catch (eFg43) { }
+    if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     /* v158.41（老板「总是分层，不要立即出征」）：名城/行政城（敌方城）不再直跳 ⚔️出征界面，
        改走 openCityPanel（🏙 看城详情 + 底部侦查/掠夺/占领按钮），与己方城、野地统一分层。 */
     else if (kind === 'npc' && ref && ui.openCityPanel) ui.openCityPanel(ref);
@@ -10494,15 +10499,13 @@ import './gltf.js';
     /* v92：**未探明的格子点不进去** —— 这是迷雾真正的玩法后果。
        不做成"点开发现是空的"：那只是把信息藏一层，玩家照样能靠点击扫图。
        整片未探明 = 地图上没有这一带，得先派人过去（这里连地形都不给看）。 */
+    /* ⛔ v158.43（老板「不要再弹出这个了『未探明地块』」）规则变更：
+       雾格点击**不再弹任何面板**（v158.38 的一级详情面板 openFogModalCi 整条退役）。
+       按诉求 2 已拍板口径「常规情况下左键点击地面无需响应」—— 未探明格也是地面，
+       点击静默；勘探入口在建造模式（点左键自动勘探，v158.43 诉求 3 已打通）。
+       _cell/_cellKind 仍记录（探针可观测），不弹窗、不 toast。 */
     if (fogHides(ci)) {
       M._cell = cell; M._cellKind = 'unknown';
-      /* v152（老板：「点哪都是'那边还没探明'」）：未探明**不再是一次性提示**，
-         而是一个能落地的选择 —— 派队过去（抵达即显形），而不是把人挡在门外。
-         前传另有 P.mapClick 在上面先接走（走过去本身就是探路）。 */
-      /* v158.38（老板「统一」）：未探明格**不再直达**出征调配面板 —— 与已探明格一样
-         先走一级详情面板（ui.openLandModalCi 内的未探明分支：坐标 + 派队探索按钮），
-         要行动再由按钮走 exp-open → openExpModal。面板出口仍是 M.openCellPanel 一个。 */
-      M.openCellPanel(ci);
       if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
       return;
     }
