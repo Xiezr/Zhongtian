@@ -14573,9 +14573,10 @@ import './ui.js';
       '<div id="build-bar" class="build-bar"' + (_isBuild ? '' : ' hidden') + '>' +
         '<div class="bb-tabs">' +
           '<button class="bb-tab on" data-action="bb-tab" data-bbtab="item">🎒 物品</button>' +
+          '<button class="bb-tab" data-action="bb-tab" data-bbtab="plant">建筑</button>' +
           '<button class="bb-tab" data-action="bb-tab" data-bbtab="tool">🔨 工具</button>' +
           '<button class="bb-tab" data-action="bb-tab" data-bbtab="bag">📦 背包</button>' +
-          '<span class="bb-hint" id="bb-hint">悬停选格 · 左键放置</span>' +
+          '<span class="bb-hint" id="bb-hint">按住左键连铺 · 右键放下</span>' +
         '</div>' +
         '<div class="bb-slots" id="bb-slots">' +
           (function () {
@@ -14647,6 +14648,14 @@ import './ui.js';
         '<button class="bb-slot lv" data-action="terrace-none" title="当前目标层：地面会被削/填到这一层">' + lv + '<i>层</i></button>' +
         '<button class="bb-slot" data-action="terrace-lv" data-d="1" title="目标层 +1（每层 1 米）">＋<i>升</i></button>' +
         '<button class="bb-slot" data-action="terrace-clear" title="复原：把走过的格恢复成自然地形">↩<i>复原</i></button>';
+    } else if (tab === 'plant') {
+      /* v158.39：真正扣资源、进施工队的采集场也进建造栏。
+         只放一个"采集场"工具：点哪块资源地，由地块资源反查对应建筑。 */
+      var onP = !!ui._plantTool;
+      var hP = '<button class="bb-slot' + (onP ? ' on' : '') + '" data-action="plant-pick"'
+        + ' title="点资源地就按资源类型自动建对应采集场（扣资源、进施工队列）">建造<i>采集场</i></button>';
+      if (onP) hP += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的建筑">收工<i>放下</i></button>';
+      host.innerHTML = hP;
     } else if (tab === 'item') {
       /* ============================================================
        * v157.18：物品页签接上**已有的**放置目录（GAME.place）
@@ -14675,7 +14684,7 @@ import './ui.js';
       h2 += '<button class="bb-slot" data-action="place-open" title="全部物品 + 已放置清单">⋯<i>更多</i></button>';
       /* 手上有东西时给一个"收工" —— 成熟建造游戏都有一键放下的出口，
          不能只靠"再点一次同一件"（玩家记不住）。 */
-      if (curP) {
+      if (curP || ui._plantTool) {
         h2 += '<button class="bb-slot" data-action="place-rot-hand" title="旋转 45°（快捷键 R）">↻<i>转'
           + (M.PLACE_YAW ? (' ' + M.PLACE_YAW + '°') : '') + '</i></button>';
         h2 += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的东西">✋<i>收工</i></button>';

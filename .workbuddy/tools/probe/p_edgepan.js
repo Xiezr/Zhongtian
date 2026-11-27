@@ -9,7 +9,7 @@
  *   ② 指针贴右边缘：`camO.yaw` 按时间累积增长（0.3 秒 ≈ 15.5°），不是瞬移
  *   ③ 指针离开边缘：yaw / 位置都不再变
  *   ④ 真帧应用后球心**左移**（右侧地图露出来），且不推动小人
- *   ⑤ 地表：左键拖不动相机；贴右边缘 = 绕角色转
+ *   ⑤ 地表：左键拖不动相机；贴右边缘也不改角度（v158.39 取消边缘转换角度）
  * ============================================================ */
 'use strict';
 const { chromium } = require('playwright-core');
@@ -143,7 +143,7 @@ function ok(t, c, d) {
   ok('④ 边缘推镜不推动小人', JSON.stringify(a0.pdir) === JSON.stringify(s5.pdir));
   await p.screenshot({ path: OUT + '/1_orbit_edge_right.png' });
 
-  /* ── ⑤ 地表：左键不动相机、贴边绕角色转 ── */
+  /* ── ⑤ 地表：左键不动相机、贴边也不改角度（v158.39 规则变更） ── */
   await p.mouse.move(720, 450);
   for (let i = 0; i < 62; i++) { await p.mouse.wheel(0, -120); await p.waitForTimeout(60); }
   await p.waitForTimeout(1500);
@@ -172,16 +172,19 @@ function ok(t, c, d) {
     return { n: n, y0: y0, y1: M._surfOrbitYaw };
   });
   const dOrbit = Math.abs(tickedS.y1 - tickedS.y0);
-  ok('⑤ 地表贴右边缘：镜头绕角色转（Δyaw=' + dOrbit.toFixed(3) + '）',
-    tickedS.n >= 30 && dOrbit > 0.2, 'orbit ' + tickedS.y0.toFixed(3) + '→' + tickedS.y1.toFixed(3));
+  /* v158.39：旧断言"地表贴边绕角色转 Δ>0.2"按新口径重写，不是删除。
+     `_tickEdgePan` 现在地表直接 return false，n 应为 0、两个角度一位不动。 */
+  ok('⑤ 地表贴右边缘：不再改 orbitYaw（Δyaw=' + dOrbit.toFixed(3) + '）',
+    tickedS.n === 0 && dOrbit < 1e-9, 'orbit ' + tickedS.y0.toFixed(3) + '→' + tickedS.y1.toFixed(3) + ' n=' + tickedS.n);
 
   await p.mouse.move(720, 450);
   await p.waitForTimeout(300);
   const c3 = await snap();
   await p.waitForTimeout(600);
   const c4 = await snap();
-  ok('⑤ 地表离开边缘后立刻停', c4.orbitYaw === c3.orbitYaw,
-    'Δ=' + Math.abs(c4.orbitYaw - c3.orbitYaw).toFixed(5));
+  ok('⑤ 地表离开边缘后角度仍不动', c4.orbitYaw === c3.orbitYaw && c4.el === c3.el,
+    'Δyaw=' + Math.abs(c4.orbitYaw - c3.orbitYaw).toFixed(5)
+    + ' Δel=' + Math.abs(c4.el - c3.el).toFixed(5));
   await p.screenshot({ path: OUT + '/2_surf_edge_right.png' });
 
   console.log('\n结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

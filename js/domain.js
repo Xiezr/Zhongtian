@@ -1363,6 +1363,29 @@ import './state.js';
     return { ok: true, msg: '开始建造 ' + eb.name + '（' + _coordOf(ci) + '）' };
   };
 
+  /* ============================================================
+   * v158.39（老板「大地图建造像戴森球计划那样容易」）：采集场快建唯一出口
+   * ------------------------------------------------------------
+   * 地块面板原来要求玩家先认地形、再选对应采集场——那是菜单建造，不是建造模式。
+   * 这里只做一件事：读这块资源地的 res，反查 DATA.EXT_BUILDINGS 的对应建筑，
+   * 再交给 GAME.buildPlant 的扣费/排队/施工链。资源类型不靠玩家猜。
+   * ============================================================ */
+  GAME.quickBuildPlant = function (ci, cityId) {
+    var RS = GAME.resource;
+    if (!RS || !RS.ON_MAP || !RS.MIGRATE_EXT) return { ok: false, msg: '资源大地图模式未开启' };
+    if (ci == null || ci < 0) return { ok: false, msg: '先点一块资源地' };
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '城市不存在' };
+    var rec = RS.at(ci, GAME.pidOf(city));
+    if (!rec || !rec.res) return { ok: false, msg: '这不是资源地块（建不了采集场）' };
+    var eid = null;
+    for (var k in DATA.EXT_BUILDINGS) {
+      if (DATA.EXT_BUILDINGS[k] && DATA.EXT_BUILDINGS[k].res === rec.res) { eid = k; break; }
+    }
+    if (!eid) return { ok: false, msg: '这种资源还没有对应的采集场' };
+    return GAME.buildPlant(ci, eid, city.id);
+  };
+
   /* 升级采集场（等级、造价、时间与旧城外口径同尺） */
   GAME.upgradePlant = function (ci, cityId) {
     var RS = GAME.resource;

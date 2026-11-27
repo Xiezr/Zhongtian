@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "bb7c26fe3be0c209",
+ "sourceHash": "14a6f264b02eb6a3",
  "layout": {
   "order": [
    "core",
@@ -583,7 +583,7 @@
   {
    "name": "domain",
    "file": "js/domain.js",
-   "lines": 9840,
+   "lines": 9863,
    "bundle": "core",
    "duty": "domain.js  核心业务逻辑（真实数值版）",
    "deps": [
@@ -852,7 +852,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4564,
+   "lines": 4581,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -860,8 +860,8 @@
     "battle",
     "domain",
     "state",
-    "ui-modal",
     "map3d",
+    "ui-modal",
     "ui-view",
     "ui-craft",
     "ui-space",
@@ -929,7 +929,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 10552,
+   "lines": 10656,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -947,14 +947,13 @@
     "placement",
     "village",
     "camp",
-    "main",
     "belt",
     "faction",
     "ui-exped",
     "resource",
     "ui-delve",
-    "memorial",
     "ui-shell",
+    "memorial",
     "ui-config",
     "ui-view"
    ]
@@ -1783,7 +1782,7 @@
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1372,
+   "lines": 1381,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [
@@ -1804,7 +1803,6 @@
     "items",
     "sphere",
     "ui-shell",
-    "main",
     "ui-mapui",
     "ui",
     "ui-exped",

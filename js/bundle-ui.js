@@ -2749,6 +2749,46 @@
     return h3.length ? h3[0].point : null;
   };
 
+  /* ============================================================
+   * v158.39（老板「戴森球计划那种建造」）：放置/取消的唯一出口
+   * ------------------------------------------------------------
+   * 旧版只有"点一下落一件"，按住左键拖过去一件都不放；右键还会继续转镜头，
+   * 没有"放下手上的东西"这个成熟建造游戏的本能操作。
+   * 现在点击、拖铺、拾取都走 placeAtPoint；取消统一走 cancelHeldBuild。
+   * ============================================================ */
+  M._placeDrag = false;
+  M._placeLastIJ = null;
+  M.placeAtPoint = function (pt, opt) {
+    opt = opt || {};
+    if (!pt || !GAME.place || !GAME.ui || !GAME.ui._placeItem) return { ok: false, msg: '手上没有可放的东西' };
+    var _gP = M.gridAt(pt);
+    if (!_gP) return { ok: false, msg: '这里没有可建的方格' };
+    if (opt.dedupe && M._placeLastIJ && M._placeLastIJ[0] === _gP.i && M._placeLastIJ[1] === _gP.j) {
+      return { ok: true, skipped: true, rec: null };
+    }
+    var _itP = GAME.place.item(GAME.ui._placeItem);
+    var _rP = GAME.place.add(_gP.i, _gP.j, GAME.ui._placeItem, { yaw: M.PLACE_YAW || 0 });
+    if (_rP && _rP.ok) M._placeLastIJ = [_gP.i, _gP.j];
+    M._ghostCi = -1; M._ghostIJ = null;
+    if (!opt.silent && GAME.ui.toast) {
+      GAME.ui.toast(_rP && _rP.ok
+        ? ('已放下：' + (_itP ? _itP.name : GAME.ui._placeItem))
+        : ('⚠ ' + ((_rP && _rP.msg) || '放置失败')));
+    }
+    return _rP;
+  };
+  M.cancelHeldBuild = function () {
+    var ui = GAME.ui;
+    if (!ui) return;
+    ui._placeItem = null;
+    ui._plantTool = false;
+    M._placeDrag = false;
+    M._placeLastIJ = null;
+    if (M.clearGhost) { M.clearGhost(); M._ghostCi = -1; M._ghostIJ = null; }
+    if (M.gridHighlight) M.gridHighlight(null);
+    if (ui.renderBuildBar) ui.renderBuildBar('item');
+  };
+
   /* 世界点 → 建造格 (i,j)。没锚就返回 null（未进过地表时正常） */
   M.gridCellAt = function (p) {
     if (!p) return null;
@@ -6611,12 +6651,11 @@
     dt = Math.max(0.001, Math.min(0.12, dt || 0.016));
     var k = M.EDGE_PAN_SPEED * dt;
     if (M._surf) {
-      /* 地表：相机是被"锁在角色身上"的，平移做不到 —— 用"绕角色转"实现同样的观感：
-         指针在右边 → 镜头往右绕，右方的地图进入画面。 */
-      /* 指针在右边 → 镜头绕角色往**右**绕（角色右边的地图进入画面）。
-         符号别拍脑袋：`dirCam` 里 e1 是东向，`-=` 会让镜头往左跑（实测球心反而右移）。 */
-      if (dx) M._surfOrbitYaw += dx * 0.9 * k;
-      if (dy) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + dy * 0.55 * k));
+      /* v158.39（老板「取消边缘转换角度」）：v158.28 曾把地表边缘推镜实现成
+         「绕角色改 orbitYaw / SURF_CAM_EL」，那不是移动地图，是偷偷转镜头。
+         新口径：地表边缘带只负责提示"指针在边缘"，**不再改任何相机角度**；
+         地表看哪由右键/中键明确控制。高空仍保留原边缘推镜。 */
+      return false;
     } else {
       /* ⚠️ 这里**必须写 yaw/pitch**、不能只写 `camO.dir`：
          `placeCamera` 的 `_dirty` 判据是 `M.CAM_TRACKBALL ? !camO.quat : …`，
@@ -7966,6 +8005,17 @@
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
       }
       if (e.button !== 0 && e.button !== 2) return;
+      /* v158.39：建造模式手持物品 → 按下即落一件，拖过一格落一件（戴森式连铺）。
+         必须放在整平分支前：一只手只能拿一样，拿物品时铲子不会同时在手。 */
+      if (e.button === 0 && M.mode === M.MODE_BUILD && GAME.ui && GAME.ui._placeItem) {
+        M._placeDrag = true;
+        M._placeLastIJ = null;
+        var gpHold = _groundPtAt(e.clientX, e.clientY);
+        if (gpHold) M.placeAtPoint(gpHold, { silent: false });
+        drag = 1; moved = false; lx = e.clientX; ly = e.clientY;
+        if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+        touch(); e.preventDefault(); return;
+      }
       /* v157.15：建造模式 + 整平铲子 → 左键是**刷地**，不转球
          （转球/选格在拖刷期间全让位，否则一边刷一边把镜头甩走）。 */
       /* v158.27：右键现在也走这条路径，但**只有左键**才是刷地（右键仍只转镜头）。 */
@@ -8092,19 +8142,44 @@
         var hd = GAME.ui && GAME.ui.tipHide; if (hd) hd();
         return;
       }
-      if (!ui || !ui._placeItem || !M._collider) return;
+      /* v158.39：按住左键连铺 —— 每跨一格落一件，同格不重复放。 */
+      if (M._placeDrag && M.mode === M.MODE_BUILD && ui && ui._placeItem) {
+        try {
+          var rcP = _rayOfEvent(canvas, e);
+          var gpP = rcP ? M.pickGroundPoint(rcP) : null;
+          if (gpP) {
+            var gP = M.gridAt(gpP);
+            if (gP) M.gridHighlight(gP.i, gP.j, false);
+            var rP = M.placeAtPoint(gpP, { silent: true, dedupe: true });
+            if (rP && rP.ok && !rP.skipped && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+          }
+        } catch (ePD) { }
+        var hdP = GAME.ui && GAME.ui.tipHide; if (hdP) hdP();
+        return;
+      }
+      if (!ui || (!ui._placeItem && !ui._plantTool) || !M._collider) return;
       var r0 = canvas.getBoundingClientRect();
       if (!r0.width) return;
       var nx0 = ((e.clientX - r0.left) / r0.width) * 2 - 1, ny0 = -((e.clientY - r0.top) / r0.height) * 2 + 1;
       var rc0 = new THREE.Raycaster();
       rc0.setFromCamera(new THREE.Vector2(nx0, ny0), cam);
-      var h0 = rc0.intersectObject(M._collider, false);
-      if (!h0.length) { if (M._ghostCi !== -1) { M._ghostCi = -1; M.clearGhost(); redraw(); } return; }
-      var _pt0 = h0[0].point;
+      /* v158.39：幽灵与落位统一走 pickGroundPoint —— 旧版幽灵打光滑球壳、
+         落位打真实地砖，坡地上会差一格。 */
+      var _pt0 = M.pickGroundPoint(rc0);
+      if (!_pt0) {
+        if (M._ghostCi !== -1) { M._ghostCi = -1; M.clearGhost(); redraw(); }
+        if (ui._plantTool && M.gridHighlight) M.gridHighlight(null);
+        return;
+      }
       /* v157.26：幽灵跟的是**方格**（与地砖、整平、落位同一套坐标），
          不再走六边形 pickCiByRay —— 否则"幽灵在方砖 A、物件落到六边形 B"。 */
       var _g0 = M.gridAt(_pt0);
-      if (!_g0) { if (M._ghostCi !== -1) { M._ghostCi = -1; M._ghostIJ = null; M.clearGhost(); redraw(); } return; }
+      if (!_g0) {
+        if (M._ghostCi !== -1) { M._ghostCi = -1; M._ghostIJ = null; M.clearGhost(); redraw(); }
+        if (ui._plantTool && M.gridHighlight) M.gridHighlight(null);
+        return;
+      }
+      if (ui._plantTool) { if (M.gridHighlight) M.gridHighlight(_g0.i, _g0.j, true); redraw(); return; }
       if (M._ghostIJ && M._ghostIJ[0] === _g0.i && M._ghostIJ[1] === _g0.j) return;
       M._ghostIJ = [_g0.i, _g0.j];
       M._ghostCi = _g0.i;
@@ -8233,7 +8308,7 @@
            要恢复旧手感只改这一个常量（不是删代码，也不是留不可达分支）。 */
         if (M.LEFT_DRAG_CAM) {
           if (_sdx2) M._surfOrbitYaw -= _sdx2 * 0.0035;
-          if (_sdy2) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + _sdy2 * 0.0018));
+          if (_sdy2) M.SURF_CAM_EL = Math.max(M.SURF_CAM_EL_MIN, Math.min(M.SURF_CAM_EL_MAX, M.SURF_CAM_EL + _sdy2 * 0.0018));
           touch(); redraw();
         }
         return;
@@ -8312,11 +8387,11 @@
            *
            * 现在右键与左键同一套语义（绕角色一圈 + 抬压俯角）：
            *   左右拖 = 绕角色转（星露谷那种"镜头绕着人走"）
-           *   上下拖 = 抬高/压低镜头（夹 14°~77°，钻不到地下）
+           *   上下拖 = 抬高/压低镜头（v158.39 起夹 3.4°~77°，低角自动拉近，钻不到地下）
            * 两个键都有效，且都不会推动小人（位姿只由 WASD/走路驱动）。
            * ============================================================ */
           if (_dx) M._surfOrbitYaw -= _dx * 0.0035;
-          if (_dy) M.SURF_CAM_EL = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL + _dy * 0.0018));
+          if (_dy) M.SURF_CAM_EL = Math.max(M.SURF_CAM_EL_MIN, Math.min(M.SURF_CAM_EL_MAX, M.SURF_CAM_EL + _dy * 0.0018));
           M._surfHold = true;          /* 用户接管过视角：落地过渡立刻让位 */
           _surfTilt = null;
           touch(); redraw(); return;
@@ -8641,6 +8716,20 @@
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
+      /* v158.39：建造模式里右键单击 = 放下手上的东西（戴森式取消）；
+         右键拖过仍然照旧绕角色/球心转镜头，不会误取消。 */
+      if (e.button === 2 && M.mode === M.MODE_BUILD && GAME.ui
+          && (GAME.ui._placeItem || GAME.ui._plantTool) && !M._rmbMoved && !moved) {
+        if (M.cancelHeldBuild) M.cancelHeldBuild();
+        if (GAME.ui.toast) GAME.ui.toast('已放下手上的建造物');
+      }
+      if (M._placeDrag) {
+        M._placeDrag = false; M._placeLastIJ = null;
+        /* 按下时已经落过一件；松手不能再走 pickAt 落第二件 / 弹地块面板。 */
+        drag = 0; moved = false;
+        if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+        return;
+      }
       /* ============================================================
        * v158.27：右键 = 抓球拖拽（绕球心）。松手只有三件事：
        *   ① 清状态；② 双击回正（两次都没拖）；③ 补一次地表重建。
@@ -9126,9 +9215,17 @@
      摆臂、尘土、前倾这些全都白做，玩家根本看不见。拉近到 16 米：
      角色约 40 像素、视野约 3.7 格（底栏写的就是「视野 4 格」），
      这才是"能看见自己在走"的距离。 */
-  M.SURF_CAM_DIST = 16;        /* 相机到角色的距离（米）——5.25 米一格，约看 3.7 格 */
-  M.SURF_CAM_EL = 1.0;         /* 仰角（弧度）≈ 57°：更俯视，能看进楼群/林间，不被墙挡 */
-  M._surfOrbitYaw = 0;         /* 绕过角色一圈（左键拖） */
+  M.SURF_CAM_DIST = 16;        /* 高仰角默认距离（米）——5.25 米一格，约看 3.7 格 */
+  /* v158.39（老板「向上看时……相机与人的距离缩短，最终在眼睛与地面之间」）：
+     旧版距离恒 16m：右键上拖只把仰角从 1.0 压到 0.42，相机仍在 2.8m 高空、离人 16m，
+     观感是"镜头越仰越远"。现在距离随仰角连续收缩，最低到 3.2m；
+     配合最低仰角 0.06rad（3.4°），镜头落在眼高与地面之间，且始终离地 > 0。 */
+  M.SURF_CAM_MIN_DIST = 3.2;   /* 抬头到最低仰角时的相机距离 */
+  M.SURF_CAM_EL_MIN = 0.06;    /* 3.4°：再低就没法保证不穿地 */
+  M.SURF_CAM_EL_MAX = 1.35;    /* 77°：原上限不动 */
+  M.SURF_CAM_GROUND_GAP = 0.12;/* 相机底部离玩家脚下地面的硬下限（米），保证"眼睛与地面之间" */
+  M.SURF_CAM_EL = 1.0;         /* 初始仰角（弧度）≈ 57° */
+  M._surfOrbitYaw = 0;         /* 绕过角色一圈（右键拖） */
   M._surfCamE1 = null;         /* 水平基准，进地表定一次、之后固定（走动时画面不旋转） */
   /* ============================================================
    * v158.26（老板「为啥移动整个世界都在动，而不是相机+人物移动」）
@@ -9165,27 +9262,25 @@
     if (e1.lengthSq() < 1e-9) e1.set(1, 0, 0).addScaledVector(up, -up.x);
     e1.normalize();
     var e2 = new THREE.Vector3().crossVectors(up, e1).normalize();
-    /* v158.27：与拖拽下限一致（0.42 ≈ 24°）—— 低于这个角，镜头会贴地被人自己的城挡住。 */
-    var el = Math.max(0.42, Math.min(1.35, M.SURF_CAM_EL));
+    /* v158.39：仰角下限从 0.42 放到 0.06，同时把距离改成仰角的单调函数。
+       高仰角仍是 16m 俯视；抬头到最低仰角时只剩 3.2m，机位落在眼高与地面之间。 */
+    var elMin = Math.max(0.001, Math.min(M.SURF_CAM_EL_MIN, M.SURF_CAM_EL_MAX));
+    var elMax = Math.max(elMin, M.SURF_CAM_EL_MAX);
+    var el = Math.max(elMin, Math.min(elMax, M.SURF_CAM_EL));
     var ay = M._surfOrbitYaw;
-    var dirCam = up.clone().multiplyScalar(Math.sin(el))
-      .addScaledVector(e1, Math.cos(el) * Math.cos(ay))
-      .addScaledVector(e2, Math.cos(el) * Math.sin(ay));
-
-    /* ============================================================
-     * v158.35（老板「操作上达到星露谷的标准了吗」）
-     * ------------------------------------------------------------
-     * WASD 必须是**屏幕方向**：按 W 往画面上方走，不管人物朝哪。
-     * 屏幕前方 = 镜头看进去的那一侧 = `-dirCam` 在切平面上的分量。
-     * 每帧写一次，`stepAvatar` 读它当输入基底（相机绕到哪，W 就跟着变）。
-     * ============================================================ */
-    var _hf = dirCam.clone().addScaledVector(up, -dirCam.dot(up));
-    if (_hf.lengthSq() > 1e-6) {
-      _hf.normalize().negate();
-      M._surfFwdW = [_hf.x, _hf.y, _hf.z];
-    } else {
-      M._surfFwdW = null;      /* 正俯视（镜头在正上方）：退化，stepAvatar 退回人物朝向 */
+    function _dcamOf(e) {
+      return up.clone().multiplyScalar(Math.sin(e))
+        .addScaledVector(e1, Math.cos(e) * Math.cos(ay))
+        .addScaledVector(e2, Math.cos(e) * Math.sin(ay));
     }
+    function _distOf(e) {
+      var s0 = Math.sin(elMin), s1 = Math.sin(elMax);
+      var t = (Math.sin(e) - s0) / Math.max(1e-6, s1 - s0);
+      t = Math.max(0, Math.min(1, t));
+      return M.SURF_CAM_MIN_DIST + (M.SURF_CAM_DIST - M.SURF_CAM_MIN_DIST) * Math.pow(t, 0.75);
+    }
+    var dirCam = _dcamOf(el);
+    var camDist = _distOf(el);
 
     /* ---- 镜头锚点：走动时滞后，停下立刻归位 ---- */
     var _dt = Math.max(0.001, Math.min(0.05, M._lastAvDt || 0.016));
@@ -9202,7 +9297,34 @@
       M._surfCamAnchor.multiplyScalar(R2 / _aL);
     }
     var A = M._surfCamAnchor;
-    cam.position.copy(A).addScaledVector(dirCam, M.SURF_CAM_DIST);
+    var pos = A.clone().addScaledVector(dirCam, camDist);
+
+    /* 地面硬闸（v158.39 终版）：既要贴地看人，又不能钻进坡地。
+       不能靠"抬高仰角"解决——坡地上会把 0.06rad 顶到 0.75、距离拉回 10m。
+       正确做法是**保持方向、只把径向抬到地面之上**：水平距离仍是 3m 级，
+       镜头正下方若有更高的坡，就沿径向补那几米，不会穿地也不会甩远。 */
+    var _gdir = new THREE.Vector3(d[0], d[1], d[2]).normalize();
+    var _pFloor = M._groundAtUnit([_gdir.x, _gdir.y, _gdir.z]);
+    var _pr0 = pos.length() || 1;
+    var _cdir = pos.clone().multiplyScalar(1 / _pr0);
+    var _cFloor = M._groundAtUnit([_cdir.x, _cdir.y, _cdir.z]);
+    var _floorR = M.R + Math.max(_pFloor, _cFloor) + M.SURF_CAM_GROUND_GAP;
+    if (_pr0 < _floorR) pos.multiplyScalar(_floorR / _pr0);
+
+    /* ============================================================
+     * v158.35（老板「操作上达到星露谷的标准了吗」）
+     * WASD 必须是**屏幕方向**：按 W 往画面上方走，不管人物朝哪。
+     * 必须在地面硬闸之后再算，否则被抬高的机位会让 W 方向差几度。
+     * ============================================================ */
+    var _hf = dirCam.clone().addScaledVector(up, -dirCam.dot(up));
+    if (_hf.lengthSq() > 1e-6) {
+      _hf.normalize().negate();
+      M._surfFwdW = [_hf.x, _hf.y, _hf.z];
+    } else {
+      M._surfFwdW = null;      /* 正俯视（镜头在正上方）：退化，stepAvatar 退回人物朝向 */
+    }
+
+    cam.position.copy(pos);
     cam.up.copy(up);
     /* 看**锚点**而不是玩家：玩家因此在画面里偏向前进方向（约 5% 屏高），
        走动时"人真的在走"，停下后锚点归位、玩家回到正中。 */
@@ -10336,42 +10458,24 @@
        * 顺序必须是「整平工具 → 放置 → 选格」：
        *   铲子/物品都是"手持态"，谁在手谁优先；都没拿才是选格看信息。
        * ============================================================ */
+      /* v158.39：建筑工具 —— 真正扣资源、排施工队的采集场也接进建造栏。
+         资源类型由地块自身决定，玩家不用记"哪种房子配哪种地"。 */
+      if (GAME.ui && GAME.ui._plantTool) {
+        var _ciPlant = -1;
+        try { _ciPlant = pickCiByRay(rc, _hp); } catch (ePL0) { _ciPlant = -1; }
+        var _pr = GAME.quickBuildPlant
+          ? GAME.quickBuildPlant(_ciPlant)
+          : { ok: false, msg: '当前版本没有采集场快速建造' };
+        if (GAME.ui.toast) GAME.ui.toast(_pr.ok ? _pr.msg : ('⚠ ' + _pr.msg));
+        if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+        return;
+      }
       if (GAME.place && GAME.ui && GAME.ui._placeItem) {
-        /* 格号必须和"幽灵"用同一个出口（pickCiByRay），否则会出现
-           "幽灵在这里、东西落到隔壁"（早期版本就是两套换算法打架）。 */
-        var _ciP = -1;
-        try { _ciP = pickCiByRay(rc, _hp); } catch (eP) { _ciP = -1; }
-        if (_ciP < 0 && _gpB) {
-          var _Lp = Math.hypot(_gpB.x != null ? _gpB.x : _gpB[0],
-            _gpB.y != null ? _gpB.y : _gpB[1],
-            _gpB.z != null ? _gpB.z : _gpB[2]) || 1;
-          try {
-            _ciP = nearestCell([
-              (_gpB.x != null ? _gpB.x : _gpB[0]) / _Lp,
-              (_gpB.y != null ? _gpB.y : _gpB[1]) / _Lp,
-              (_gpB.z != null ? _gpB.z : _gpB[2]) / _Lp]);
-          } catch (eP2) { _ciP = -1; }
-        }
-        {
-          var _gP = _gpB ? M.gridAt(_gpB) : null;
-          if (!_gP && _ciP >= 0) {
-            var _cP = (SP.cells && SP.cells[_ciP]) || null;
-            if (_cP && _cP.dir) _gP = M.gridAt(_cP.dir);
-          }
-          if (_gP) {
-            var _itP = GAME.place.item(GAME.ui._placeItem);
-            var _rP = GAME.place.add(_gP.i, _gP.j, GAME.ui._placeItem, { yaw: M.PLACE_YAW || 0 });
-            if (GAME.ui.toast) {
-              GAME.ui.toast(_rP.ok
-                ? ('🧱 已放下：' + (_itP ? _itP.name : GAME.ui._placeItem))
-                : ('⚠ ' + _rP.msg));
-            }
-            /* 放完继续拿着（连建是常态），幽灵下一帧会跟着鼠标重新出现 */
-            M._ghostCi = -1; M._ghostIJ = null;
-            if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-            return;
-          }
-        }
+        /* v158.39：幽灵、点击、拖铺共用 placeAtPoint 唯一出口；
+           旧版这里内联 place.add，拖铺又写第二份，极易一边改一边漏。 */
+        var _rP = M.placeAtPoint(_gpB, { silent: false });
+        if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+        return;
       }
       /* v157.15：手上是整平工具 → 这一下是"刷地"，不是"选格" */
       if (M.TOOL === M.TOOL_TERRACE) {
@@ -30334,9 +30438,10 @@
       '<div id="build-bar" class="build-bar"' + (_isBuild ? '' : ' hidden') + '>' +
         '<div class="bb-tabs">' +
           '<button class="bb-tab on" data-action="bb-tab" data-bbtab="item">🎒 物品</button>' +
+          '<button class="bb-tab" data-action="bb-tab" data-bbtab="plant">建筑</button>' +
           '<button class="bb-tab" data-action="bb-tab" data-bbtab="tool">🔨 工具</button>' +
           '<button class="bb-tab" data-action="bb-tab" data-bbtab="bag">📦 背包</button>' +
-          '<span class="bb-hint" id="bb-hint">悬停选格 · 左键放置</span>' +
+          '<span class="bb-hint" id="bb-hint">按住左键连铺 · 右键放下</span>' +
         '</div>' +
         '<div class="bb-slots" id="bb-slots">' +
           (function () {
@@ -30408,6 +30513,14 @@
         '<button class="bb-slot lv" data-action="terrace-none" title="当前目标层：地面会被削/填到这一层">' + lv + '<i>层</i></button>' +
         '<button class="bb-slot" data-action="terrace-lv" data-d="1" title="目标层 +1（每层 1 米）">＋<i>升</i></button>' +
         '<button class="bb-slot" data-action="terrace-clear" title="复原：把走过的格恢复成自然地形">↩<i>复原</i></button>';
+    } else if (tab === 'plant') {
+      /* v158.39：真正扣资源、进施工队的采集场也进建造栏。
+         只放一个"采集场"工具：点哪块资源地，由地块资源反查对应建筑。 */
+      var onP = !!ui._plantTool;
+      var hP = '<button class="bb-slot' + (onP ? ' on' : '') + '" data-action="plant-pick"'
+        + ' title="点资源地就按资源类型自动建对应采集场（扣资源、进施工队列）">建造<i>采集场</i></button>';
+      if (onP) hP += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的建筑">收工<i>放下</i></button>';
+      host.innerHTML = hP;
     } else if (tab === 'item') {
       /* ============================================================
        * v157.18：物品页签接上**已有的**放置目录（GAME.place）
@@ -30436,7 +30549,7 @@
       h2 += '<button class="bb-slot" data-action="place-open" title="全部物品 + 已放置清单">⋯<i>更多</i></button>';
       /* 手上有东西时给一个"收工" —— 成熟建造游戏都有一键放下的出口，
          不能只靠"再点一次同一件"（玩家记不住）。 */
-      if (curP) {
+      if (curP || ui._plantTool) {
         h2 += '<button class="bb-slot" data-action="place-rot-hand" title="旋转 45°（快捷键 R）">↻<i>转'
           + (M.PLACE_YAW ? (' ' + M.PLACE_YAW + '°') : '') + '</i></button>';
         h2 += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的东西">✋<i>收工</i></button>';
@@ -40742,8 +40855,9 @@ ui.openDuel = function (fid, moveId) {
         var all = document.querySelectorAll('.bb-tab');
         for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === tb);
         var hEl = document.getElementById('bb-hint');
-        if (hEl) hEl.textContent = (tab === 'item' ? '选一件物品拿在手上'
-          : (tab === 'tool' ? '工具：点 ⛰ 整平，然后按住左键在地面拖动' : '背包：已放置物一览'));
+        if (hEl) hEl.textContent = (tab === 'item' ? '物品：按住左键连铺 · 右键放下'
+          : (tab === 'plant' ? '建筑：点采集场 → 点资源地，自动配建筑并排队施工'
+            : (tab === 'tool' ? '工具：点 ⛰ 整平，然后按住左键在地面拖动' : '背包：已放置物一览')));
         /* v157.15：工具页签换成整平工具组（只重写 #bb-slots，不动 canvas） */
         if (ui.renderBuildBar) ui.renderBuildBar(tab);
       })(); break;
@@ -40821,6 +40935,20 @@ ui.openDuel = function (fid, moveId) {
         if (h3) h3.textContent = '复原：按住左键拖过要还原的格子（恢复自然地形）';
         ui.toast('↩ 复原刷 —— 拖过的格恢复自然地形');
       })(); break;
+      /* v158.39：采集场快建 —— 建造模式里也能"拿建筑 → 点地 → 施工"，
+         不必先开地块面板再认资源种类。真扣费/真排队仍走 GAME.quickBuildPlant。 */
+      case 'plant-pick': (function () {
+        var M = GAME.map3d;
+        ui._plantTool = !ui._plantTool;
+        if (ui._plantTool) {
+          ui._placeItem = null;
+          if (M && M.setTool) M.setTool(M.TOOL_NONE);
+          if (M && M.clearGhost) M.clearGhost();
+        }
+        if (M && M.gridHighlight) M.gridHighlight(null);
+        if (ui.renderBuildBar) ui.renderBuildBar('plant');
+        ui.toast(ui._plantTool ? '已拿采集场 —— 点资源地就按资源类型自动施工（右键放下）' : '已放下建筑工具');
+      })(); break;
       case 'bb-slot':
         ui.toast('建造格还没接物品：下一步做"选物品 → 点格落地"');
         break;
@@ -40831,6 +40959,7 @@ ui.openDuel = function (fid, moveId) {
         var _pid2 = el.getAttribute('data-item');
         if (!GAME.place || !GAME.place.item(_pid2)) { ui.toast('没有这种东西可放'); break; }
         ui._placeItem = (ui._placeItem === _pid2) ? null : _pid2;    /* 再点一次同一件 = 放下 */
+        ui._plantTool = false;                                    /* 一只手只能拿一样 */
         /* 一只手只能拿一样：拿物品就把铲子收起来，否则会出现"拿着树苗拖整平" */
         if (ui._placeItem && GAME.map3d && GAME.map3d.setTool) {
           GAME.map3d.setTool(GAME.map3d.TOOL_NONE);
@@ -40846,8 +40975,9 @@ ui.openDuel = function (fid, moveId) {
         break;
       }
       case 'place-cancel': {
-        ui._placeItem = null;
-        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; GAME.map3d._ghostIJ = null; }
+        /* v158.39：按钮 / 右键 / 快捷键都走同一个放下出口，不许各清一半。 */
+        if (GAME.map3d && GAME.map3d.cancelHeldBuild) GAME.map3d.cancelHeldBuild();
+        else { ui._placeItem = null; ui._plantTool = false; }
         if (ui.renderMapCanvas) ui.renderMapCanvas();
         break;
       }

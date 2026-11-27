@@ -46346,10 +46346,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /wonderwar\.claim\(pid/.test(seg.slice(0, 3000));
     })());
 
-    check('§576⑥ 点迷雾格 → 开出征面板（不是只弹一句话）', (function () {
-      var m3 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'map3d.js'), 'utf8');
-      var seg = m3.slice(m3.indexOf('if (fogHides(ci))'));
-      return /openExpModal\(\{ kind: 'wild', ci: ci \}/.test(seg.slice(0, 900));
+    /* v158.38 规则变更（旧断言不删，按新口径重写）：老板「统一」后，点迷雾格
+       不再直接开出征面板，而是先弹「未探明地块」一级面板，点「派队探索」才进出征。
+       旧断言钉 `openExpModal({ kind:'wild' })` 直达，已失效——降级成了实现类待修。
+       补正确口径：雾格 → openFogModalCi 一级面板 → exp-open → doOpenExp → openExpModal。 */
+    check('§576⑥ 点迷雾格 → 先弹未探明一级面板（派队探索才进出征，不是直弹出征/一句话）', (function () {
+      var fs576 = require('fs'), ph576 = require('path');
+      var m3 = fs576.readFileSync(ph576.join(__dirname, 'js', 'map3d.js'), 'utf8');
+      var um = fs576.readFileSync(ph576.join(__dirname, 'js', 'ui-mapui.js'), 'utf8');
+      var seg = m3.slice(m3.indexOf('if (fogHides(ci))'), m3.indexOf('if (fogHides(ci))') + 900);
+      /* pickAt 雾分支不再直调 openExpModal，改走 openCellPanel；一级面板出口是 openFogModalCi */
+      return /if \(fogHides\(ci\)\) \{[\s\S]{0,400}?M\.openCellPanel\(ci\)/.test(seg)
+        && !/openExpModal\(\{ kind: 'wild', ci: ci \}/.test(seg)
+        && /ui\.openFogModalCi = function/.test(um);
     })());
 
     check('§576⑦ 一键出征：动作注册 + 唯一出口（march.dispatch）', (function () {
@@ -48075,9 +48084,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        现在右键驱动的是跟随镜头真读的两个量，且**仍不夹 ±90°**（水平可绕任意圈）。 */
     check('§600③ 地表右键驱动跟随镜头（orbitYaw + 俯角），不再写没人读的 _surfDir',
       /M\._surfOrbitYaw -= _dx \* 0\.0035/.test(mV)
-        && /M\.SURF_CAM_EL = Math\.max\(0\.42, Math\.min\(1\.35/.test(mV)
+        && /M\.SURF_CAM_EL = Math\.max\(M\.SURF_CAM_EL_MIN, Math\.min\(M\.SURF_CAM_EL_MAX/.test(mV)
         && !/_surfDir = _dS;/.test(mV),
-      'lookDrag 的地表分支');
+      'lookDrag 的地表分支（v158.39 仰角夹取改用具名常量）');
     check('§600④ 地表右键放开、轨道仍限 ±89°',
       /if \(M\._surf\) \{[\s\S]{0,400}?M\._surfHold = true/.test(mV)
         && /Math\.max\(-1\.55, Math\.min\(1\.55, _lp\)\)/.test(mV),
@@ -48100,10 +48109,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /var list = _brushList\(g\.i, g\.j\)/.test(mW)
         && /for \(var k = 0; k < list\.length; k\+\+\) \{[\s\S]{0,140}?terrain\.paint/.test(mW),
       'brush 分支');
-    check('§599② 朝向贯通：幽灵接收 (i,j,yaw) + 落位写入 yaw',
+    /* v158.39 规则变更：落位从 pickAt 内联搬到 placeAtPoint 唯一出口
+       （点击/拖铺共用），断言改为钉住这个出口，不放宽 yaw 链路。 */
+    check('§599②（v158.39 口径）朝向贯通：幽灵接收 (i,j,yaw) + 唯一落位出口写入 yaw',
       /M\.ghost = function \(itemId, i, j, yaw\)/.test(mW)
-        && /place\.add\(_gP\.i, _gP\.j, GAME\.ui\._placeItem, \{ yaw: M\.PLACE_YAW \|\| 0 \}\)/.test(mW),
-      'yaw 链路');
+        && /M\.placeAtPoint = function \(pt, opt\)/.test(mW)
+        && /place\.add\(_gP\.i, _gP\.j, GAME\.ui\._placeItem, \{ yaw: M\.PLACE_YAW \|\| 0 \}\)/.test(mW)
+        && (mW.match(/place\.add\(_gP\.i, _gP\.j/g) || []).length === 1,
+      'yaw 链路（单一落位出口）');
   })();
 
   /* ============================================================
@@ -48117,11 +48130,26 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fsZ = require('fs'), pZ = require('path');
     var mZ = fsZ.readFileSync(pZ.join(__dirname, 'js', 'map3d.js'), 'utf8');
-    var b0 = mZ.indexOf('if (M.mode === M.MODE_BUILD) {');
-    var b1 = mZ.indexOf('if (M.TOOL === M.TOOL_TERRACE)', b0);
-    var segZ = (b0 >= 0 && b1 > b0) ? mZ.slice(b0, b1) : '';
-    check('§598① 建造模式点击：先判"手里有物品"，再判"整平铲"',
-      segZ.length > 500 && /_placeItem/.test(segZ) && /place\.add/.test(segZ),
+    /* v158.39 规则变更：点击/拖铺统一走 M.placeAtPoint，pickAt 不再内联 place.add；
+       且建造分支现在"采集场工具(quickBuildPlant) → 物品(placeAtPoint) → 整平铲(TOOL_TERRACE)"
+       三段依次分派。旧断言用 indexOf 取第一个 `if (M.mode === M.MODE_BUILD) {`，
+       会命中 pickAt 之外更早的同名分支，段长爆炸（106066 字符）、段内容错位。
+       重写：用 pickAt 建造分支独有的锚点 `_gpB = M.pickGroundPoint(rc)` 定位，
+       并钉住三段顺序 + 唯一落位出口 + 不许再内联 place.add。 */
+    var _pkAt = mZ.indexOf('var _gpB = M.pickGroundPoint(rc);');
+    var _pkEnd = mZ.indexOf('var ci = pickCiByRay(rc, _hp);', _pkAt);
+    var segZ = (_pkAt >= 0 && _pkEnd > _pkAt) ? mZ.slice(_pkAt, _pkEnd) : '';
+    check('§598①（v158.39 口径）建造模式点击：先判手持采集场/物品，再判整平铲，落位走唯一出口',
+      segZ.length > 300 && segZ.length < 6000
+      && /_plantTool/.test(segZ) && /_placeItem/.test(segZ)
+      && /M\.placeAtPoint\(_gpB, \{ silent: false \}\)/.test(segZ)
+      && /GAME\.quickBuildPlant\(_ciPlant\)/.test(segZ)
+      && /if \(M\.TOOL === M\.TOOL_TERRACE\)/.test(segZ)
+      /* 三段顺序：采集场 → 物品 → 整平铲 */
+      && segZ.indexOf('_plantTool') < segZ.indexOf('M.placeAtPoint(_gpB')
+      && segZ.indexOf('M.placeAtPoint(_gpB') < segZ.indexOf('if (M.TOOL === M.TOOL_TERRACE)')
+      /* 不许内联 place.add 调用（带左括号），但注释里"旧版内联 place.add"是合法说明文字 */
+      && !/place\.add\(/.test(segZ),
       '段长 ' + segZ.length);
     var seat = mZ.slice(mZ.indexOf('function seatProp'), mZ.indexOf('function buildPlacements'));
     check('§598② 物品落座 = groundHAt + 砖厚（含整平台面）',
@@ -50872,13 +50900,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return i > 0 && j > i && (j - i) < 400;
   })());
 
-  check('§616③ 边缘带宽/速度常量在册，且「不在边缘就 return」', (function () {
-    var i = _m3d608.indexOf('function _tickEdgePan');
-    var blk = i >= 0 ? _m3d608.slice(i, i + 900) : '';
-    return /M\.EDGE_PAN = 1;/.test(_m3d608)
-      && /M\.EDGE_PAN_BAND = 0\.055;/.test(_m3d608)
-      && /M\.EDGE_PAN_SPEED = 1\.0;/.test(_m3d608)
+  /* v158.39 规则变更（旧断言不删，按新口径重写）：旧版把地表边缘推镜实现成
+     「绕角色改 orbitYaw / SURF_CAM_EL」，老板明确要求取消边缘转换角度。
+     新口径：地表边缘带不再写任何镜头角度；高空边缘推镜保持原状。 */
+  check('§616③（v158.39 口径）边缘带常量在册，地表边缘不改角度、高空仍推镜', (function () {
+    var src = stripComment(_m3d608);
+    var i = src.indexOf('function _tickEdgePan');
+    var blk = i >= 0 ? src.slice(i, i + 1200) : '';
+    var si = blk.indexOf('if (M._surf) {');
+    var ei = si >= 0 ? blk.indexOf('} else {', si) : -1;
+    var surfBlk = si >= 0 && ei > si ? blk.slice(si, ei) : '';
+    return /M\.EDGE_PAN = 1;/.test(src)
+      && /M\.EDGE_PAN_BAND = 0\.055;/.test(src)
+      && /M\.EDGE_PAN_SPEED = 1\.0;/.test(src)
       && /if \(!dx && !dy\) return false;/.test(blk)
+      && /if \(M\._surf\) \{[\s\S]{0,260}?return false;/.test(surfBlk)
+      && !/_surfOrbitYaw|SURF_CAM_EL/.test(surfBlk)
+      && /camO\.yaw \+= dx \* 0\.9 \* k/.test(blk)
+      && /camO\.pitch = Math\.max\(-1\.55, Math\.min\(1\.55/.test(blk)
       /* 反向守卫：tick 里不许再叫 renderMapCanvas（会递归进渲染循环，实测 Δyaw 651 rad） */
       && !/renderMapCanvas/.test(blk)
       && !/touch\(\)/.test(blk);        /* touch 在闭包里，模块作用域调它 = ReferenceError */
@@ -50893,8 +50932,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {                    /* 数值面：0.3 秒 ≈ 14°，且方向可解释 */
     var perSec = 0.9;               /* 水平角速度（rad/s） */
     var deg = perSec * 0.3 * 180 / Math.PI;
-    check('§616⑤ 数值面：贴边 0.3 秒转 12~17°（不是瞬移，也不是没反应）',
-      deg > 12 && deg < 17, '0.3s = ' + deg.toFixed(2) + '°');
+    check('§616⑤（v158.39 口径）数值面：高空贴边 0.3 秒转 12~17°，地表贴边 0°',
+      deg > 12 && deg < 17
+      && /if \(M\._surf\) \{[\s\S]{0,260}?return false;/.test(stripComment(_m3d608)),
+      '0.3s = ' + deg.toFixed(2) + '° · 地表无角度写入');
   })();
 
   /* ============================================================
@@ -50930,13 +50971,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return inOrbit && noHeadTurn && /if \(M\._rmbOrbit\) \{/.test(src);
   })());
 
-  check('§615② 地表右键驱动镜头真读的两个量（orbitYaw + SURF_CAM_EL）', (function () {
+  /* v158.39 规则变更：右键的 orbitYaw / SURF_CAM_EL 语义不变，但仰角上下限
+     抽成具名常量（0.06 ~ 1.35），不再写死 0.42。旧断言按新口径重写。 */
+  check('§615②（v158.39 口径）地表右键驱动镜头真读的两个量（orbitYaw + 具名仰角夹取）', (function () {
     var i = _m3d608.indexOf('if (M._surf) {', _m3d608.indexOf('if (lookDrag) {'));
     if (i < 0) return false;
     var blk = _m3d608.slice(i, i + 1400);
     return /M\._surfOrbitYaw -= _dx \* 0\.0035/.test(blk)
-      && /SURF_CAM_EL = Math\.max\(0\.42, Math\.min\(1\.35/.test(blk)
-      && /M\._surfHold = true;/.test(blk);
+      && /SURF_CAM_EL = Math\.max\(M\.SURF_CAM_EL_MIN, Math\.min\(M\.SURF_CAM_EL_MAX/.test(blk)
+      && /M\._surfHold = true;/.test(blk)
+      && /M\.SURF_CAM_EL_MIN = 0\.06;/.test(_m3d608)
+      && /M\.SURF_CAM_EL_MAX = 1\.35;/.test(_m3d608);
   })());
 
   check('§615③ 右键松手永不当「点击选格」（否则松手就把小人送过去）', (function () {
@@ -50963,13 +51008,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   走动时玩家在画面里真的往前挪约 5~7% 屏高，停下迅速归位。
    * ============================================================ */
   check('§614① 镜头锚点会在走动时滞后（不是硬贴玩家）', (function () {
-    var _m614 = _m3d608.match(/M\._surfAvatarCam = function[\s\S]*?\n  \};/);
-    var blk = _m614 ? _m614[0] : '';
+    /* v158.39 规则变更：相机机位从 `cam.position.copy(A)`（锚点直接当机位）改成
+       `pos = A + dirCam*camDist` 再经地面硬闸后 `cam.position.copy(pos)`。
+       锚点滞后语义不变（lerp + 贴回球壳），只是最后落位从 A 变成 pos。
+       旧正则用非贪婪 `[\s\S]*?\n  };` 还会被函数内第一个块提前截断，
+       导致 blk 不含真正的落位行。这里改用「锚点滞后那三行」+「落位走 pos」两处独立钉。 */
+    var i = _m3d608.indexOf('M._surfAvatarCam = function');
+    var j = _m3d608.indexOf('M.playerPose = function', i);
+    var blk = i >= 0 && j > i ? _m3d608.slice(i, j) : '';
     return /M\.SURF_CAM_LAG = 0\.26/.test(_m3d608)
       && /M\.SURF_CAM_LAG_STOP = 0\.07/.test(_m3d608)
       && /M\._surfCamAnchor\.lerp\(P/.test(blk)
       && /_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk)   /* 贴回球壳，不许往地里沉 */
-      && /cam\.position\.copy\(A\)/.test(blk);
+      && /cam\.position\.copy\(pos\)/.test(blk);                    /* 落位走地面硬闸后的 pos */
   })());
 
   (function () {                    /* 外层只算，判定交给唯一的 check（避免同名双条） */
@@ -51344,6 +51395,81 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var own = blk.indexOf("kind === 'own'");
     return fog >= 0 && own > fog && /ui\.openFogModalCi\(ci\)/.test(blk)
       && !/openExpModal/.test(blk);
+  })());
+
+  /* ============================================================
+   * §622 v158.39 · 戴森球式建造 / 取消边缘转角度 / 抬头不钻地
+   * ------------------------------------------------------------
+   * 老板原话：
+   *   「找个办法让在大地图上建造更加容易。就是类似戴森球计划那种模式。
+   *     取消边缘转换角度
+   *     向上看时，相机位置不要沉入地下，相机与人的距离缩短，最终在眼睛与地面之间」
+   * 基线探针 p_cam_build_baseline：地表边缘 42 tick 改 yaw 0.63；右键上拖
+   * el 1.0→0.611 但距离恒 16m、离地 6m；手持 tree 左键拖一件都不放、右键不取消。
+   * 修后：地表边缘 0 角度写入；低仰角距离缩到 3.2m 且有地面硬闸；
+   *       点击/拖铺/取消/采集场快建全部接唯一出口。
+   * ============================================================ */
+  var _dmn622 = _r608('js/domain.js');
+  check('§622① 抬头机位：仰角下限/上限/最短距离/离地硬隙都是具名常量', (function () {
+    var src = _m3d608;
+    return /M\.SURF_CAM_MIN_DIST = 3\.2;/.test(src)
+      && /M\.SURF_CAM_EL_MIN = 0\.06;/.test(src)
+      && /M\.SURF_CAM_EL_MAX = 1\.35;/.test(src)
+      && /M\.SURF_CAM_GROUND_GAP = 0\.12;/.test(src)
+      && !/Math\.max\(0\.42, Math\.min\(1\.35/.test(src);
+  })());
+
+  (function () {
+    var lo = 0.06, hi = 1.35, dMin = 3.2, dMax = 16;
+    function distOf(e) {
+      var s0 = Math.sin(lo), s1 = Math.sin(hi);
+      var t = Math.max(0, Math.min(1, (Math.sin(e) - s0) / Math.max(1e-6, s1 - s0)));
+      return dMin + (dMax - dMin) * Math.pow(t, 0.75);
+    }
+    var dLow = distOf(lo), dHigh = distOf(hi), dMid = distOf(0.6);
+    check('§622② 数值面：最低仰角距离缩到 3.2m 且随仰角单调增大（不是恒 16m）',
+      Math.abs(dLow - dMin) < 1e-6 && Math.abs(dHigh - dMax) < 1e-6
+      && dMin < dMid && dMid < dMax,
+      'd(0.06)=' + dLow.toFixed(2) + ' · d(0.6)=' + dMid.toFixed(2) + ' · d(1.35)=' + dHigh.toFixed(2));
+  })();
+
+  check('§622③ 相机地面硬闸：先量 _groundAtUnit，抬角修正后再写 cam.position', (function () {
+    var i = _m3d608.indexOf('M._surfAvatarCam = function');
+    var j = _m3d608.indexOf('M.playerPose = function', i);
+    var blk = i >= 0 && j > i ? _m3d608.slice(i, j) : '';
+    var f = blk.indexOf('var _floorR =');
+    var p = blk.indexOf('cam.position.copy(pos)');
+    return /M\._groundAtUnit\(\[_gdir\.x, _gdir\.y, _gdir\.z\]\)/.test(blk)
+      && /M\._groundAtUnit\(\[_cdir\.x, _cdir\.y, _cdir\.z\]\)/.test(blk)
+      && /Math\.max\(_pFloor, _cFloor\)/.test(blk)
+      && /M\.SURF_CAM_GROUND_GAP/.test(blk)
+      && f > 0 && p > f
+      && /if \(_pr0 < _floorR\) pos\.multiplyScalar\(_floorR \/ _pr0\)/.test(blk)
+      && !/cam\.position\.copy\(A\)\.addScaledVector\(dirCam, M\.SURF_CAM_DIST\)/.test(blk);
+  })());
+
+  check('§622④ 建造唯一出口：点击/拖铺共用 placeAtPoint，取消共用 cancelHeldBuild', (function () {
+    var src = stripComment(_m3d608);
+    return /M\.placeAtPoint = function \(pt, opt\)/.test(src)
+      && /M\.cancelHeldBuild = function \(\)/.test(src)
+      && (src.match(/place\.add\(_gP\.i, _gP\.j/g) || []).length === 1
+      && /M\.placeAtPoint\(gpHold, \{ silent: false \}\)/.test(src)
+      && /M\.placeAtPoint\(gpP, \{ silent: true, dedupe: true \}\)/.test(src)
+      && /M\.placeAtPoint\(_gpB, \{ silent: false \}\)/.test(src)
+      && /M\.cancelHeldBuild\(\)/.test(src)
+      && /M\.pickGroundPoint\(rc0\)/.test(src);   /* 幽灵与落位同一条拾取射线 */
+  })());
+
+  check('§622⑤ 右键放下 + 采集场快建：入口/出口贯通，资源类型不靠玩家猜', (function () {
+    return /e\.button === 2[\s\S]{0,220}M\.cancelHeldBuild\(\)/.test(_m3d608)
+      && /case 'plant-pick'/.test(_mn608)
+      && /ui\._plantTool = !ui\._plantTool/.test(_mn608)
+      && /ui\._plantTool = false/.test(_mn608)
+      && /data-bbtab="plant"/.test(_sp608)
+      && /data-action="plant-pick"/.test(_sp608)
+      && /GAME\.quickBuildPlant = function \(ci, cityId\)/.test(_dmn622)
+      && /DATA\.EXT_BUILDINGS\[k\]\.res === rec\.res/.test(_dmn622)
+      && /return GAME\.buildPlant\(ci, eid, city\.id\)/.test(_dmn622);
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

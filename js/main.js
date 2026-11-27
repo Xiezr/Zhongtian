@@ -1649,8 +1649,9 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         var all = document.querySelectorAll('.bb-tab');
         for (var i = 0; i < all.length; i++) all[i].classList.toggle('on', all[i] === tb);
         var hEl = document.getElementById('bb-hint');
-        if (hEl) hEl.textContent = (tab === 'item' ? '选一件物品拿在手上'
-          : (tab === 'tool' ? '工具：点 ⛰ 整平，然后按住左键在地面拖动' : '背包：已放置物一览'));
+        if (hEl) hEl.textContent = (tab === 'item' ? '物品：按住左键连铺 · 右键放下'
+          : (tab === 'plant' ? '建筑：点采集场 → 点资源地，自动配建筑并排队施工'
+            : (tab === 'tool' ? '工具：点 ⛰ 整平，然后按住左键在地面拖动' : '背包：已放置物一览')));
         /* v157.15：工具页签换成整平工具组（只重写 #bb-slots，不动 canvas） */
         if (ui.renderBuildBar) ui.renderBuildBar(tab);
       })(); break;
@@ -1728,6 +1729,20 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (h3) h3.textContent = '复原：按住左键拖过要还原的格子（恢复自然地形）';
         ui.toast('↩ 复原刷 —— 拖过的格恢复自然地形');
       })(); break;
+      /* v158.39：采集场快建 —— 建造模式里也能"拿建筑 → 点地 → 施工"，
+         不必先开地块面板再认资源种类。真扣费/真排队仍走 GAME.quickBuildPlant。 */
+      case 'plant-pick': (function () {
+        var M = GAME.map3d;
+        ui._plantTool = !ui._plantTool;
+        if (ui._plantTool) {
+          ui._placeItem = null;
+          if (M && M.setTool) M.setTool(M.TOOL_NONE);
+          if (M && M.clearGhost) M.clearGhost();
+        }
+        if (M && M.gridHighlight) M.gridHighlight(null);
+        if (ui.renderBuildBar) ui.renderBuildBar('plant');
+        ui.toast(ui._plantTool ? '已拿采集场 —— 点资源地就按资源类型自动施工（右键放下）' : '已放下建筑工具');
+      })(); break;
       case 'bb-slot':
         ui.toast('建造格还没接物品：下一步做"选物品 → 点格落地"');
         break;
@@ -1738,6 +1753,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         var _pid2 = el.getAttribute('data-item');
         if (!GAME.place || !GAME.place.item(_pid2)) { ui.toast('没有这种东西可放'); break; }
         ui._placeItem = (ui._placeItem === _pid2) ? null : _pid2;    /* 再点一次同一件 = 放下 */
+        ui._plantTool = false;                                    /* 一只手只能拿一样 */
         /* 一只手只能拿一样：拿物品就把铲子收起来，否则会出现"拿着树苗拖整平" */
         if (ui._placeItem && GAME.map3d && GAME.map3d.setTool) {
           GAME.map3d.setTool(GAME.map3d.TOOL_NONE);
@@ -1753,8 +1769,9 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         break;
       }
       case 'place-cancel': {
-        ui._placeItem = null;
-        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; GAME.map3d._ghostIJ = null; }
+        /* v158.39：按钮 / 右键 / 快捷键都走同一个放下出口，不许各清一半。 */
+        if (GAME.map3d && GAME.map3d.cancelHeldBuild) GAME.map3d.cancelHeldBuild();
+        else { ui._placeItem = null; ui._plantTool = false; }
         if (ui.renderMapCanvas) ui.renderMapCanvas();
         break;
       }
