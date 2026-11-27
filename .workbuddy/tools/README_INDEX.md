@@ -7,7 +7,7 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 116 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `asset/` | 118 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
 | `audit/` | 42 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 22 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `fast/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
@@ -438,15 +438,15 @@
 | `gltf/node_modules/wrap-ansi/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
 | `map/` | 2 | **动手前的第一站**：`gen_index.js` 扫源码生成 `js/modules.json`（唯一权威模块清单）与 `.workbuddy/index/project-index.json`（符号/断言/资产/标定表）；`who.js <关键词>` 反查"改哪里、波及什么、跑哪条验证"。铁律：索引必须被构建与审计消费，过期由 smoke §591 报红。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 1261 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 1278 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `play/` | 1 | **不在 gate 三件套内，按需手动跑**。`lifecycle_v89121.js` = 全玩法链路体检（渠道 / 锻造 / 宝物等分组核验，交付文档的复现命令指向它 → **视同在岗**）；`repro_v89174*` = 三条一次性复现。 |
 | `playtest/` | 1 | v89.x 时代的 600×/1× 长时压测与收益分析（`play_600x.js` 等，单次几分钟到几十分钟）。结论已沉淀进交付文档；**不复用为口径**，新压测请基于 `probe/` 的在岗模板重写。 |
-| `probe/` | 31 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。 |
+| `probe/` | 87 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。 |
 | `prof/` | 25 | **验证体系的规则源都在这里**（不是"待归类"）：`tier_audit.js` 六问元判据（gate 前置）· `gen_tiers.js` 断言分档唯一来源 · `mutation_probe.js` 变异测试 · `smoke_fast.js` 分片内环 · `impact_of.js` 影响面提示 · `visual_baseline.js` 视觉基线。⚠️ 内环可以快、可以漏，但**不能冒充裁判** —— 唯一裁判是 `git/gate.py`。 |
-| `show/` | 246 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| `show/` | 288 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
 | `show/reports/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
 | `sim/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
-| **合计** | **5975** | |
+| **合计** | **6092** | |
 
 ## asset/（素材处理）
 
@@ -454,6 +454,7 @@
 
 - `avatar_atlas.py`（8KB）　— 头像图集体检 + 切分 + 抠底。
 - `build_atlas_src.py`（2KB）　— v89.107 建筑图标重绘 · 第一步：把 4 张原图拼成 2×2 图集（白底），
+- `check_v15789_p0.js`（4KB）　— v15789 P0 像素体检：改前 vs 改后（三角度）
 - `check_v89103_shots.js`（4KB）
 - `check_v89116_shots.js`（3KB）
 - `check_v89117_shots.js`（4KB）
@@ -535,6 +536,7 @@
 - `crop_terrain.py`（6KB）　— v89.42：地形贴图裁切流水线（从即梦参考图裁切 → 归一化 → 落位 assets/icons/ui/）。
 - `cut_quads.py`（3KB）　— 四格图 → 地形/城池贴图（**整块压缩法**）。
 - `diag_bldg_materials.py`（4KB）　— 诊断：原图（_gold_backup）与现图，各自的**图内色相结构** ——
+- `diag_v15789_p0.js`（3KB）　— v15789 P0 诊断：改前/改后分块差异热区 + 陆地ROI局部对比度
 - `diag_v89214_ascii.js`（1KB）
 - `diag_v89214_tip.js`（1KB）
 - `flag_bldg_icons.py`（8KB）　— ⛔ v89.225 已退役：族旗管线（本文件运行即退出，代码仅作历史追溯）。
@@ -608,7 +610,7 @@
 - `diag_v89105_overflow.js`（3KB）　— 诊断：7 个溢出弹窗的**高度分布**（哪个块把窗口撑爆了）
 - `economy_audit.js`（8KB）　— 经济审计：旧币收入构成（v68 · 老板「审计一下」）
 - `fix_v89165_audit.py`（3KB）　— 修 audit_v89165_live.js：hasLive 递归化 + 豁免表补全。
-- `intent_closure.js`（8KB）
+- `intent_closure.js`（10KB）
 - `ladder_audit.js`（8KB）　— 数值阶梯审计 —— 回答一个问题：**从开局到灰烬城，这条路走得通吗？
 - `read_recycle.py`（2KB）　— 解析 E: 回收站的 $I 元数据，列出"刚刚被删的原始路径"。
 - `survey_project.py`（5KB）　— 项目全景盘点：产物清单 + 规则分布 + 引用关系（为"是否完整/精简/集中"提供证据）。
@@ -7131,6 +7133,23 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_story_wire.py`（5KB）　— patch_story_wire.py -- wire the text game into main.js / index.html / smoke-test.js
 - `patch_test_rc.py`（1KB）
 - `patch_ui_order.js`（3KB）　— v156.27：把 ui.js 拆出的 18 个文件接进**所有模块清单**。
+- `patch_v15789_p0.py`（11KB）　— v15789 P0 · 球体受光化（真地形法线 + 起伏明暗）
+- `patch_v15789_p0b.py`（8KB）　— v15789 P0b · 让"起伏"真的看得出来（法线夸张 + 曲率遮蔽）
+- `patch_v15789_p0c.py`（3KB）　— v15789 P0c · 起伏明暗随高度淡出
+- `patch_v15789_p1.py`（6KB）　— v15789 P1 · 片元级细节法线（近看有起伏颗粒）
+- `patch_v15789_p1b.py`（7KB）　— v157.89d：修 P1 的**规则网点**（老板截图「有斑纹」）
+- `patch_v15789_smoke.py`（5KB）　— v15789 P0 · 给 smoke 补断言（§589a~e）
+- `patch_v15789_version.py`（6KB）　— v15789b：版本号递进 + 需求档案补录（总览行 + 明细段）
+- `patch_v15793_bake.py`（5KB）　— v157.93 B 方案：地貌配色改**逐像素**（烘 6 面颜色图集）
+- `patch_v15793_wire.py`（3KB）　— v157.93 第二步：把图集接进去
+- `patch_v15794_nrm.py`（7KB）　— v157.94 A 方案：明暗也搬到逐像素（烘法线图集）
+- `patch_v15794_tail.py`（5KB）　— v157.94 收尾：断言 §589l + 版本 v157.91 + 档案补录
+- `patch_v15795_elev.py`（4KB）　— v157.95 · 水球 + 逐像素 discard（治「海面没有厚度 / 持续空洞 / 六边形」）
+- `patch_v15796_pawn.py`（5KB）　— v157.96 · 地图小人可见 + 地块「传送」按钮
+- `patch_v15797_pawn2.py`（3KB）　— 在 v157.92 基础上重挂「传送 + 小人」（不掺水球改动）
+- `patch_v15798_assert.py`（4KB）　— v157.98 · 断言改写：痕迹体系从「必须在岗」改为「必须退役」
+- `patch_v15798_kill_trace.py`（5KB）　— v157.98 · 下线「这一带似乎有动静」痕迹体系（老板指令）
+- `patch_v15837_archive.py`（3KB）　— v158.37 需求档案补录（追加型 · 幂等 · LF）
 - `patch_v67_save.py`（23KB）　— v67 · 补一套存档系统（老板：「补一个存档，看什么存档设计合适」）。
 - `patch_v67_save2.py`（9KB）　— v67 · 存档系统 补丁 2/2：对话框 · 导出导入 · 首页入口 · 样式。
 - `patch_v67_save3.py`（19KB）　— v67 · 存档系统 补丁 3/3：修 audit 死函数 · 更新受影响的断言 · 补新护栏。
@@ -8294,8 +8313,53 @@ v89.x 时代的 600×/1× 长时压测与收益分析（`play_600x.js` 等，单
 
 jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。
 
+本区 87 件：**在岗 83 件 · 一次性 4 件**（后者标 `〔一次性 · 已退役（保留备查）〕`）。
+
+- `birth_ci_probe.js`（2KB）　— 出生格定位对照：city.ci vs ciOfXY(city.x,city.y)，在 G.sphere / sphereOf 两颗球上
+- `birth_view_probe.js`（2KB）　— 出生点视野探针 —— 老板「增大平原占比」后，出生点附近还能否看出地形变化
 - `cam_regress.js`（9KB）　— 相机修复的实机探针（v157.31 · 临时/可复用）
+- `confirm_screenshot_probe.js`（4KB）　— 动效+confirm 实机截图验证（v158.9）：亲手用一遍
+- `district_probe.js`（10KB）　— P2 城市街区 L1 探针（v158.2）
+- `follow_entry_probe.js`（4KB）　— 人物视角入口探针（v158.8）：验证底栏「人物」按钮能切进/切出第三人称跟随态
 - `gen_audit.js`（8KB）
+- `gen_walkthrough.js`（4KB）　— 把玩家视角走查的截图与结论拼成一页自包含 HTML（图片内联 base64）
+- `interact_probe.js`（9KB）　— P1 走近即交互探针（v158.1）
+- `motion_token_probe.js`（5KB）　— 动效 token 探针（v158.9）：验证动效语言收敛 + prefers-reduced-motion 降级
+- `npc_probe.js`（10KB）　— P4 NPC 生态与事件探针（v158.4）
+- `p_backcity.js`（4KB）　— 玩家路径取证：「回本城」到底把我带回去没有
+- `p_build_panel.js`（3KB）　— v158.21 视觉核对：点一块野地，面板第一屏该看到「🏭 采集场」而不是「占领」
+- `p_cam_free.js`（9KB）　— 轨道相机自由度验收：能否自由连续到达任何角度（星球固定、只动相机）
+- `p_click_e.js`（7KB）
+- `p_click_walk.js`（13KB）　— v158.20 真人玩法验收（老板「用真实人类的玩法去测试，别走机器内容」）
+- `p_edgepan.js`（9KB）
+- `p_esc_hover.js`（5KB）　— 查两件事：①Esc 到底能不能关面板 ②鼠标悬停时画面到底变了什么
+- `p_fps.js`（6KB）
+- `p_handle.js`（6KB）
+- `p_height_jump.js`（9KB）
+- `p_idx_diag.js`（3KB）　— v158.21 诊断：地图格索引 vs 资源系统索引 —— 到底哪里断的
+- `p_newbie.js`（15KB）　— v158.18 新手视角全功能走查（老板「假设你对游戏任何设置均未知，新手玩游戏，
+- `p_pickerr.js`（3KB）　— 诊断：鼠标点下去，命中的是不是玩家看到的那一格
+- `p_plant_chain.js`（9KB）　— 城外建厂全链路验收：① 远程能否勘探（"走近"是真约束吗）② 勘探→建厂→施工 全链断没断
+- `p_player_ops.js`（15KB）　— 真人操作演示：从地图上「点一格」开始，全程真实鼠标点击，逐步截图 + 记录点到的元素
+- `p_rmb.js`（9KB）
+- `p_ruin_content.js`（3KB）　— 遗迹内容是否是真的：强行探明一处 → sweep 发现 → 翻找 → 材料/资源到账
+- `p_ruin_reach.js`（3KB）　— 旧军械库（遗迹）可达性：新局实际能发现几处
+- `p_stardew.js`（8KB）　— 星露谷式地表验收：真实开局 → 真滚轮进地表 → 真按 WASD → 量人/镜头/位移
+- `p_stardew_ops.js`（12KB）
+- `p_start_diag.js`（3KB）　— 诊断：点「开始新的征程」之后到底发生了什么
+- `p_surf_drag.js`（4KB）　— v158.21 贴地验收：① 视野边界是不是圆的 ② 贴地能不能拖动 ③ 界外能不能点
+- `p_tabs.js`（3KB）　— 诊断：开局后哪些可点元素能进地图
+- `p_unfog.js`（3KB）
+- `p_v15817.js`（16KB）　〔一次性 · 已退役（保留备查）〕　— v158.17 验收探针（老板「参考现有成熟设计完善」6 条缺口）
+- `p_v15817_vis.js`（3KB）　〔一次性 · 已退役（保留备查）〕　— 视觉核对：街区里主角的**屏幕占比**与外观（数值 + 截图）
+- `p_walk.js`（7KB）　— v158.19 手感取证探针（老板「走的好像老年痴呆一样」）
+- `p_walk_scan.js`（8KB）　— 「走近勘探」真机制验收：远处 → 走过去 → 到达自动勘探并重开面板
+- `p_world_still.js`（11KB）
+- `perf_breakdown_probe.js`（3KB）　— 性能分解探针（v158.8）：定位 _surfTerrainGeo 剩余 58ms 的真实构成
+- `plant_probe.js`（7KB）　— 采集场探针（S4）—— 建厂 → 产量×丰度 → 储量扣减 → 软枯竭，一条链走通
+- `player_journey_a.js`（13KB）　— 玩家视角走查 A · 走动全链（v158.14 新功能）
+- `player_journey_b.js`（20KB）　— 玩家视角走查 B · 我能不能自己找到矿并建厂（v158.13 / v158.15 新功能）
+- `pose_probe.js`（10KB）　— P0 玩家位姿 / 贴地 / 相机探针（v158.0）
 - `probe.js`（1KB）
 - `probe60_geom.js`（5KB）　— v60 真实浏览器几何探针：老板的硬规矩（弹窗不许出现滚动条、内容不许溢出）
 - `probe61_board.js`（5KB）　— v61 几何探针：**攻占后城格数按等级变小**（6×4 / 8×4 / 8×5）
@@ -8323,8 +8387,21 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_newgame_cost.js`（3KB）　— v156.36 探针：newGame 到底多贵？同 seed 重复 vs 换 seed —— 这决定了"测试慢"的真凶。
 - `probe_scene_objects.js`（3KB）　— v156.34：把 3D 场景里**所有**对象列出来（类型 / 材质 / 包围球半径 / 是否透明）。
 - `probe_testseed.js`（2KB）　— v156.36：验证 `GAME.__testSeed` 到底有没有让"不传 seed 的 newGame"变便宜。
+- `probe_v15754_pan_stability.js`（10KB）　〔一次性 · 已退役（保留备查）〕　— v157.54 取证探针 · 近地面左键长按拖拽「画面元素剧烈跳动」
+- `probe_v15767_fullpop.js`（6KB）　〔一次性 · 已退役（保留备查）〕　— 探针 v157.67 —— 「人口常满」插件行为取证（无限人口整条退役后的替代实现）
 - `probe_wild_scan.js`（2KB）　— 诊断「回放态改设定」那条的 `no wild`：城周围 ±8 格到底有什么。
 - `probe_wonder_size.js`（4KB）　— v156.48 验证奇观尺寸：强制一个**地表**奇观（按日随机可能是太空/海面），
+- `quest_probe.js`（8KB）　— P5-b 任务链探针（v158.6）
+- `queue_train_probe.js`（3KB）　— 训练补偿探针 —— §193② 的口径复现（离线补算推完训练队列后兵力应达 300）
+- `resource_s1_probe.js`（5KB）　— 资源地块数据层探针 —— 验证 resource.js 核心逻辑（S1）
+- `saveidb_probe.js`（18KB）　— P5 IndexedDB 迁移探针（v158.5）
+- `seed_plants_probe.js`（2KB）　— 开局预置厂诊断
+- `terrain_hex_probe.js`（5KB）
+- `terrain_ratio_probe.js`（5KB）　— 地形占比探针 —— S2 调平地占比的基线与验收尺
+- `vehicle_probe.js`（11KB）　— P3 载具与碰撞探针（v158.3）
+- `visual_walkthrough_15813.js`（19KB）　— 资源地块 → 勘探 → 建厂 → 采集场总览 · 实机视觉走查（v158.13 S2~S5）
+- `walk_keys_probe.js`（13KB）
+- `zone_load_probe.js`（5KB）　— 区域加载实况探针（v158.8 前置取证）
 
 ## prof/（验证体系内环与元判据）
 
@@ -8360,10 +8437,13 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 
 给老板看的对照图 / 曲线校准 / 素材巡视。
 
+- `ab_v15789_grain.js`（2KB）　— v157.89d · 网点归属：同一相机，颗粒层开/关各一张（zoom 0.05 贴地）
+- `ab_v15790_smear.js`（3KB）　— v157.90 · 近距离"拉丝/糊"归因：同一相机，逐个关掉贴图与颗粒
 - `audit_v149_player.js`（5KB）　— v149 玩家视角视觉巡检：从"第一次打开"走到"打完一场远征"，逐屏截图
 - `bake_bigmap.js`（4KB）　— 大地图烘焙 + 改前基线实机图
 - `bigmap_rollback.py`（3KB）　— 大地图 LOD 改动一键回滚（干跑先行 · 本项目铁律）。
 - `calib_actor_fit.js`（4KB）　— 资产尺寸标定：渲染 → 读像素 → 反推"模型在世界里有多高" → 给出"缩到 1 单位"的系数
+- `check_v15785_boot.js`（3KB）　— v157.85 冒烟启动检查：删了 prologue.js 后，界面创建角色 → 进游戏 → 切城市/地图/出征，
 - `compare34.js`（9KB）　— v34 风格对比：同一批元素，四种画风 —— 现状(西方奇幻金属) / 中国色木刻 / MingCute / IconPark
 - `dbg_v89191_autotrain.js`（5KB）　— v89.191 实机取证（真浏览器 · 真点真填）：
 - `deep_soak_v9137.js`（12KB）
@@ -8372,6 +8452,7 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `diag_v15616_lastobj.js`（3KB）　— v156.16 诊断③：**抓"最后一个开始渲染的对象"** —— 报错就是它（或紧跟它的那个）
 - `diag_v15616_rendererr.js`（5KB）　— v156.16 诊断：地图 3D 每帧抛 "Cannot read properties of undefined (reading 'x')"
 - `diag_v15616_scan.js`（3KB）　— v156.16 诊断②：把 scene 里**所有** material.uniforms 扫一遍，找出 value 为 null/undefined 的项
+- `diag_v15769_taint.js`（5KB）　— v157.69 实机取证（真浏览器 · 不出图）：那条「污染到了变质线 / 棚户死人」军情确实不再发射。
 - `diag_v89132_grid.js`（2KB）　— 诊断：军务处两营 grid 列宽为何不等（1098 vs 272）
 - `diag_v89132_reddot.js`（3KB）　— 诊断：满界面缩略图上我城红点为什么读不到（v89132）
 - `diag_v89133_probe.js`（4KB）　— v89.133 取证：将领面板行（老板点名三处）+ 军务页现状
@@ -8380,6 +8461,7 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `diag_v89202_scout.js`（8KB）　— v89.202 诊断：侦查报告「可下拉」现状量测
 - `diag_v89203_occupy.js`（8KB）　— v89.203 诊断：① 防守默认阵位（sieging 守方）② 占领名城全流程 ③ 城池一览 DOM
 - `diag_v89213_pager.js`（5KB）　— v89.213 诊断：底栏分页条三栏布局 → 与左右相邻菜单（bb-tools / 缩略图）重叠实况
+- `isolate_v15789_pattern.js`（2KB）　— v157.89e · 斑纹归因：逐层关闭 + 周期性度量
 - `make_v89121_flag_matrix.py`（3KB）　— v89121 · 七族旗色对照图（回答"图标上的旗是什么"）
 - `measure_v89139_arrow.js`（2KB）　— v89.139 箭头对照量测（单场景）：视野移到地图角落 → 数边缘环带暖黄像素
 - `measure_v89139_before.js`（8KB）　— v89.139 实机量测（改前基线）：大屏留白 / 战场侧栏 / 缩略图红点 / 地图箭头
@@ -8387,6 +8469,8 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `measure_v89190_btns.js`（6KB）　— v89.190 实机量测（真浏览器 · 只读量测，不改产品）：
 - `measure_v89191_btns.js`（3KB）　— v89.191 实机量测（真浏览器）：解雇/晋升 两按钮的几何 —— 老板「稍微错开，上下不重叠，等下点错了」
 - `measure_v89192_panes.js`（6KB）　— v89.192 量测：沙盘弹窗 vs 战场界面（铺满参考）· 含极端载荷（8 兵种）
+- `pixel_v15768.js`（4KB）　— v157.68 像素取证：老板截图 vs 各候选视图的颜色构成 + 放大中央块。
+- `pixel_v15768_beforeafter.js`（2KB）　— v157.68 前/后同状态对照的像素证据：三档 → 两态后，
 - `probe_actor_look.js`（4KB）　— 单角色渲染体检：把 Soldier / RobotExpressive 各自单独摆到原点，
 - `probe_adm_marker.js`（3KB）　— 占领省府后，地图上那一格"长什么样"：等真实渲染循环重建标记后再读，
 - `probe_admin_reveal.js`（7KB）　— 省/市/区首府 → 下辖地视野：完整验收 + 同机位前后对照图
@@ -8410,9 +8494,21 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_noselect.js`（5KB）　— 验证：城市 / 城外 / 建筑面板里，左键长按拖动**不能**选中文字；
 - `probe_noselect2.js`（4KB）
 - `probe_scale_tracks.js`（1KB）
+- `probe_shot_buckets.js`（2KB）　— 第二轮像素取证：把海区（画面左侧 82%）里所有像素按颜色分桶，找出"第二种颜色"到底是什么。
+- `probe_shot_pixels.js`（3KB）　— 用浏览器解码截图，做像素统计（本机无 PIL / Add-Type 被拦）：
 - `probe_soldier_rot.js`（3KB）　— 定点实验：把 Soldier 用 4 个固定根旋转各渲染一张，肉眼判定"哪个朝向是站着的"。
 - `probe_stand_candidates.js`（3KB）　— 立姿候选体检：不归一化加载，逐候选根旋转报告「骨骼 Y 跨度 / Box3 Y 跨度 / 骨骼数」，
 - `probe_state_reveal.js`（5KB）　— 州辖地视野：同机位「点亮前 / 点亮后」对照出图 + 数值验收
+- `probe_v15784_cross.js`（5KB）　— 穿云全过程扫掠：验证「穿云是事件不是状态」。
+- `probe_v15784_sea.js`（5KB）　— 海面异常点反查：相机停在 agl=55 看纯海，屏幕打网格射线 → 每点落到哪一格、
+- `probe_v15784_spots.js`（4KB）　— 色斑取证：海面上那些米黄色小块到底是什么。
+- `probe_v15784_steps.js`（3KB）　— 高度阶梯：固定视线对准同一片纯海，逐档高度截图（8/20/35/50/54/56/60/80/130），
+- `probe_v15784_veil.js`（4KB）　— 验云雾层：把相机停在"穿云高度"看海，对比开/关云雾的截图。
+- `probe_v15785_build.js`（2KB）　— 完整首城下：点空地弹出的建造菜单里到底有哪些卡片？
+- `probe_v15785_sink.js`（3KB）　— 沉岛一致性：sphere 里被沉的格，2D 地图层（map.tile）还认为是什么？
+- `probe_v15786_explore.js`（8KB）　— v157.86 取证：① 边界带已消失 ② 已探索区域真的提亮 ③ 提亮是"从原色乘回"不是累乘
+- `probe_v15786_why.js`（4KB）　— 为什么改了顶点色画面不变？—— 对照三件事：
+- `probe_v15787_sea.js`（5KB）　— v157.87 海面场景取证：
 - `probe_v9124_build.js`（3KB）　— v91.24 探针2：端到端筑城坐标链（不在原格 & 球面/平面往返一致性）
 - `probe_v9124_coord.js`（3KB）　— v91.24 探针：球面 cell 的 (x,y) ↔ ci 往返稳定性（筑城坐标飞走根因）
 - `probe_v9124_fix.js`（2KB）　— v91.24 探针3：验证修法方向 —— 拾取 x,y 换成「北在上」后地形是否对上
@@ -8427,6 +8523,9 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `review_guide_b.py`（5KB）　— v89.42b 验收指南：v89.42a(推翻) vs v89.42b(重做) + 2x 放大 + 7 块新贴图，合成单图。
 - `sample_height.js`（7KB）　— 地形高度风格小样对比（离线渲染）
 - `scan6.js`（4KB）
+- `scan_v15784_spots100.js`（7KB）　— 100 组自检：20 个纯海视角 × 5 个高度（8/35/55/80/130），每组读画面像素，
+- `scan_v15789_grain.js`（2KB）　— v157.89d · 网点复核：不同 repeat 的近景截图 + 周期性度量
+- `scan_v15789_p1.js`（2KB）　— v15789 P1 · 颗粒强度扫参（运行时改 uDetAmp，不重建）
 - `shot_ab.js`（2KB）
 - `shot_bigmap_lod.js`（3KB）　— 大地图 LOD 远景层 —— 实机对照（默认关 / 开启）
 - `shot_castle_look.js`（3KB）　— 城堡朝向实拍：对准一座己方城，围绕它转三个角度拍特写（修复前后对比用）
@@ -8446,6 +8545,25 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `shot_v146_fleet.js`（4KB）　— v146 实机：空间站「深空远征」面板（选舰 / 选目标 / 编成 / 出港 / 战报）
 - `shot_v147_preview.js`（2KB）　— v147 实机：建造预览（D 期）—— 候选卡片「先看看」→ 3D 单栋预览
 - `shot_v15615_mapbar.js`（8KB）　— v156.15 实机：地图手势条（⚔️出征 / 🔍侦查 / 📜详情）
+- `shot_v15768_beforeafter.js`（4KB）　— v157.68 修复前/后同状态对照图：唯一变量是 map3d.js 的 fog 渲染口径。
+- `shot_v15770_agenda.js`（7KB）　— v157.70 实机取证（真浏览器）：行动台整页 + 5 个玩法真点按钮 + 账目真的变。
+- `shot_v15771_terrain.js`（4KB）　— v157.71 地形配色实机取证：与 BEFORE 同 seed 同视角，出 AFTER 图 + 像素统计对比
+- `shot_v15772_cellmenu.js`（3KB）　— v157.72 实机取证：① 点地块是否只剩一层 ② 任务型地块标色是否真的没了
+- `shot_v15773_cloudfly.js`（3KB）　— v157.73 穿越云层取证：按离地高度逐档截图 + dump 云的 uniform 曲线
+- `shot_v15774_wheelonly.js`（3KB）　— v157.74 取证：滚轮只改高度时，构图是否只缩放、不转向
+- `shot_v15775_natural.js`（2KB）　— v157.75 取证：高空地形色是否变自然（降饱和）+ 六边形硬边是否被软混合抹平
+- `shot_v15776_fogplain.js`（7KB）　— v157.76 取证：视野不再改地形色（顶点色零压暗），探明与否只由地块线框标识。
+- `shot_v15777_legend.js`（4KB）　— v157.77 取证：色块 → 悬停简报是否说清了"这是什么"
+- `shot_v15780_pole.js`（2KB）　— v157.80 交付出图：连续上拖 2 轮（越过极点）后截图 + 中途一帧。
+- `shot_v15781_strict.js`（6KB）　— v157.81 全流程验收：用**产品内置的 M._camJumps 不变量**判，不靠人肉试错。
+- `shot_v15782_edge.js`（4KB）　— v157.82 取证：视野边界「柔光化 + 恢复遮挡」。
+- `shot_v15783_roll.js`（7KB）　— v157.83 实机取证：球体跟不跟手 + 画面有没有 roll。
+- `shot_v15784_coast.js`（3KB）　— 海岸视角复现老板截图：把视线放到首府所在格，高度 130/80/55 各一张。
+- `shot_v15784_layers.js`（5KB）　— 色斑分层隔离：把海面逐层剥开，看"斑"来自哪一层。
+- `shot_v15786_half.js`（2KB）　— 半球场对照图：把东半球点亮 → 已探索 ×1.15 / 未探索 ×0.9 → 一眼看出明暗差，
+- `shot_v15789_p0.js`（4KB）　— v15789 P0：球体受光化 —— 改前/改后对照图（三角度）
+- `shot_v15789_p1.js`（2KB）　— v15789 P1 · 细节法线 A/B（detail 1 vs 0）× 三档缩放
+- `shot_v15792_border.js`（3KB）　— v157.92 · 地貌交界锯齿：找一处"相邻两格类型不同"的位置拍对照
 - `shot_v89102_sandbox.js`（7KB）
 - `shot_v89102b_rankcap.js`（4KB）
 - `shot_v89103.js`（9KB）
@@ -8584,6 +8702,7 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `shot_v89239_after.js`（2KB）　— v89.239 定档后实机图（读【真文件】CSS · 无注入）——与 v89238 对照图同机位同局
 - `shot_v89240_after.js`（2KB）　— v89.239 定档后实机图（读【真文件】CSS · 无注入）——与 v89238 对照图同机位同局
 - `shot_v9080_wonderless.js`（4KB）　— v90.80 实机验证：奇遇系统退役后的真实渲染（真浏览器）
+- `sweep_v15789_pattern.js`（2KB）　— v157.89e · 全缩放档周期性扫描（找"还有规律斑纹"的档位）
 - `sweep_v89239_bright.js`（4KB）　— v89.239 亮度对比 v2（干净版）：全量覆盖 opacity+filter，各档稳定 700ms；
 - `sweep_v89240_bright.js`（4KB）　— v89.240 三档调亮扫描：当前 .80+b1.15（live）之上再探 6 档
 - `three3d.js`（8KB）　— Three.js 真 3D 地形原型（用游戏真实地形数据）

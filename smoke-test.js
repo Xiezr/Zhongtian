@@ -51032,9 +51032,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /尚未勘探（先勘探这块地）/.test(code);
   })());
 
-  check('§613③ 到达后自动勘探写在 stepWalkTo 的唯一到达出口（不靠渲染循环）', (function () {
-    /* 取 stepWalkTo 的到达分支（`dist <= 0.6` 到 `return { arrived: true`） */
-    var i = _m3d608.indexOf('if (dist <= 0.6)');
+  check('§613③（v158.37 口径）到达后自动勘探写在 stepWalkTo 的唯一到达出口（不靠渲染循环）', (function () {
+    /* 取 stepWalkTo 的到达分支（`dist <= M.WALK_TO_ARRIVE_M` 到 `return { arrived: true`）——
+       v158.37 规则变更：阈值 0.6m 抽成具名常量并收紧到 2cm（治高度跳变），锚点同步。 */
+    var i = _m3d608.indexOf('if (dist <= M.WALK_TO_ARRIVE_M)');
     if (i < 0) return false;
     var j = _m3d608.indexOf('return { arrived: true', i);
     if (j < 0) return false;
@@ -51223,8 +51224,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return guard >= 2 && mark && clear;
   })());
 
-  check('§619③ 自动走路到达出口仍调真勘探出口（修复没有绕开玩法）', (function () {
-    var i = _m3d608.indexOf('if (dist <= 0.6)');
+  /* v158.37 规则变更：到达阈值从字面 0.6m 抽成具名常量、收紧到 2cm
+     （p_height_jump 实测：0.6m 在 38° 坡上一帧跳 0.518m / 相机 0.528m）。
+     到达出口的行为不变 —— 仍调真勘探出口；只是锚点跟着新口径走。 */
+  check('§619③（v158.37 口径）自动走路到达出口仍调真勘探出口（阈值收紧没绕开玩法）', (function () {
+    var i = _m3d608.indexOf('if (dist <= M.WALK_TO_ARRIVE_M)');
     var j = i >= 0 ? _m3d608.indexOf('return { arrived: true', i) : -1;
     var blk = i >= 0 && j > i ? _m3d608.slice(i, j) : '';
     return /GAME\.resource\.scan\(hitCi\)/.test(blk) && /M\._walkThen/.test(blk);
@@ -51246,6 +51250,41 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var blk = i >= 0 && j > i ? src.slice(i, j) : '';
     return /if \(Math\.abs\(_sdx2\) \+ Math\.abs\(_sdy2\) > 3\) moved = true;/.test(blk)
       && /if \(!wasDrag \|\| moved\) return;/.test(src);   /* mouseup 真认这个 moved */
+  })());
+
+  /* ============================================================
+   * §620 v158.37 · 老板「存在高度跳变」
+   * ------------------------------------------------------------
+   * 取证 p_height_jump：键盘走路 0.059m/帧、自然地形 0.11m/0.1m 都连续；
+   * 唯一跳变在自动走"到达"那一帧 —— 旧阈值 0.6m 直接锁目标格心，
+   * 38° 坡上 h 跳 0.518m、相机半径跳 0.528m（修复后 0.033m）。
+   * 修法 = 阈值抽具名常量 M.WALK_TO_ARRIVE_M 并收紧到 0.02m，
+   * 让 slerp 走完最后一段（高度仍逐帧走 _groundAtUnit 唯一出口）。
+   * 行为断言由 p_height_jump 承担（smoke 无 THREE，map3d 自降级，
+   * 这里锁结构与口径，不伪造渲染行为）。
+   * ============================================================ */
+  check('§620① 自动走到达阈值是具名常量且收紧到 2cm（挡 0.6m 回退）', (function () {
+    var src = _m3d608;
+    var m = src.match(/M\.WALK_TO_ARRIVE_M\s*=\s*([0-9.]+)\s*;/);
+    var v = m ? parseFloat(m[1]) : NaN;
+    return !!m && isFinite(v) && v > 0 && v <= 0.05
+      && !/if \(dist <= 0\.6\)/.test(src);          /* 旧字面形态零残留 */
+  })());
+
+  check('§620② 到达判据读的是那个具名常量（不是第二处魔法数）', (function () {
+    var src = _m3d608;
+    return (src.match(/if \(dist <= M\.WALK_TO_ARRIVE_M\)/g) || []).length === 1
+      && (src.match(/M\.WALK_TO_ARRIVE_M\s*=\s*[0-9.]+/g) || []).length === 1;
+  })());
+
+  check('§620③ 到达帧与行走帧的高度都走 _groundAtUnit 唯一出口（不旁路直写 h）', (function () {
+    var src = _m3d608;
+    var i = src.indexOf('M.stepWalkTo = function');
+    var j = i >= 0 ? src.indexOf('M.FOLLOW_DIST', i) : -1;
+    var blk = i >= 0 && j > i ? src.slice(i, j) : '';
+    var hits = (blk.match(/M\._groundAtUnit\(/g) || []).length;
+    var poseHits = (blk.match(/M\.setPlayerPose\(\{[^}]*h:/g) || []).length;
+    return hits >= 2 && poseHits >= 2 && hits >= poseHits;
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
