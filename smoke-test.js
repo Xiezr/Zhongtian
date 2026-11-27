@@ -33,6 +33,7 @@
       dataset: {}, style: {}, _attrs: {},
       classList: { add: function () {}, remove: function () {}, toggle: function () {}, contains: function () { return false; } },
       addEventListener: function () {}, appendChild: function () {}, setAttribute: function (k, v) { this._attrs[k] = v; },
+      removeAttribute: function (k) { delete this._attrs[k]; },
       getAttribute: function (k) { return this._attrs[k] || null; },
       /* v89.86：故事阅读器（ui.sgRender）等界面函数会读子元素 —— stub 补子查询，
          .sgr-bg 固定两张（壁画双层），与真实骨架一致。 */
@@ -36742,7 +36743,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           && /var _movedR = !!moved;/.test(m243)
           && /if \(!\s*_movedR\) \{/.test(m243);
       })());
-      c243('§243①p 位置量必须取自 camO.dir、不得拿视线当位置（v157.48）· v157.81 起零每帧反算', (function () {
+      c243('§243①p 位置量必须取自 camO.dir、不得拿视线当位置（v157.48）· v158.43 起 5 处反算写点', (function () {
         /* 规则变更（§0.7 三件套）：v157.48 的规则本身不变 —— 位置量取 camO.dir，
            不许把视线 `_surfDir` 当位置塞进去。v157.81 把原来那段
            「if (camO.dir && _surfVis) { yaw=atan2(dir); pitch=asin(dir.y) }」
@@ -36754,10 +36755,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         /* **规则变更（v157.101）**：轨迹球相机新增两处 `pitch = asin(dir.y)`（拖拽 / 自转各一），
            它们同样是"从**位置量** dir 反算俯角"，与本条规则的立意一致，不是违规写点。
            判据由 2 处改为 4 处，并逐条点名这两处必须是 `_dvT.y` / `_dvS.y`（dir 的分量）。*/
+        /* **规则变更（v158.43）**：诉求 1 高空 WASD 飞行系统（_tickFlight）位置推进
+           dir 向量后反算 pitch —— 第 5 处合法写点 `_ndF.y`（性质同轨迹球两处）。 */
         return /M\.lookAtDir = function \(d\) \{/.test(m243)
-          && _asinN === 4
+          && _asinN === 5
           && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvT\.y\)\)\)/.test(m243)
           && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvS\.y\)\)\)/.test(m243)
+          && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _ndF\.y\)\)\)/.test(m243)
           && !/if \(camO\.dir && M\._surfVis === true\) \{\s*\n\s*camO\.yaw = Math\.atan2/.test(m243);
       })());
       /* ============================================================
@@ -48980,14 +48984,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* **规则变更（v157.101）**：轨迹球把"从 dir 反算俯角"变成常规操作（拖拽/自转各一处），
        合法写点 2 → 4。仍守同一条底线：placeCamera 内不许有 asin 反算，
        且那两处新写点必须取 `_dvT.y` / `_dvS.y`（位置量 dir 的分量），不许取视线。*/
-    check('§586r 根因面：placeCamera 内零 asin 反算；全文件 4 处合法写点（轨迹球 +2）',
+    /* **规则变更（v158.43）**：诉求 1 高空 WASD 飞行系统（_tickFlight）位置推进
+       dir 向量后必须反算 pitch 供 placeCamera 重建 —— 第 5 处合法写点 `_ndF.y`。
+       性质与轨迹球两处相同（显式位置设置、非每帧折回），placeCamera 内仍零反算。 */
+    check('§586r 根因面：placeCamera 内零 asin 反算；全文件 5 处合法写点（轨迹球 +2 · 飞行 +1）',
       !/if \(camO\.dir && M\._surfVis === true\) \{\s*\n\s*camO\.yaw = Math\.atan2/.test(mp)
-      && (mp.match(/camO\.pitch = Math\.asin/g) || []).length === 4
+      && (mp.match(/camO\.pitch = Math\.asin/g) || []).length === 5
       && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvT\.y\)\)\)/.test(mp)
       && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _dvS\.y\)\)\)/.test(mp)
+      && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _ndF\.y\)\)\)/.test(mp)
       && /M\.lookAtDir = function \(d\) \{/.test(mp)
       && /M\.panStepOf\(dx, dy, _B54\)/.test(mp),
-      'asin 写点 ' + (mp.match(/camO\.pitch = Math\.asin/g) || []).length + ' 处（应 4）');
+      'asin 写点 ' + (mp.match(/camO\.pitch = Math\.asin/g) || []).length + ' 处（应 5）');
 
     check('§586r 数值面：pitch 越过 ±π/2 后 dir 仍连续、能绕到球另一侧（不许夹回）',
       (function () {
@@ -49995,11 +50003,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /var Q = G\.questline = G\.questline \|\| \{\}/.test(qC1586)
       && (qC1586.match(/id: '(walk|look|enter|ride|talk|fight)'/g) || []).length === 6
       && /s\.quest = \{ step: 0, done: \{\} \}/.test(qC1586)
-      && /id: 'questline'/.test(qC1586)
+      /* v158.43：registry 面板随过程文案一起撤除（静默观察器，不再注册 panel） */
+      && !/id: 'questline'/.test(qC1586)
       && (mjC1586.layout || {}).order && mjC1586.layout.order.indexOf('quest') > mjC1586.layout.order.indexOf('npc')
       && (mjC1586.bundles || {}).core && mjC1586.bundles.core.indexOf('quest') >= 0
       && /M\.QUEST = true/.test(mpC1586),
-      '六步状态机 + quest 入档 + registry 注册 + 回退开关');
+      '六步状态机 + quest 入档 + core 包注册（无 panel）+ 回退开关');
 
     check('§589aw P5-b 观察器不拦截：E 键分派仍是 P3→P4→P1 · 钩子只后置登记 · 不新增按键分支',
       /_avCode === 'KeyE' && !e\.shiftKey && _mkAv\.DISTRICT/.test(mnC1585)
@@ -50077,8 +50086,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
            贴边推进都写进去），光 `cssText` 就占 700+ 字，1400 会把文案切出去。
            判据本身没放宽（仍是"有 id / 有方向键字样 / 无按钮"三件），只是采样窗口对齐。 */
         var body = umFh15814.slice(i, i + 2600);
+        /* v158.43（老板「把 WSAD 操作说明放到设置中，别占屏幕」）：规则变更 ——
+           常驻条不再印完整键位（WSAD/方向键），只留一句指向设置页；
+           完整操作说明集中到 ui-config 设置页。 */
         return /getElementById\('follow-hud'\)/.test(body)
-          && /↑ ↓ ← → 走动/.test(body)
+          && /设置/.test(body)
           && !/data-action=/.test(body);
       })(),
       '别名表 + 双向归一化 + 常驻条（无按钮）');
@@ -50576,15 +50588,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   var _rs613 = _r608('js/resource.js');
   var _mn608 = _r608('js/main.js');
 
-  check('§608① 任务链提示接到可见 HUD（Q.hint 有值就必须有人显示）', (function () {
-    /* 定义：读 questline.hint、挂 layerRoot 唯一挂载点、有独立 id；
-       接线：ui-view（切视图）与 map3d（渲染循环）都真调 —— 缺一处就会"某视图下没提示"。 */
+  check('§608① 任务链过程文案撤除 + 操作说明移进设置（v158.43 规则变更）', (function () {
+    /* v158.43（老板「把 🚶 任务链 · 走一段路 这种垃圾过程文案去掉」）：
+       规则变更 —— Q.hint() 恒返回空串（过程引导文案撤除，观察器照常推进），
+       renderQuestHint 仍在岗但只显示「正在走过去…」行程提示（不再显示任务链文案）；
+       操作说明集中搬到 ui-config 设置页（不再占屏）。 */
     return /ui\.renderQuestHint = function \(\)/.test(_um608)
       && /questline\.hint/.test(_um608)
       && /ui\.layerRoot\(\)/.test(_um608)
       && /getElementById\('quest-hint'\)/.test(_um608)
-      && /ui\.renderQuestHint\(\)/.test(_vw608)          /* 切视图接线 */
-      && /renderQuestHint\(\)/.test(_m3d608);            /* 渲染循环接线 */
+      && /ui\.renderQuestHint\(\)/.test(_vw608)
+      && /renderQuestHint\(\)/.test(_m3d608);
   })());
 
   check('§610/§608② v158.20 反转：「去大世界」按钮退役，改点图行走（老板「去掉人物模式」）', (function () {
@@ -50878,8 +50892,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && !/try \{ M\.walkTo\(ci\); \} catch \(eWk2\) \{ \}\n[\s\S]{0,600}?M\.openCellPanel\(ci\);/ .test(_m3d608);
   })());
 
-  check('§617② 只有野地才走过去（城/据点不该把人拽过去）', (function () {
-    return /if \(_kindEarly === 'wild'\) \{ try \{ M\.walkTo\(ci\); \}/.test(_m3d608);
+  check('§617② 只有地表态点野地才走过去（战略态点地面无响应 · v158.43 规则变更）', (function () {
+    /* v158.43（老板「常规情况下左键点击地面无需响应」）：规则变更 ——
+       旧口径"点野地就走过去"改为"只有站在地面上（M._surf）点野地才走路"，
+       战略态（高空俯瞰）点普通野地**无响应**。城/据点仍不该把人拽过去。 */
+    return /if \(_kindEarly === 'wild' && M\._surf\) \{ try \{ M\.walkTo\(ci\); \}/.test(_m3d608);
   })());
 
   check('§617③ E 键在地表也生效（FOLLOW || _surf）', (function () {
@@ -50903,40 +50920,49 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
      ② 地表左键抓地初始化 `_panDrag` 也在开关关闭时停用（v158.36，
         p_edgepan⑤ 实测左键拖 216px 仍改 camPos，违反本条原意）。
      意图不变：左键只选，两个模式都不动相机；右键是明确例外。 */
-  check('§616①（v158.28 + v158.36 口径）左键拖拽默认不动相机，右键例外可抓球（两模式都守）', (function () {
+  /* v158.43 规则变更（诉求 1「左键单击移动/长按平移镜头」）：
+     地表左键按下**常态化**抓地建 panBasis（不再受 LEFT_DRAG_CAM 约束），
+     长按 = 平移镜头、单击 = 走路/放置（moved 区分）；高空左键仍只选
+     （LEFT_DRAG_CAM=false 闸保留）。地表"绕角色/标 moved"分支加
+     `!M._panDrag` 给平移让位。 */
+  check('§616①（v158.43 口径）高空左键只选；地表左键长按=平移（抓地常态化 + 绕角色分支让位）', (function () {
     return /M\.LEFT_DRAG_CAM = false;/.test(_m3d608)
-      /* 地表转头分支：开关关闭时不写 orbitYaw/EL */
-      && /if \(M\.LEFT_DRAG_CAM\) \{\n\s*if \(_sdx2\) M\._surfOrbitYaw/.test(_m3d608)
-      /* 地表抓地平移入口也由同一开关拦住（v158.36 补） */
-      && /if \(M\._surf && M\.LEFT_DRAG_CAM\) \{/.test(_m3d608)
-      /* 轨道分支：只拦左键，右键越闸落到轨迹球 */
-      && /if \(M\.LEFT_DRAG_CAM === false && !M\._rmbOrbit\) \{ touch\(\); redraw\(\); return; \}/.test(_m3d608);
+      /* 高空闸仍在：左键只选 */
+      && /if \(M\.LEFT_DRAG_CAM === false && !M\._rmbOrbit\) \{ touch\(\); redraw\(\); return; \}/.test(_m3d608)
+      /* v158.43：地表左键按下即抓地建 panBasis（长按平移，诉求1 新语义）；
+         左键按下同时停高空飞行惯性（「直至左键操作」） */
+      && /if \(e\.button === 0 && M\._fly && M\._fly\.v\) M\._fly\.v = 0;/.test(_m3d608)
+      && /M\._panDrag = !!\(M\._panBasis && M\._panBasis\.ok\);/.test(_m3d608)
+      && /M\.panBasisOf\(/.test(_m3d608)
+      /* 地表"绕角色/标 moved"分支给平移让位 */
+      && /M\.SURF_AVATAR !== false && !M\._panDrag\) \{/.test(_m3d608);
   })());
 
   check('§616② 边缘推镜在渲染循环里、且在 placeCamera 之前（当帧生效）', (function () {
     var i = _m3d608.indexOf('_tickEdgePan(_epDt)');
     var j = _m3d608.indexOf('placeCamera();', i);
-    return i > 0 && j > i && (j - i) < 400;
+    /* v158.43：边缘推镜与 placeCamera 之间插入了飞行 tick + 飞行 HUD 块
+       （同属"当帧生效"的相机入口），距离阈值 400 → 1200 随结构更新，语义不变。 */
+    return i > 0 && j > i && (j - i) < 1200;
   })());
 
-  /* v158.39 规则变更（旧断言不删，按新口径重写）：旧版把地表边缘推镜实现成
-     「绕角色改 orbitYaw / SURF_CAM_EL」，老板明确要求取消边缘转换角度。
-     新口径：地表边缘带不再写任何镜头角度；高空边缘推镜保持原状。 */
-  check('§616③（v158.39 口径）边缘带常量在册，地表边缘不改角度、高空仍推镜', (function () {
+  /* v158.43（诉求 0「去掉鼠标接近屏幕边界时相机转动的设定」）规则变更：
+     边缘推镜总闸 EDGE_PAN 从 1 关到 0 —— 指针贴边不再转动相机。
+     相机仅由默认视角 + 鼠标操控（+ 飞行物 WASD）。_tickEdgePan 结构保留，
+     只是运行时早退；地表边缘不带本来就已不再写镜头角度。 */
+  check('§616③（v158.43 口径）边缘推镜总闸关停：EDGE_PAN=0，相机不再随贴边转动', (function () {
     var src = stripComment(_m3d608);
     var i = src.indexOf('function _tickEdgePan');
     var blk = i >= 0 ? src.slice(i, i + 1200) : '';
     var si = blk.indexOf('if (M._surf) {');
     var ei = si >= 0 ? blk.indexOf('} else {', si) : -1;
     var surfBlk = si >= 0 && ei > si ? blk.slice(si, ei) : '';
-    return /M\.EDGE_PAN = 1;/.test(src)
+    return /M\.EDGE_PAN = 0;/.test(src)               /* v158.43：总闸关停 */
       && /M\.EDGE_PAN_BAND = 0\.055;/.test(src)
       && /M\.EDGE_PAN_SPEED = 1\.0;/.test(src)
       && /if \(!dx && !dy\) return false;/.test(blk)
       && /if \(M\._surf\) \{[\s\S]{0,260}?return false;/.test(surfBlk)
       && !/_surfOrbitYaw|SURF_CAM_EL/.test(surfBlk)
-      && /camO\.yaw \+= dx \* 0\.9 \* k/.test(blk)
-      && /camO\.pitch = Math\.max\(-1\.55, Math\.min\(1\.55/.test(blk)
       /* 反向守卫：tick 里不许再叫 renderMapCanvas（会递归进渲染循环，实测 Δyaw 651 rad） */
       && !/renderMapCanvas/.test(blk)
       && !/touch\(\)/.test(blk);        /* touch 在闭包里，模块作用域调它 = ReferenceError */
@@ -50978,16 +51004,29 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   「自由转头」。新口径：右键进 _rmbOrbit 抓球/绕角色；地表写 2 只
    *   出现在右键分支内；中键 1 的转头通道保留但右键不得复用。
    * ------------------------------------------------------------------ */
-  check('§615①（v158.36 口径）右键走 _rmbOrbit 绕角色/球心；地表借 lookDrag=2 越关，不复用中键转头', (function () {
+  /* ------------------------------------------------------------------
+   * v158.43 规则变更（诉求 1「右键是移动相机，不是移动星球」）：
+   *   高空右键从「绕球心抓球（_rmbOrbit）」改回「转头（lookDrag=1）」
+   *   —— 朝向变、位置不变，高空位置移动交给 WASD 飞行系统（_tickFlight）。
+   *   地表右键仍走 _rmbOrbit + lookDrag=2（绕角色转，v158.36 口径不变）。
+   *   高空右键设专用标记 _rmbLook（双击回正只认右键，不误伤中键）。
+   *   §615① 按新口径重写（标题写新规则；行为断言见 §623 飞行三件套）。
+   * ------------------------------------------------------------------ */
+  check('§615①（v158.43 口径）右键：地表 _rmbOrbit+lookDrag=2 绕角色；高空 lookDrag=1 转头（_rmbLook 标记）', (function () {
     var src = _m3d608;
     var i = src.indexOf('if (e.button === 2) {');
     var j = i >= 0 ? src.indexOf('} else if (e.button === 1)', i) : -1;
     var rmbBlk = i >= 0 && j > i ? src.slice(i, j) : '';
     var inOrbit = /M\._rmbOrbit = true;/.test(rmbBlk)
-      && /if \(M\._surf\) lookDrag = 2;/.test(rmbBlk);
-    var noHeadTurn = !/lookDrag = 1/.test(rmbBlk)
-      && /lookDrag = 1;/.test(src.slice(j, j + 160));
-    return inOrbit && noHeadTurn && /if \(M\._rmbOrbit\) \{/.test(src);
+      && /if \(M\._surf\) \{\s*\n\s*M\._rmbOrbit = true;/.test(rmbBlk)
+      && /lookDrag = 2;/.test(rmbBlk);
+    /* 高空分支：_rmbLook 标记 + lookDrag=1 + 提前 return（不再初始化抓球） */
+    var inLook = /M\._rmbLook = true;/.test(rmbBlk)
+      && /lookDrag = 1;/.test(rmbBlk)
+      && /return;/.test(rmbBlk);
+    /* 中键通道仍独立保留 */
+    var midOk = /lookDrag = 1;/.test(src.slice(j, j + 160));
+    return inOrbit && inLook && midOk && /if \(M\._rmbOrbit\) \{/.test(src);
   })());
 
   /* v158.39 规则变更：右键的 orbitYaw / SURF_CAM_EL 语义不变，但仰角上下限
@@ -51285,10 +51324,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   check('§619② 地表右键越过「左键只选」与「转头」两个分支（不再被吞）', (function () {
     var src = _m3d608;
-    /* 两个地表 mousemove 分支都必须带 !M._rmbOrbit，否则右键被当左键处理 */
+    /* 两个地表 mousemove 分支都必须带 !M._rmbOrbit，否则右键被当左键处理
+       （v158.43：两分支还带 !M._panDrag 给平移让位，前缀形态不变） */
     var guard = (src.match(/M\._surf && drag && !lookDrag && !M\._rmbOrbit/g) || []).length;
-    /* mousedown 里右键要设 lookDrag=2，落到绕角色转的语义区 */
-    var mark = /if \(M\._surf\) lookDrag = 2;/.test(src);
+    /* mousedown 里右键要设 lookDrag=2，落到绕角色转的语义区
+       （v158.43：高空右键改走 lookDrag=1 + _rmbLook，地表右键才写 2 ——
+       单行 if 已展开成块，判据改钉「surf 块内写 2」） */
+    var i = src.indexOf('if (M._surf) {', src.indexOf('if (e.button === 2) {'));
+    var blk = i >= 0 ? src.slice(i, i + 300) : '';
+    var mark = /lookDrag = 2;/.test(blk) && /M\._rmbLook = true;/.test(src);
     /* mouseup 的 _rmbOrbit 分支要清掉它（否则下一次中键被残留） */
     var clear = /M\._rmbOrbit = false;[\s\S]{0,80}lookDrag = 0;/.test(src);
     return guard >= 2 && mark && clear;
@@ -51307,15 +51351,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   /* v158.36 第二只真 bug：v158.28 的高空「左键只选」闸不区分左右键，
      右键也被 `return` 掉（p_cam_free 水平拖累计 0°）。地表右键同型问题
      已在 §619② 修；这条守住高空越闸路径，右键必须落到 v157.101 轨迹球。 */
-  check('§619④（v158.36 口径）高空右键越过「左键只选」停用闸，落到轨迹球抓球', (function () {
+  /* v158.43 规则变更（诉求 1「右键转动相机朝向而不改变位置」）：
+     高空右键不再越闸抓球 —— mousedown 就提前 return 走 lookDrag=1 转头
+     （_rmbLook 标记，双击回正只认右键）；高空位置移动交给 WASD 飞行。
+     「左键只选」闸本身保留（只拦左键）。 */
+  check('§619④（v158.43 口径）高空右键改走 lookDrag=1 转头（_rmbLook），左键只选闸保留', (function () {
     var src = _m3d608;
     return /if \(M\.LEFT_DRAG_CAM === false && !M\._rmbOrbit\) \{ touch\(\); redraw\(\); return; \}/.test(src)
-      && /if \(M\.CAM_TRACKBALL\)/.test(src);   /* 越闸之后确有抓球实现，不是空放 */
+      && /M\._rmbLook = true;/.test(src)
+      && /lookDrag = 1; lx = e\.clientX; ly = e\.clientY; touch\(\); e\.preventDefault\(\); return;/.test(src)
+      && /if \(_wasRmbLook && !moved\) \{/.test(src);   /* mouseup 双击回正只认右键 */
   })());
 
   check('§619⑤ 地表左键拖写局部 moved（松手不当点击，不把小人送过去）', (function () {
     var src = _m3d608;
-    var i = src.indexOf('if (M._surf && drag && !lookDrag && !M._rmbOrbit && M.SURF_AVATAR !== false) {');
+    var i = src.indexOf('if (M._surf && drag && !lookDrag && !M._rmbOrbit && M.SURF_AVATAR !== false && !M._panDrag) {');
     var j = i >= 0 ? src.indexOf('if (M.LEFT_DRAG_CAM)', i) : -1;
     var blk = i >= 0 && j > i ? src.slice(i, j) : '';
     return /if \(Math\.abs\(_sdx2\) \+ Math\.abs\(_sdy2\) > 3\) moved = true;/.test(blk)
@@ -51479,17 +51529,84 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\.pickGroundPoint\(rc0\)/.test(src);   /* 幽灵与落位同一条拾取射线 */
   })());
 
-  check('§622⑤ 右键放下 + 采集场快建：入口/出口贯通，资源类型不靠玩家猜', (function () {
+  check('§622⑤ 右键放下 + 采集场快建：入口/出口贯通，4 建筑分开可选（v158.43）', (function () {
     return /e\.button === 2[\s\S]{0,220}M\.cancelHeldBuild\(\)/.test(_m3d608)
       && /case 'plant-pick'/.test(_mn608)
-      && /ui\._plantTool = !ui\._plantTool/.test(_mn608)
+      && /ui\._plantId = _nowOn \? \(_want \|\| ''\) : ''/.test(_mn608)
       && /ui\._plantTool = false/.test(_mn608)
       && /data-bbtab="plant"/.test(_sp608)
       && /data-action="plant-pick"/.test(_sp608)
+      && /DATA\.EXT_BUILD_ORDER/.test(_sp608)          /* v158.43：4 建筑分开列出 */
       && /GAME\.quickBuildPlant = function \(ci, cityId\)/.test(_dmn622)
       && /DATA\.EXT_BUILDINGS\[k\]\.res === rec\.res/.test(_dmn622)
       && /return GAME\.buildPlant\(ci, eid, city\.id\)/.test(_dmn622);
   })());
+
+  /* ============================================================
+   * §623 v158.43 · 诉求1高空「空天飞机 WASD 飞行」
+   * ------------------------------------------------------------
+   * 老板拍板（AskUserQuestion）：「设置一个飞行物（代表相机），比如空天飞机，
+   *   然后通过 WASD 操纵，飞行速度曲线和轨迹参考太空飞行及其他飞行题材游戏设定」
+   *   +「无实体模型·纯相机飞行」+「带惯性加减速」。
+   * 规则：
+   *   ① 高空（轨道态）WASD = 飞行：W 加速 / S 减速（可倒飞，上限 0.6×前飞）/
+   *      A D 转机头（lookYaw，与位置解耦）；松键惯性衰减（FLY_DECAY）；左键按下停惯性
+   *      （诉求 1 原文「相机本体可以维持一个持续的速度，直至左键操作」）。
+   *   ② 高空右键 = 转头（lookYaw/lookPitch，位置不动；见 §615① v158.43 口径）。
+   *   ③ 地表 WASD 仍归走路（GAME._keys / stepAvatar），飞行键通道 GAME._flyKeys
+   *      独立隔离（与街区/载具三级不串线）。
+   * 结构面锁源码形态；行为下限（帧数 ≥1）由探针 p_fly_v15843 承担。
+   * ============================================================ */
+  (function () {
+    check('§623① 飞行常量/状态/入口齐备，渲染循环 placeCamera 前当帧生效', (function () {
+      var src = _m3d608;
+      var i = src.indexOf('function _tickFlight');
+      var blk = i >= 0 ? src.slice(i, i + 2600) : '';
+      var k = src.indexOf('_tickFlight(_epDt)');
+      var p = src.indexOf('placeCamera();', k);
+      return /M\.FLY_MAX = 45;/.test(src)
+        && /M\.FLY_BACK_MAX = 27;/.test(src)
+        && /M\.FLY_ACCEL = 18;/.test(src)
+        && /M\.FLY_TURN = 0\.9;/.test(src)
+        && /M\.FLY_DECAY = 1\.2;/.test(src)
+        && /M\._fly = \{ v: 0 \};/.test(src)
+        && /M\.flyTick = _tickFlight;/.test(src)
+        && /M\.flyProbe = function \(\)/.test(src)
+        && k > 0 && p > k && (p - k) < 1200
+        && /if \(M\._surf\) \{ if \(fly\.v\) fly\.v = 0; return false; \}/.test(blk);
+    })());
+
+    check('§623② W/S 加减速有上限、A/D 转 lookYaw（机头）、松键指数衰减、dir 推进 + 第 5 处 pitch 反算', (function () {
+      var src = _m3d608;
+      return /fly\.v \+= \(M\.FLY_ACCEL \|\| 18\) \* dt/.test(src)
+        && /fly\.v -= \(M\.FLY_ACCEL \|\| 18\) \* dt/.test(src)
+        && /fly\.v \*= Math\.exp\(-\(M\.FLY_DECAY \|\| 1\.2\) \* dt\)/.test(src)
+        && /if \(fly\.v > _vmax\) fly\.v = _vmax/.test(src)
+        && /if \(fly\.v < _vmin\) fly\.v = _vmin/.test(src)
+        && /if \(a\) camO\.lookYaw -= _tv \* dt; else camO\.lookYaw \+= _tv \* dt/.test(src)
+        && /addScaledVector\(_tanF, _stepF\)/.test(src)
+        && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _ndF\.y\)\)\)/.test(src);
+    })());
+
+    check('§623③ 飞行键通道 GAME._flyKeys 隔离；keyup/blur 清；左键停惯性；飞行 HUD 挂载', (function () {
+      return /GAME\._flyKeys\[AV_KEY_ALIAS\[_avCode\] \|\| _avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(_mn608)
+        && /GAME\._flyKeys\[_c\.charAt\(3\)\.toLowerCase\(\)\] = 0/.test(_mn608)
+        && /GAME\._flyKeys = \{\}/.test(_mn608)
+        && /if \(e\.button === 0 && M\._fly && M\._fly\.v\) M\._fly\.v = 0;/.test(_m3d608)
+        && /ui\.renderFlyHud = function \(v\)/.test(_um608)
+        && /renderFlyHud/.test(_m3d608);
+    })());
+
+    check('§623④ 数值面：加速时间 2~3s、倒飞 = 0.6×前飞、静止转向率 = 满速的 0.25、满速滑停 3.5~6s', (function () {
+      var src = _m3d608;
+      var t = 45 / 18;                    /* FLY_MAX / FLY_ACCEL */
+      var stopT = Math.log(45 / 0.3) / 1.2;   /* 满速指数衰减到 0.3 m/s 的时长 */
+      return t > 2 && t < 3
+        && 27 / 45 > 0.55 && 27 / 45 < 0.65
+        && stopT > 3.5 && stopT < 6
+        && /Math\.max\(0\.25, Math\.min\(1, Math\.abs\(fly\.v\) \/ _vmax\)\)/.test(src);
+    })());
+  })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')

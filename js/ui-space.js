@@ -870,11 +870,26 @@ import './ui.js';
         '<button class="bb-slot" data-action="terrace-lv" data-d="1" title="目标层 +1（每层 1 米）">＋<i>升</i></button>' +
         '<button class="bb-slot" data-action="terrace-clear" title="复原：把走过的格恢复成自然地形">↩<i>复原</i></button>';
     } else if (tab === 'plant') {
-      /* v158.39：真正扣资源、进施工队的采集场也进建造栏。
-         只放一个"采集场"工具：点哪块资源地，由地块资源反查对应建筑。 */
+      /* v158.43（老板「把可建造的 4 个资源建筑在这里提供选项」）：
+         4 座资源建筑分开提供（净化厂/水培温室/发电站/电弧熔炉），
+         另给一枚「智能」通用工具（按资源类型自动匹配，懒人一键）。
+         打通勘探 → 建造 → 生产 → 资源值全链路。 */
       var onP = !!ui._plantTool;
-      var hP = '<button class="bb-slot' + (onP ? ' on' : '') + '" data-action="plant-pick"'
-        + ' title="点资源地就按资源类型自动建对应采集场（扣资源、进施工队列）">建造<i>采集场</i></button>';
+      var _pidHold = ui._plantId || '';
+      var _EBS = DATA.EXT_BUILDINGS || {};
+      var _EBOrd = DATA.EXT_BUILD_ORDER || ['farm', 'forest', 'quarry', 'mine'];
+      var hP = '';
+      /* 智能匹配（不指定建筑，按资源类型反查） */
+      hP += '<button class="bb-slot' + (onP && !_pidHold ? ' on' : '') + '" data-action="plant-pick" data-plant=""'
+        + ' title="点资源地自动配对应采集场（不指定种类）">⚒<i>智能</i></button>';
+      for (var _pk = 0; _pk < _EBOrd.length; _pk++) {
+        var _eb = _EBS[_EBOrd[_pk]];
+        if (!_eb) continue;
+        var _onB = (onP && _pidHold === _eb.id);
+        hP += '<button class="bb-slot' + (_onB ? ' on' : '') + '" data-action="plant-pick" data-plant="' + U.escape(_eb.id) + '"'
+          + ' title="' + U.escape(_eb.name + '：' + _eb.desc + '（' + (DATA.RESOURCES || []).filter(function (r) { return r.key === _eb.res; }).map(function (r) { return r.name; })[0] + '）') + '">'
+          + (_eb.icon || '▪') + '<i>' + U.escape(_eb.name) + '</i></button>';
+      }
       if (onP) hP += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的建筑">收工<i>放下</i></button>';
       host.innerHTML = hP;
     } else if (tab === 'item') {

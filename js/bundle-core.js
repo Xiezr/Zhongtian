@@ -40233,13 +40233,17 @@ if (GAME.reg) {
   var Q = G.questline = G.questline || {};
 
   /* ---------- 常量 ---------- */
+  /* v158.43（老板「把 🚶 任务链 · 走一段路 这种垃圾过程文案去掉」）：
+     verb/name 这类**过程引导文案**整段撤除 —— 操作方式改在设置页集中说明
+     （诉求 5「必要时对操作方式加以说明」），不再用"任务链 · 走一段路"这类
+     线性引导文案占屏。任务链仍是**观察器**（六步进度推进照常），只是闭嘴。 */
   Q.STEPS = [
-    { id: 'walk',  name: '迈出第一步', verb: '走一段路',     icon: '🚶' },
-    { id: 'look',  name: '环顾四周',   verb: '走近一格看看', icon: '👀' },
-    { id: 'enter', name: '进城',       verb: '走进街区',     icon: '🏘️' },
-    { id: 'ride',  name: '上车',       verb: '登上一辆车',   icon: '🛻' },
-    { id: 'talk',  name: '打听消息',   verb: '与居民交谈',   icon: '💬' },
-    { id: 'fight', name: '露一手',     verb: '与街边好汉过招', icon: '⚔️' }
+    { id: 'walk',  name: '', verb: '', icon: '' },
+    { id: 'look',  name: '', verb: '', icon: '' },
+    { id: 'enter', name: '', verb: '', icon: '' },
+    { id: 'ride',  name: '', verb: '', icon: '' },
+    { id: 'talk',  name: '', verb: '', icon: '' },
+    { id: 'fight', name: '', verb: '', icon: '' }
   ];
   /* 每步达成的最小可观测下限（防平凡解）：走过 ≥N 米 / 对话 ≥1 次 / 开打 ≥1 回合 */
   Q.MIN_WALK_M = 3;      /* 累计行走 ≥3 米才算"走过" */
@@ -40332,13 +40336,7 @@ if (GAME.reg) {
     if (hit) {
       q.step++;
       var fin = q.step >= Q.STEPS.length;
-      if (G.log) {
-        G.log((st.icon || '') + ' 任务链 · ' + st.name + '完成' + (fin ? ' —— 大世界走通了' : ''),
-          'quest', 'quest');
-      }
-      if (G.ui && G.ui.toast) {
-        G.ui.toast((st.icon || '') + ' ' + st.name + (fin ? ' · 大世界走通了！' : ' · 完成'));
-      }
+      /* v158.43：过程文案（toast + 日志）整段撤除 —— 观察器照常推进，但不刷屏。 */
       return { ok: true, step: st.id, advanced: q.step, done: fin, detail: detail };
     }
     return null;
@@ -40373,11 +40371,9 @@ if (GAME.reg) {
     Q._lastFightRounds = rounds | 0;
   };
 
-  /** 提示文本（给 UI / HUD 用）。 */
+  /** 提示文本（给 UI / HUD 用）。v158.43：过程引导文案撤除，恒返回空串。 */
   Q.hint = function () {
-    var st = Q.curStep();
-    if (!st) return '';
-    return st.icon + ' 任务链 · ' + st.verb;
+    return '';
   };
 
   /** 进度摘要（面板 / 探针用）。 */
@@ -40402,27 +40398,9 @@ if (GAME.reg) {
 
   /* ============================================================
    * 自注册（可插拔 —— 见 registry.js）
-   * 不设 tick（引导链由 map3d 主循环调 Q.tick，避免与月度 tickAll 撞节奏），
-   * 只提供 panel 与进度可见性。
+   * 不设 tick（引导链由 map3d 主循环调 Q.tick，避免与月度 tickAll 撞节奏）。
+   * v158.43：过程文案撤除后，不再提供可见 panel（静默观察器，不占界面）。
    * ============================================================ */
-  if (G.reg) {
-    G.reg.add({
-      id: 'questline',
-      order: 15,
-      panel: function (ctx) {
-        var sec = ctx.sec, U = ctx.U;
-        var s = Q.summary();
-        var rows = s.items.map(function (it) {
-          return '<div style="font-size:var(--fs-cap);">'
-            + (it.done ? '✅ ' : '⬜ ') + U.escape(it.name) + '</div>';
-        }).join('');
-        var line = s.step >= s.total
-          ? '大世界引导链已完成'
-          : '当前：' + (Q.STEPS[s.step] ? Q.STEPS[s.step].verb : '');
-        return sec('🧭 大世界引导', line, rows);
-      }
-    });
-  }
 })();
 
 /* ---- placement.js ---- */

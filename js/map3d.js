@@ -2490,6 +2490,7 @@ import './gltf.js';
     if (!ui) return;
     ui._placeItem = null;
     ui._plantTool = false;
+    ui._plantId = '';                       /* v158.43：手持建筑 id 一并清 */
     M._placeDrag = false;
     M._placeLastIJ = null;
     if (M.clearGhost) { M.clearGhost(); M._ghostCi = -1; M._ghostIJ = null; }
@@ -6359,7 +6360,10 @@ import './gltf.js';
   M._perfTick = _perfTick;          /* 渲染循环每帧调；只读 + 偶发写 DOM */
 
   M.LEFT_DRAG_CAM = false;     /* 左键拖拽能不能动相机（老板口径：不能） */
-  M.EDGE_PAN = 1;              /* 边缘推镜总闸 */
+  /* v158.43（老板「去掉鼠标接近屏幕边界时相机转动的设定」）：边缘推镜整段关停。
+     相机仅由默认视角 + 鼠标（左键轨道 / 右键转向）+ 飞行物 WASD 操控，
+     指针停在画面边缘不再转动相机。保留开关以便飞行系统落地后统一收口。 */
+  M.EDGE_PAN = 0;              /* 边缘推镜总闸（0=关停） */
   M.EDGE_PAN_BAND = 0.055;     /* 边缘带：取短边的 5.5%（最小 10px） */
   M.EDGE_PAN_SPEED = 1.0;      /* 倍率（1 ≈ 水平 0.9 rad/s · 垂直 0.55 rad/s） */
   M._ptr = null;               /* 指针位置（相对画布，拖动时也更新） */
@@ -6411,6 +6415,121 @@ import './gltf.js';
     return { on: !!M.EDGE_PAN, w: pt.w, h: pt.h, x: pt.x, y: pt.y, band: band, out: !!pt.out,
       dx: (pt.x > pt.w - band) ? 1 : ((pt.x < band) ? -1 : 0),
       dy: (pt.y > pt.h - band) ? 1 : ((pt.y < band) ? -1 : 0) };
+  };
+  /* ============================================================
+   * v158.43（老板诉求1·高空「左键移动相机本体，模拟飞船加速过程」→
+   *        AskUserQuestion 拍板：「设置一个飞行物（代表相机），比如空天飞机，
+   *        然后通过 WASD 操纵，飞行速度曲线和轨迹参考太空飞行及其他飞行
+   *        题材游戏设定」+「带惯性加减速」+「无实体模型·纯相机飞行」）
+   * ------------------------------------------------------------
+   * **飞行系统 = 高空 WASD 驱动的纯相机惯性飞行**
+   *   触发面：轨道态（!M._surf）+ 地图页，WASD 写 GAME._flyKeys（main.js）。
+   *   语义：W 加速 / S 减速（可倒飞）/ A 左转 / D 右转（转机头 = 转 yaw）；
+   *        松键惯性衰减；左键按下即停止惯性（诉求 1 原文「直至左键操作」）。
+   *   轨迹：位置沿「机头方向（当前视线在切平面的投影）」推进 —— 看哪飞哪；
+   *        转向写 camO.yaw（A/D），画面跟着转 = 机头转向。
+   *   速度曲线：加速度恒定（FLY_ACCEL）爬到上限，松键按 FLY_DECAY 指数滑行
+   *        （太空游戏手感）；倒飞上限 = 0.6×前飞上限。
+   * ⚠️ 推进后 pitch 必须反算（asin）—— 这是 §586r 4 处合法写点之外的
+   *    **第 5 处**（v158.43 规则变更：飞行位置显式设置需要它，smoke §586r
+   *    断言按新口径重写）。不写 pitch 的话 placeCamera 按旧 yaw/pitch 重建，
+   *    位置推进会白干。
+   * ⚠️ 只写状态、不 touch/redraw：本函数与 _tickEdgePan 同处模块作用域，
+   *    touch 是事件闭包局部函数；绘制由渲染循环当帧负责。
+   * ============================================================ */
+  M.FLY_MAX = 45;          /* 前飞上限（m/s，≈ 每 20 秒绕 R=300 一圈） */
+  M.FLY_BACK_MAX = 27;     /* 倒飞上限 = 0.6×FLY_MAX */
+  M.FLY_ACCEL = 18;        /* 加速度（m/s²）：约 2.5 秒到顶 */
+  M.FLY_TURN = 0.9;        /* 满速转向率（rad/s）；随速度缩放，静止不能原地转 */
+  M.FLY_DECAY = 1.2;       /* 松键惯性衰减率（1/s）：满速滑行约 4~5 秒滑停
+                              （p_fly_v15843 实测 0.35 时 5s 后仍余 17% 速度，拖沓） */
+  M._fly = { v: 0 };       /* 运行时态（不入档）：标量速度，倒飞为负 */
+  function _tickFlight(dt) {
+    var fly = M._fly || (M._fly = { v: 0 });
+    var keys = (GAME && GAME._flyKeys) || null;
+    /* 地表 = 走路态：飞行速度清空（WASD 归 stepAvatar） */
+    if (M._surf) { if (fly.v) fly.v = 0; return false; }
+    var w = !!(keys && keys.w), s = !!(keys && keys.s), a = !!(keys && keys.a), d = !!(keys && keys.d);
+    /* ⚠️ 上限放 0.12 秒：headless rAF 节流到 1~2fps 时加速/转向不会慢 20 倍
+       （与 _tickEdgePan 同口径）。 */
+    dt = Math.max(0.001, Math.min(0.12, dt || 0.016));
+    if (w || s) {
+      if (w) fly.v += (M.FLY_ACCEL || 18) * dt;
+      if (s) fly.v -= (M.FLY_ACCEL || 18) * dt;
+    } else {
+      fly.v *= Math.exp(-(M.FLY_DECAY || 1.2) * dt);
+      if (Math.abs(fly.v) < 0.3) fly.v = 0;
+    }
+    var _vmax = M.FLY_MAX || 45, _vmin = -(M.FLY_BACK_MAX || 27);
+    if (fly.v > _vmax) fly.v = _vmax;
+    if (fly.v < _vmin) fly.v = _vmin;
+    if (a || d) {
+      /* v158.43（p_fly_v15843 实测抓出）：转向写 camO.yaw 会被推进反算覆盖
+         （推进 dir 后 yaw = atan2(dir)，本帧转向量全丢，实测 90 tick 只转 0.017）。
+         改转 **lookYaw（视线偏移）**：placeCamera 把它独立左乘在位置姿态上，
+         与位置完全解耦 —— A/D 画面转（机头转）、位置不动、推进反算不碰它。
+         A 左转 = lookYaw 减（与右键右拖内容右移同一契约）；D 右转 = lookYaw 增。 */
+      var _tv = (M.FLY_TURN || 0.9) * Math.max(0.25, Math.min(1, Math.abs(fly.v) / _vmax));
+      if (a) camO.lookYaw -= _tv * dt; else camO.lookYaw += _tv * dt;
+      camO.lookYaw = ((camO.lookYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    }
+    if (!fly.v) {
+      try { M._lastAct = Date.now(); } catch (eT) { }
+      return !!(a || d);
+    }
+    /* ---- 位置推进：dir += 机头切向 × 弧长 ----
+       机头 = 相机视线（含右键 lookYaw/lookPitch 偏移）在切平面的投影。
+       相机朝向取**上帧** placeCamera 建好的 cam.quaternion（本函数跑在
+       placeCamera 之前，同 _tickEdgePan；一帧延迟无感）。
+       首帧 quaternion 未建时兜底：机头 = 东向 up×dir。 */
+    var _fwdF = null;
+    try {
+      if (cam && cam.quaternion) {
+        _fwdF = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion).normalize();
+      }
+    } catch (eF1) { _fwdF = null; }
+    var _radF = (cam && cam.position)
+      ? new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize()
+      : new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2]);
+    var _tanF = _fwdF ? _fwdF.clone() : null;
+    if (_tanF) {
+      _tanF.addScaledVector(_radF, -_tanF.dot(_radF));
+      if (!isFinite(_tanF.x) || _tanF.lengthSq() < 1e-8) _tanF = null;
+      else _tanF.normalize();
+    }
+    if (!_tanF) {
+      /* 兜底：机头 = 东向（up × dir 归一化）；极区 |east|→0 时跳过本帧 */
+      var _upF = new THREE.Vector3(0, 1, 0);
+      _tanF = new THREE.Vector3().crossVectors(_upF, _radF);
+      if (!isFinite(_tanF.x) || _tanF.lengthSq() < 1e-8) _tanF = null;
+      else _tanF.normalize();
+    }
+    if (!_tanF) {
+      try { M._lastAct = Date.now(); } catch (eT) { }
+      return false;
+    }
+    var _stepF = (fly.v * dt) / Math.max(1e-6, camO.dist);
+    var _ndF = new THREE.Vector3(camO.dir[0], camO.dir[1], camO.dir[2])
+      .addScaledVector(_tanF, _stepF).normalize();
+    if (!isFinite(_ndF.x)) { return false; }
+    camO.dir = [_ndF.x, _ndF.y, _ndF.z];
+    camO.yaw = Math.atan2(_ndF.x, _ndF.z);
+    /* v158.43：第 5 处 pitch 反算写点（飞行推进需要；见上方注释） */
+    camO.pitch = Math.asin(Math.max(-1, Math.min(1, _ndF.y)));
+    camO.quat = null; camO._euler = null;
+    /* 飞行中 look 偏移保留（右键转头与位置解耦）；进地表的 _surfDir 交班
+       由 placeCamera 现有逻辑接管。 */
+    try { M._lastAct = Date.now(); } catch (eT) { }
+    return true;
+  }
+  M.flyTick = _tickFlight;
+  /* 探针出口（只读纯函数）：飞行状态快照 —— 给 smoke 断言/探针用。 */
+  M.flyProbe = function () {
+    return { v: (M._fly && M._fly.v) || 0,
+      max: M.FLY_MAX, back: M.FLY_BACK_MAX, accel: M.FLY_ACCEL,
+      turn: M.FLY_TURN, decay: M.FLY_DECAY,
+      yaw: camO.yaw, pitch: camO.pitch, dir: camO.dir ? camO.dir.slice() : null,
+      lookYaw: camO.lookYaw, lookPitch: camO.lookPitch };
   };
   /* 探针出口（只读纯函数）：滚轮曲线与交班衰减 —— 给 smoke 断言用，
      不在别处调用。`_zoomCurveProbe(agl, dy)` 返回"这一格滚到哪"。 */
@@ -7005,6 +7124,19 @@ import './gltf.js';
     var _epDt = Math.min(0.05, (_epNow - (M._epAt || _epNow - 16)) / 1000) || 0.016;
     M._epAt = _epNow;
     try { _tickEdgePan(_epDt); } catch (eEP1) { if (!M._epErr1) { M._epErr1 = String(eEP1 && eEP1.message); } }
+    /* v158.43：高空 WASD 飞行（纯相机惯性飞行）—— 也在 placeCamera 之前跑，当帧生效 */
+    try { _tickFlight(_epDt); } catch (eFL1) { if (!M._flErr1) { M._flErr1 = String(eFL1 && eFL1.message); } }
+    /* v158.43：飞行 HUD —— sig 去重（速度取整变化才写 DOM），高空且有速度才显示 */
+    try {
+      if (GAME.ui && GAME.ui.renderFlyHud) {
+        var _fv0 = (M._fly && M._fly.v) || 0;
+        var _sigF = (!M._surf && Math.abs(_fv0) > 0.3) ? Math.round(Math.abs(_fv0)) : 0;
+        if (_sigF !== (M._flyHudSig || 0)) {
+          M._flyHudSig = _sigF;
+          GAME.ui.renderFlyHud(_sigF ? _fv0 : null);
+        }
+      }
+    } catch (eFH) { }
     try { _dustTick(_epDt); } catch (eEP2) { if (!M._epErr2) { M._epErr2 = String(eEP2 && eEP2.message); } }
     try { _perfTick(_epDt); } catch (eEP3) { if (!M._epErr3) { M._epErr3 = String(eEP3 && eEP3.message); } }
     placeCamera();
@@ -7712,22 +7844,32 @@ import './gltf.js';
        * ============================================================ */
       if (e.button === 2) {
         /* ============================================================
-         * v158.27（老板「垃圾操作，右键往前？？？」）—— **规则变更：右键回到"绕球心"**
+         * v158.43（老板诉求1「右键是移动相机，不是移动星球」）—— **规则变更：高空右键回到"转头"**
          * ------------------------------------------------------------
-         * 老板 v156.55 原话：「右键的相机，我希望是相机**绕球心**运动，
-         *   而不是在视野内摆弄球体」。v157c 又把它改成"以相机为支点转头"，
-         *   结果右拖时球在画面里滑出去 —— 体感就是"整个世界往前"。
-         *
-         * 现在：右键**直接落到左键那条抓取式轨道**（arcball，绕球心），
-         *   松手时不许当"点击选格"。转头能力没丢：**中键**仍是转头。
-         * 地表模式下右键因此也走"绕角色一圈"（见 mousemove 的 _surf 分支）。
+         * 诉求 1 原文（高空）：「右键转动相机朝向而不改变位置（相机本体可以
+         *   维持一个持续的速度，直至左键操作）」。
+         * v158.27 曾把右键定为"绕球心"（_rmbOrbit 抓球），现在高空换回
+         *   转头语义（lookYaw/lookPitch 偏移，位置一寸不动）；高空位置移动
+         *   交给新的 **WASD 飞行系统**（_tickFlight）。
+         * 地表右键不变：仍走 _rmbOrbit + lookDrag=2（绕角色转，v158.36 口径）。
+         * 双击右键 = 视线回正的能力保留（_rmbLook 标记 + mouseup lookDrag 分支）。
          * ============================================================ */
-        M._rmbOrbit = true;
-        M._rmbDownAt = Date.now(); M._rmbMoved = false;
-        /* v158.36：地表右键要落到 mousemove 的 lookDrag 语义区（绕角色转），
-           这里给一个独立标记；mouseup 的 _rmbOrbit 分支会一并清掉。 */
-        if (M._surf) lookDrag = 2;
-        /* 不 return —— 继续落下去初始化为"抓球拖拽"（与左键同一条路） */
+        if (M._surf) {
+          M._rmbOrbit = true;
+          M._rmbDownAt = Date.now(); M._rmbMoved = false;
+          /* v158.36：地表右键要落到 mousemove 的 lookDrag 语义区（绕角色转），
+             这里给一个独立标记；mouseup 的 _rmbOrbit 分支会一并清掉。 */
+          lookDrag = 2;
+          /* 不 return —— 继续落下去初始化为"抓球拖拽"（与左键同一条路） */
+        } else {
+          /* v158.43：高空右键 = 转头（朝向变、位置不变）。_rmbLook 专标记
+             区分中键 lookDrag（双击回正只认右键）。提前 return：不再初始化
+             _panBasis 抓球 —— 高空位置移动归 WASD 飞行。 */
+          M._rmbLook = true;
+          M._rmbDownAt = Date.now(); M._rmbMoved = false;
+          moved = false;
+          lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
+        }
       } else if (e.button === 1) {                             /* 中键 = 自由转头 */
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
       }
@@ -7790,13 +7932,19 @@ import './gltf.js';
        *   不留只写不读的字段。
        * ============================================================ */
       M._panDrag = false; M._panBasis = null;
-      /* v158.36（从零实测抓到）：v158.28 已定「左键只选、不转相机」，
-         但这里仍为左键抓地初始化 `_panDrag`，mousemove 的
-         `if (M._surf && M._panDrag)` 会平移相机 —— p_edgepan⑤ 实测
-         地表左键拖 216px 后 camPos 变了（orbitYaw/俯角虽不变），
-         违反 §616①「两个模式都守」。开关关闭时不抓地：左键只剩点选，
-         位移交给边缘推镜；右键走 lookDrag/抓球，本就不需要 panBasis。 */
-      if (M._surf && M.LEFT_DRAG_CAM) {
+      /* v158.43（诉求 1 原文「相机本体可以维持一个持续的速度，直至左键操作」）：
+         左键按下 = 停止高空飞行惯性（点选/拖拽都不该带着飞船速度做）。 */
+      if (e.button === 0 && M._fly && M._fly.v) M._fly.v = 0;
+      /* v158.43（老板诉求1·地面）：「左键单击=移动/放置，左键长按=平移镜头」。
+         v158.36 曾按「左键只选不转相机」把这里锁在 `LEFT_DRAG_CAM`（默认 false），
+         导致地表左键既不抓地也不平移，位移全靠边缘推镜 —— 而边缘推镜本需求已关停。
+         现在地表左键**按下即抓地建 panBasis**：单击（未拖动）松手走 pickAt→走路/放置，
+         长按拖动走 mousemove 的 `if (M._surf && M._panDrag)` 平移镜头，两态天然由
+         `moved` 区分（mouseup 里拖动过就 return、不再当点击）。这是地面新语义，
+         独立于高空「左键只选」的 `LEFT_DRAG_CAM` 开关。右键地表也会落到这里初始化
+         panBasis，但它 mousedown 已设 lookDrag=2，mousemove 的 lookDrag 分支优先于
+         _panDrag，不冲突；mouseup 的 _rmbOrbit 分支也会清 _panDrag。 */
+      if (M._surf) {
         var _pa0 = _groundPtAt(e.clientX, e.clientY);
         if (_pa0) {
           var _pb0 = _groundPtAt(e.clientX + 1, e.clientY);
@@ -8011,7 +8159,7 @@ import './gltf.js';
        * 修法：右键越过「左键只选」分支，落到下方 lookDrag 语义区；
        * 那里已有完整的 _surfOrbitYaw / SURF_CAM_EL 写入（v158.27 那条）。
        */
-      if (M._surf && drag && !lookDrag && !M._rmbOrbit && M.SURF_AVATAR !== false) {
+      if (M._surf && drag && !lookDrag && !M._rmbOrbit && M.SURF_AVATAR !== false && !M._panDrag) {
         var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
         if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
         lx = e.clientX; ly = e.clientY;
@@ -8042,7 +8190,7 @@ import './gltf.js';
       }
       /* v158.36：右键同样越过这个「转头(_surfDir)」分支，落到 lookDrag 的
          绕角色转(_surfOrbitYaw)，与 v158.27 的键位口径一致。 */
-      if (M._surf && drag && !lookDrag && !M._rmbOrbit) {
+      if (M._surf && drag && !lookDrag && !M._rmbOrbit && !M._panDrag) {
         var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
         if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
         lx = e.clientX; ly = e.clientY;
@@ -8124,6 +8272,9 @@ import './gltf.js';
           touch(); redraw(); return;
         }
         if (Math.abs(_dx) + Math.abs(_dy) > 3) M._rmbMoved = true;
+        /* v158.43：高空右键（_rmbLook）拖过也写 moved —— mouseup 的 lookDrag
+           分支要用它判"拖过"（双击回正只认真单击）。中键写它无副作用。 */
+        if (Math.abs(_dx) + Math.abs(_dy) > 3) moved = true;
         var _lp = camO.lookPitch + TURN.lookPitch.orbit * _dy * M.TURN_K_LOOK;
         camO.lookPitch = Math.max(-1.55, Math.min(1.55, _lp));
         var _ly = camO.lookYaw + TURN.lookYaw.orbit * _dx * M.TURN_K_LOOK;
@@ -8501,11 +8652,25 @@ import './gltf.js';
         return;
       }
       if (lookDrag) {
-        /* ⛔ v158.27：右键改走 `M._rmbOrbit`（抓球拖拽，见 mouseup 开头那段），
-           所以这里只剩**中键转头** —— 松手即结束。
-           原「右键双击回正」逻辑整体搬到 `_rmbOrbit` 分支（判定改用 moved，
-           否则右键永远不进 lookDrag，那段就是死代码）。 */
-        lookDrag = 0; return;
+        /* v158.43（规则变更）：高空右键改走 lookDrag=1（转头、位置不动），
+           所以这里除了**中键转头**（松手即结束），还多一路 **右键转头**：
+           `_rmbLook` 标记只在 mousedown 高空右键分支置位，中键不置 ——
+           双击回正只认右键（与 v156.47「双击右键 = 视线回正」的能力一致）。
+           地表右键走 _rmbOrbit 分支，不经过这里。 */
+        var _wasRmbLook = !!M._rmbLook;
+        M._rmbLook = false;
+        lookDrag = 0;
+        if (_wasRmbLook && !moved) {
+          var _nowLk = Date.now();
+          if (_nowLk - (M._lastRmbLookUp || 0) < 320) {
+            M._lastRmbLookUp = 0;
+            camO.lookYaw = 0; camO.lookPitch = 0;
+            touch(); redraw();
+          } else {
+            M._lastRmbLookUp = _nowLk;
+          }
+        }
+        return;
       }
       /* 平移结束：补一次重建，让几何对齐到最终位置（节流期间可能欠了一帧）。
          ⚠️ 只有**真的拖过**才在这里 return —— 否则地表里"点一下"（放置物品 /
@@ -8515,6 +8680,10 @@ import './gltf.js';
         if (moved) {
           try { if (M._surf) rebuildSurf(camO.dir); } catch (ePR) { }
           if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+          /* v158.43：平移后 drag 必须清零 —— 残留 1 会让悬停提示
+             `if (!M._collider || drag) return;` 永久失效（既有隐患，
+             LEFT_DRAG_CAM 默认关时没人走到这；诉求 1 让地表左键平移常态化后必踩）。 */
+          drag = 0; moved = false;
           return;
         }
       }
@@ -10191,14 +10360,34 @@ import './gltf.js';
        * 顺序必须是「整平工具 → 放置 → 选格」：
        *   铲子/物品都是"手持态"，谁在手谁优先；都没拿才是选格看信息。
        * ============================================================ */
-      /* v158.39：建筑工具 —— 真正扣资源、排施工队的采集场也接进建造栏。
-         资源类型由地块自身决定，玩家不用记"哪种房子配哪种地"。 */
+      /* v158.43（老板「进入建造模式时，左键点击出现勘探选项」）：
+         建造模式下点资源地 —— 未勘探先自动勘探（给丰度/储量），已勘探则建对应采集场。
+         「勘探 → 建造」两步在一个点击动作里打通，不再要求先开地块面板。
+         手持指定建筑（_plantId）时建那一座；否则按资源类型自动匹配（quickBuildPlant）。 */
       if (GAME.ui && GAME.ui._plantTool) {
         var _ciPlant = -1;
         try { _ciPlant = pickCiByRay(rc, _hp); } catch (ePL0) { _ciPlant = -1; }
-        var _pr = GAME.quickBuildPlant
-          ? GAME.quickBuildPlant(_ciPlant)
-          : { ok: false, msg: '当前版本没有采集场快速建造' };
+        var _pr = null;
+        /* 未勘探的资源地 → 先勘探（勘探是建造的前置，一步到位） */
+        var _RSs = GAME.resource;
+        var _rview = (_RSs && _RSs.view && _ciPlant >= 0) ? _RSs.view(_ciPlant) : null;
+        if (_rview && _rview.res && !_rview.scanned) {
+          var _rrec = _RSs.scan(_ciPlant);
+          if (_rrec) {
+            var _rtier = _RSs.richTier ? _RSs.richTier(_rrec.richness) : null;
+            if (GAME.ui.toast) GAME.ui.toast('🔍 勘探完成：' + (_RSs.resName ? _RSs.resName(_rrec.res) : _rrec.res)
+              + ' · ' + (_rtier ? _rtier.name : '') + ' ×' + (_rrec.richness || 0).toFixed(2)
+              + ' · 储量 ' + (GAME.utils && GAME.utils.numText ? GAME.utils.numText(_rrec.reserve || 0, 0) : Math.round(_rrec.reserve || 0)));
+          }
+        }
+        var _plantIdNow = GAME.ui._plantId || '';
+        if (_plantIdNow && GAME.buildPlant) {
+          _pr = GAME.buildPlant(_ciPlant, _plantIdNow);
+        } else {
+          _pr = GAME.quickBuildPlant
+            ? GAME.quickBuildPlant(_ciPlant)
+            : { ok: false, msg: '当前版本没有采集场快速建造' };
+        }
         if (GAME.ui.toast) GAME.ui.toast(_pr.ok ? _pr.msg : ('⚠ ' + _pr.msg));
         if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
         return;
@@ -10298,7 +10487,10 @@ import './gltf.js';
        **只有野地才走**。城/据点/营地/村社点一下是"我要看它"，把人拽过去
        既没用又打断（走过去还要等）。野地的语义才是"走过去"。 */
     var _kindEarly = (M.cellKind && M.cellKind[ci]) || 'wild';
-    if (_kindEarly === 'wild') { try { M.walkTo(ci); } catch (eWk2) { } }
+    /* v158.43（老板「常规情况下左键点击地面无需响应」）：
+       只有**地表态**（站在地面上）点野地才走路（诉求 1 地面「左键单击=人物移动」）；
+       战略态（高空俯瞰）点普通野地**无响应** —— 不再"边点边弹/点哪走哪"。 */
+    if (_kindEarly === 'wild' && M._surf) { try { M.walkTo(ci); } catch (eWk2) { } }
     /* v92：**未探明的格子点不进去** —— 这是迷雾真正的玩法后果。
        不做成"点开发现是空的"：那只是把信息藏一层，玩家照样能靠点击扫图。
        整片未探明 = 地图上没有这一带，得先派人过去（这里连地形都不给看）。 */
@@ -10338,8 +10530,10 @@ import './gltf.js';
      *     本来就不该移动小人，上面 walkTo 也已按 kind 拦掉）。
      * 这样"左键走路 / E 查看"各归各位，不再互相覆盖。
      * ============================================================ */
+    /* v158.43（老板「常规情况左键点击地面无需响应」）：
+       物件（城/据点/营地/村社）点一下仍是"选择目标"→ 弹它自己的面板；
+       野地在战略态**无响应**（不弹、不 toast），地表态已在上方 walkTo 走过去。 */
     if (kind !== 'wild') M.openCellPanel(ci);
-    else if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🏃 走过去 —— 到了按 E 看这块地');
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   M.centerOn = function (x, y) {                            /* 相机对准某格（回主城/回本城/灰烬城）· 不高亮 */

@@ -14649,11 +14649,26 @@ import './ui.js';
         '<button class="bb-slot" data-action="terrace-lv" data-d="1" title="目标层 +1（每层 1 米）">＋<i>升</i></button>' +
         '<button class="bb-slot" data-action="terrace-clear" title="复原：把走过的格恢复成自然地形">↩<i>复原</i></button>';
     } else if (tab === 'plant') {
-      /* v158.39：真正扣资源、进施工队的采集场也进建造栏。
-         只放一个"采集场"工具：点哪块资源地，由地块资源反查对应建筑。 */
+      /* v158.43（老板「把可建造的 4 个资源建筑在这里提供选项」）：
+         4 座资源建筑分开提供（净化厂/水培温室/发电站/电弧熔炉），
+         另给一枚「智能」通用工具（按资源类型自动匹配，懒人一键）。
+         打通勘探 → 建造 → 生产 → 资源值全链路。 */
       var onP = !!ui._plantTool;
-      var hP = '<button class="bb-slot' + (onP ? ' on' : '') + '" data-action="plant-pick"'
-        + ' title="点资源地就按资源类型自动建对应采集场（扣资源、进施工队列）">建造<i>采集场</i></button>';
+      var _pidHold = ui._plantId || '';
+      var _EBS = DATA.EXT_BUILDINGS || {};
+      var _EBOrd = DATA.EXT_BUILD_ORDER || ['farm', 'forest', 'quarry', 'mine'];
+      var hP = '';
+      /* 智能匹配（不指定建筑，按资源类型反查） */
+      hP += '<button class="bb-slot' + (onP && !_pidHold ? ' on' : '') + '" data-action="plant-pick" data-plant=""'
+        + ' title="点资源地自动配对应采集场（不指定种类）">⚒<i>智能</i></button>';
+      for (var _pk = 0; _pk < _EBOrd.length; _pk++) {
+        var _eb = _EBS[_EBOrd[_pk]];
+        if (!_eb) continue;
+        var _onB = (onP && _pidHold === _eb.id);
+        hP += '<button class="bb-slot' + (_onB ? ' on' : '') + '" data-action="plant-pick" data-plant="' + U.escape(_eb.id) + '"'
+          + ' title="' + U.escape(_eb.name + '：' + _eb.desc + '（' + (DATA.RESOURCES || []).filter(function (r) { return r.key === _eb.res; }).map(function (r) { return r.name; })[0] + '）') + '">'
+          + (_eb.icon || '▪') + '<i>' + U.escape(_eb.name) + '</i></button>';
+      }
       if (onP) hP += '<button class="bb-slot warn" data-action="place-cancel" title="放下手上的建筑">收工<i>放下</i></button>';
       host.innerHTML = hP;
     } else if (tab === 'item') {
@@ -16992,12 +17007,41 @@ import './ui.js';
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:8px 12px;font-weight:700;">'
-        + 'W A S D　或　↑ ↓ ← → 走动'
-        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　E 看这一格　·　'
-        + '右键拖 转视角　·　滚轮 高度　·　鼠标贴边 推进地图</span></span>';
+        + '操作说明见「⚙️ 设置」页'
+        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　左键长按 平移　·　右键长按 转视角</span></span>';
       root.appendChild(el);
     }
     el.style.display = on ? 'block' : 'none';
+    return el;
+  };
+  /* ============================================================
+   * v158.43（诉求1·高空空天飞机飞行）：飞行 HUD —— 只有高空有速度时显示
+   * 一行速度 + 键位（占屏最小；静止即隐）。由 map3d 渲染循环按 sig 去重驱动
+   * （速度取整变化才写一次 DOM）。诉求 5「必要时对操作方式加以说明」。
+   * ============================================================ */
+  ui.renderFlyHud = function (v) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('fly-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fly-hud';
+      el.style.cssText = 'position:absolute;left:50%;bottom:120px;transform:translateX(-50%);'
+        + 'z-index:1902;pointer-events:none;display:none;white-space:nowrap;'
+        + 'background:rgba(12,18,26,.86);color:#8fd8ff;'
+        + 'border:1px solid rgba(90,160,220,.45);border-radius:8px;'
+        + 'padding:5px 12px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
+      root.appendChild(el);
+    }
+    if (v == null || (ui.modalVisible && ui.modalVisible())) {
+      el.style.display = 'none';
+      return el;
+    }
+    var _sp = Math.round(Math.abs(v));
+    el.innerHTML = '<span style="opacity:.9;">🚀 空天飞机 · </span>'
+      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
+      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">W/S 加减速 · A/D 转向 · 右键 转头</span>';
+    el.style.display = 'block';
     return el;
   };
 
@@ -21226,6 +21270,17 @@ import './ui.js';
             return { v: t.id, on: ui.theme() === t.id, label: t.name };
           })
         }) + '</div>' +
+      '</div>' +
+      /* v158.43（老板「把 WSAD 之类操作方式说明放到设置中，别占屏幕」）：
+         操作说明从屏幕 HUD 集中搬到设置页 —— 不再占屏，需要时来这里查。 */
+      '<div class="set-card">' +
+        '<div class="res-line"><span class="lbl">🕹️ 操作说明</span><span class="val">大世界 · 键位一览</span></div>' +
+        '<div class="ui-sub" style="line-height:2;">' +
+          '<b>地面</b>：<b>W A S D</b> 或 <b>↑↓←→</b> 走动　·　<b>左键</b> 点哪走哪　·　<b>左键长按拖动</b> 平移镜头　·　<b>右键长按拖动</b> 转动视角<br>' +
+          '<b>交互</b>：走到目标旁按 <b>E</b> 查看 / 上车 / 对话　·　<b>滚轮</b> 升降视野高度<br>' +
+          '<b>建造</b>：切「建造」模式后，左键点地块 = 勘探 / 放置　·　<b>R</b> 旋转手持物<br>' +
+          '<b>高空</b>：<b>W</b> 加速 / <b>S</b> 减速（空天飞机惯性滑行）　·　<b>A D</b> 转向　·　<b>右键</b> 转头（双击回正）　·　<b>滚轮</b> 缩放　·　<b>左键</b> 停止飞行' +
+        '</div>' +
       '</div>' +
       /* v151（老板：「打一场仗要盯 3~5 分钟，设置里还找不到开关」）：
          战斗节奏 = 两枚就地点选（观战 / 每回合读秒）。默认 10 秒。 */

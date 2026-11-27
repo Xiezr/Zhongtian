@@ -1675,6 +1675,8 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           if (M.clearGhost) { M.clearGhost(); M._ghostCi = -1; M._ghostIJ = null; }
           if (ui.renderBuildBar) ui.renderBuildBar('item');
         }
+        /* v158.43：拿铲子 = 放下采集场工具（一只手只能拿一样） */
+        if (next !== M.TOOL_NONE && ui._plantTool) { ui._plantTool = false; ui._plantId = ''; }
         M._terraceErase = false;
         if (ui.renderBuildBar) ui.renderBuildBar('tool');
         var h1 = document.getElementById('bb-hint');
@@ -1729,11 +1731,18 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (h3) h3.textContent = '复原：按住左键拖过要还原的格子（恢复自然地形）';
         ui.toast('↩ 复原刷 —— 拖过的格恢复自然地形');
       })(); break;
-      /* v158.39：采集场快建 —— 建造模式里也能"拿建筑 → 点地 → 施工"，
-         不必先开地块面板再认资源种类。真扣费/真排队仍走 GAME.quickBuildPlant。 */
+      /* v158.39：采集场快建 —— 建造模式里也能"拿建筑 → 点地 → 施工"。
+         v158.43（老板「把可建造的 4 个资源建筑分开提供」）：支持指定建筑 id
+         （data-plant），不指定 = 通用"智能匹配"（按资源类型自动反查）。 */
       case 'plant-pick': (function () {
         var M = GAME.map3d;
-        ui._plantTool = !ui._plantTool;
+        var _pid3 = el.closest ? el.closest('[data-plant]') : el;
+        var _want = _pid3 ? (_pid3.getAttribute('data-plant') || '') : '';
+        /* 再点同一个建筑 = 放下；点另一个 = 换手上拿的 */
+        var _same = (_want && ui._plantTool && ui._plantId === _want);
+        var _nowOn = _same ? false : true;
+        ui._plantTool = _nowOn;
+        ui._plantId = _nowOn ? (_want || '') : '';
         if (ui._plantTool) {
           ui._placeItem = null;
           if (M && M.setTool) M.setTool(M.TOOL_NONE);
@@ -1741,7 +1750,11 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         }
         if (M && M.gridHighlight) M.gridHighlight(null);
         if (ui.renderBuildBar) ui.renderBuildBar('plant');
-        ui.toast(ui._plantTool ? '已拿采集场 —— 点资源地就按资源类型自动施工（右键放下）' : '已放下建筑工具');
+        var _ebN = (_want && DATA.EXT_BUILDINGS && DATA.EXT_BUILDINGS[_want]) ? DATA.EXT_BUILDINGS[_want].name : '';
+        ui.toast(ui._plantTool
+          ? (_ebN ? ('🔨 手上拿着「' + _ebN + '」—— 点对应的资源地施工（右键放下）')
+                  : '已拿采集场 —— 点资源地就按资源类型自动施工（右键放下）')
+          : '已放下建筑工具');
       })(); break;
       case 'bb-slot':
         ui.toast('建造格还没接物品：下一步做"选物品 → 点格落地"');
@@ -1754,6 +1767,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         if (!GAME.place || !GAME.place.item(_pid2)) { ui.toast('没有这种东西可放'); break; }
         ui._placeItem = (ui._placeItem === _pid2) ? null : _pid2;    /* 再点一次同一件 = 放下 */
         ui._plantTool = false;                                    /* 一只手只能拿一样 */
+        ui._plantId = '';                                         /* v158.43：手持建筑 id 一并清 */
         /* 一只手只能拿一样：拿物品就把铲子收起来，否则会出现"拿着树苗拖整平" */
         if (ui._placeItem && GAME.map3d && GAME.map3d.setTool) {
           GAME.map3d.setTool(GAME.map3d.TOOL_NONE);
@@ -4236,6 +4250,18 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
           e.preventDefault();
           return;
         }
+        /* v158.43（诉求1·高空「空天飞机 WASD 飞行」）：轨道态（非 FOLLOW/_surf）
+           WASD = 飞行操纵 —— 独立通道 GAME._flyKeys，与走路 GAME._keys /
+           街区 D.keys / 载具 vehicle.keys 三级互不串线。map3d._tickFlight 消费。 */
+        if (!_mkAv.FOLLOW && !_mkAv._surf
+            && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])
+            && !(_mkAv.DISTRICT && GAME.district && GAME.district.active)
+            && !(GAME.vehicle && GAME.vehicle.mounted)) {
+          if (!GAME._flyKeys) GAME._flyKeys = {};
+          GAME._flyKeys[AV_KEY_ALIAS[_avCode] || _avCode.charAt(3).toLowerCase()] = 1;
+          e.preventDefault();
+          return;
+        }
       }
       /* v89.210（规划一 · 老板「按建议执行」）：Shift+1~3 → 第 10~12 个页签
          （公文 / 自动 / 设置）—— 1-9 不动，纯续号、零记忆成本。
@@ -4293,10 +4319,15 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       if (/^Key[WASD]$/.test(_c) && GAME.vehicle && GAME.vehicle.keys) {
         GAME.vehicle.keys[_c.charAt(3).toLowerCase()] = 0;
       }
+      /* v158.43（高空飞行通道）：飞行键独立清，不借 GAME._keys。 */
+      if (/^Key[WASD]$/.test(_c) && GAME._flyKeys) {
+        GAME._flyKeys[_c.charAt(3).toLowerCase()] = 0;
+      }
     });
     window.addEventListener('blur', function () { GAME._keys = {}; });
     window.addEventListener('blur', function () { if (GAME.district) GAME.district.keys = {}; });
     window.addEventListener('blur', function () { if (GAME.vehicle) GAME.vehicle.keys = {}; });
+    window.addEventListener('blur', function () { GAME._flyKeys = {}; });   /* v158.43 飞行通道同清 */
   }
 
   var AUTO_SAVE_MS = 5 * 60 * 1000;   // 自动存档间隔：5 分钟

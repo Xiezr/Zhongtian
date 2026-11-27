@@ -1255,12 +1255,41 @@ import './ui.js';
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:8px 12px;font-weight:700;">'
-        + 'W A S D　或　↑ ↓ ← → 走动'
-        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　E 看这一格　·　'
-        + '右键拖 转视角　·　滚轮 高度　·　鼠标贴边 推进地图</span></span>';
+        + '操作说明见「⚙️ 设置」页'
+        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　左键长按 平移　·　右键长按 转视角</span></span>';
       root.appendChild(el);
     }
     el.style.display = on ? 'block' : 'none';
+    return el;
+  };
+  /* ============================================================
+   * v158.43（诉求1·高空空天飞机飞行）：飞行 HUD —— 只有高空有速度时显示
+   * 一行速度 + 键位（占屏最小；静止即隐）。由 map3d 渲染循环按 sig 去重驱动
+   * （速度取整变化才写一次 DOM）。诉求 5「必要时对操作方式加以说明」。
+   * ============================================================ */
+  ui.renderFlyHud = function (v) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('fly-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fly-hud';
+      el.style.cssText = 'position:absolute;left:50%;bottom:120px;transform:translateX(-50%);'
+        + 'z-index:1902;pointer-events:none;display:none;white-space:nowrap;'
+        + 'background:rgba(12,18,26,.86);color:#8fd8ff;'
+        + 'border:1px solid rgba(90,160,220,.45);border-radius:8px;'
+        + 'padding:5px 12px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
+      root.appendChild(el);
+    }
+    if (v == null || (ui.modalVisible && ui.modalVisible())) {
+      el.style.display = 'none';
+      return el;
+    }
+    var _sp = Math.round(Math.abs(v));
+    el.innerHTML = '<span style="opacity:.9;">🚀 空天飞机 · </span>'
+      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
+      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">W/S 加减速 · A/D 转向 · 右键 转头</span>';
+    el.style.display = 'block';
     return el;
   };
 
