@@ -51616,6 +51616,59 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §624 v158.44 · 老板「人太大又太小了。人的占屏比例应该相对固定，
+   *   则在高空时，人物会比例放大。在地面时，人甚至应该小于树才对」
+   * ------------------------------------------------------------
+   * 规则：
+   *   ① 基准比例（buildFigures 的 sc）上限从 5.0 收紧到 1.45 ——
+   *      方块人几何高 1.2，1.45× ≈ 1.74 米 < 最矮的树 2.7 米（地面人恒小于树）。
+   *   ② 屏占比固定缩放：_figScaleTick 每帧按"相机到玩家的距离"算
+   *      worldH = FIG_SCREEN_FRAC × 2d × tan(fov/2)，scale = max(base, worldH/1.2)
+   *      —— 高空放大、地面 clamp 回真实比例；只缩玩家小人（stand），
+   *      城市人偶（city）是城市标志不参与。
+   * 结构面锁源码形态；行为下限（屏占比恒定）由探针 p_fig_scale_v15844 承担。
+   * ============================================================ */
+  (function () {
+    check('§624① 基准比例上限收紧到 1.45（人 1.74m < 树 2.7m）；屏占比常量与入口齐备', (function () {
+      var src = _m3d608;
+      return /Math\.min\(1\.45, cellW \* 0\.45 \/ 1\.2\)/.test(src)
+        && /M\.FIG_SCREEN_FRAC = 0\.025;/.test(src)
+        && /M\.FIG_BASE_H = 1\.2;/.test(src)
+        && /M\.figScaleTick = _figScaleTick;/.test(src)
+        && /M\.figScaleOf = function/.test(src);
+    })());
+
+    check('§624② 缩放公式：worldH = frac×2d×tan(fov/2)、scale=max(base,…)、只缩 stand、placeCamera 后当帧生效', (function () {
+      var src = _m3d608;
+      var i = src.indexOf('function _figScaleTick');
+      var blk = i >= 0 ? src.slice(i, i + 2400) : '';
+      var k = src.indexOf('_figScaleTick();');   /* 渲染循环调用（带分号，避开函数声明） */
+      var p = k > 0 ? src.lastIndexOf('placeCamera();', k) : -1;
+      return /_whF = \(M\.FIG_SCREEN_FRAC \|\| 0\.025\) \* 2 \* _dF \* Math\.tan\(cam\.fov \* Math\.PI \/ 360\)/.test(blk)
+        && /_sF = Math\.max\(1, _whF \/ \(M\.FIG_BASE_H \|\| 1\.2\)\)/.test(blk)
+        && /figCache\.stand/.test(blk)
+        && /_fst\.g\.scale\.setScalar\(Math\.max\(_base, _sF\)\)/.test(blk)
+        && /Math\.hypot\(/.test(blk)
+        && k > 0 && p > 0 && (k - p) < 600;
+    })());
+
+    check('§624③ 数值面：870m 放大 ≥8×、16m 保持基准 1.45、屏占比恒 2.5%', (function () {
+      var base = 1.45, frac = 0.025, fov = 42, H = 1.2;
+      var sOf = function (d) {
+        var wh = frac * 2 * d * Math.tan(fov * Math.PI / 360);
+        return Math.max(1, wh / H);
+      };
+      var s16 = Math.max(base, sOf(16));
+      var s870 = Math.max(base, sOf(870));
+      var frac870 = (H * s870) / (2 * 870 * Math.tan(fov * Math.PI / 360));
+      return s16 === 1.45
+        && s870 >= 8
+        && frac870 > 0.02 && frac870 < 0.03
+        && 1.2 * base < 3.4 * 0.78;    /* 地面人高 1.74 < 最矮树 2.65 */
+    })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));

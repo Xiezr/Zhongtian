@@ -6830,6 +6830,66 @@
       yaw: camO.yaw, pitch: camO.pitch, dir: camO.dir ? camO.dir.slice() : null,
       lookYaw: camO.lookYaw, lookPitch: camO.lookPitch };
   };
+  /* ============================================================
+   * v158.44（老板「人太大又太小了。我建议，人的占屏比例应该相对固定，
+   *   则在高空时，人物会比例放大。在地面时，人甚至应该小于树才对」）
+   * ------------------------------------------------------------
+   * **屏占比固定缩放**：人物世界尺寸随"相机到人的距离"动态缩放，
+   *   屏幕占比恒为 FIG_SCREEN_FRAC（2.5% 屏高）—— 高空放大看得见、
+   *   地面 clamp 回基准比例（buildFigures 的 baseScale ≤1.45，人 1.74m
+   *   < 最矮的树 2.7m）。
+   * 公式：worldH = frac × 2d × tan(fov/2)；scale = max(base, worldH / 1.2)
+   *   （1.2 = 方块人几何身高；actor 骨骼替身已对齐 1.2）。
+   * 每帧跑（只写 2 个 group 的 scale，无重建、零开销），placeCamera 之后调用
+   *   用本帧相机位置算距离。
+   * ============================================================ */
+  M.FIG_SCREEN_FRAC = 0.025;   /* 人形目标屏高占比（2.5%） */
+  M.FIG_BASE_H = 1.2;          /* 方块人几何身高（scale 的基准） */
+  function _figScaleTick() {
+    if (!figRoot || !figCache) return;
+    if (!cam || !cam.position || !cam.fov) return;
+    var st = GAME.state;
+    if (!st) return;
+    var pp = M.playerPose();
+    if (!pp || !pp.dir) return;
+    var _pr = R + ((pp.h != null && isFinite(pp.h)) ? pp.h : 0);
+    var _dF = Math.hypot(
+      cam.position.x - pp.dir[0] * _pr,
+      cam.position.y - pp.dir[1] * _pr,
+      cam.position.z - pp.dir[2] * _pr);
+    _dF = Math.max(0.1, _dF);
+    var _whF = (M.FIG_SCREEN_FRAC || 0.025) * 2 * _dF * Math.tan(cam.fov * Math.PI / 360);
+    var _sF = Math.max(1, _whF / (M.FIG_BASE_H || 1.2));
+    M._figScale = _sF;                 /* 探针读数 */
+    M._figDist = _dF;
+    /* 只缩**玩家小人**（stand）—— 城市人偶（city）是"城市的标志"，跟着放大
+       会盖过城池本身；老板要固定屏占比的是"人物"，不是城市标记。 */
+    var _fst = figCache.stand;
+    if (_fst && _fst.g) {
+      var _base = _fst.g.userData.baseScale || 1;
+      _fst.g.scale.setScalar(Math.max(_base, _sF));
+    }
+  }
+  M.figScaleTick = _figScaleTick;
+  /* 探针出口（只读纯函数）：给定距离算目标 scale（同 _figScaleTick 公式） */
+  M.figScaleOf = function (d, fov) {
+    var f = fov == null ? 42 : fov;
+    var wh = (M.FIG_SCREEN_FRAC || 0.025) * 2 * Math.max(0.1, d) * Math.tan(f * Math.PI / 360);
+    return Math.max(1, wh / (M.FIG_BASE_H || 1.2));
+  };
+  /* 探针出口（只读）：stand/city 人偶当前 scale —— 供行为断言用
+     （figCache 是闭包变量，测试不能直接读）。 */
+  M.figScaleProbe = function () {
+    var out = { stand: null, city: null, base: null, dist: M._figDist || null, err: M._fsErr1 || null };
+    try {
+      if (figCache && figCache.stand && figCache.stand.g) {
+        out.stand = figCache.stand.g.scale.x;
+        out.base = figCache.stand.g.userData.baseScale || null;
+      }
+      if (figCache && figCache.city && figCache.city.g) out.city = figCache.city.g.scale.x;
+    } catch (eFP) { out.err = String((eFP && eFP.message) || eFP); }
+    return out;
+  };
   /* 探针出口（只读纯函数）：滚轮曲线与交班衰减 —— 给 smoke 断言用，
      不在别处调用。`_zoomCurveProbe(agl, dy)` 返回"这一格滚到哪"。 */
   M._zoomCurveProbe = function (agl, dy) { return _zoomStepTo(Math.max(0.6, +agl || 0.6), dy == null ? 100 : dy); };
@@ -7439,6 +7499,8 @@
     try { _dustTick(_epDt); } catch (eEP2) { if (!M._epErr2) { M._epErr2 = String(eEP2 && eEP2.message); } }
     try { _perfTick(_epDt); } catch (eEP3) { if (!M._epErr3) { M._epErr3 = String(eEP3 && eEP3.message); } }
     placeCamera();
+    /* v158.44：人物屏占比固定缩放 —— 在 placeCamera 之后用本帧机位算距离 */
+    try { _figScaleTick(); } catch (eFS1) { if (!M._fsErr1) { M._fsErr1 = String(eFS1 && eFS1.message); } }
     /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
        （让地表 patch 跟着人走），绝不碰 quat/dist/lookPitch —— 退出跟随零跳变。 */
     if ((M.FOLLOW || M._surf) && M.PLAYER_AVATAR) {
@@ -9321,7 +9383,11 @@
     /* 尺寸：一格的世界宽度随格数变，小人取"格宽的 1/3" —— 40962 时约 1.7 单位 */
     var cellW = (4 * Math.PI * R * R / Math.max(1, (_tileCells || []).filter(Boolean).length)) || 1;
     cellW = Math.sqrt(cellW);
-    var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
+    /* v158.44（老板「人太大又太小了……在地面时，人甚至应该小于树才对」）：
+       基准比例上限从 5.0 收紧到 **1.45** —— 方块人几何高 1.2，1.45× ≈ 1.74 米，
+       而最矮的树也有 2.7 米（树干 1.0+树冠 2.4，缩放 0.78 起）—— 地面人恒小于树。
+       高空"看不见"不靠基准比例解决，改由 _figScaleTick 按屏占比动态放大（下方）。 */
+    var sc = Math.max(0.8, Math.min(1.45, cellW * 0.45 / 1.2));
     var who = [];
     /* ⛔ v157.85：前传的「金色君主人偶」分支已删 —— 现在一律画当前城市。 */
     var pc = GAME.currentCity && GAME.currentCity();
