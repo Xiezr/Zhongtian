@@ -8762,6 +8762,7 @@ import './gltf.js';
   M.teleportTo = function (ci) {
     ci = ci | 0;
     M._spd = 0;                    /* v158.32：传送必须清速度，否则落地点会先"滑"一段 */
+    M._lastWd = null;              /* v158.35：方向也要清，否则落地会先沿旧方向滑一下 */
     if (!(_tileCells && _tileCells[ci])) return false;
     if (!GAME.state) return false;
     var d = _tileCells[ci].dir;
@@ -8854,6 +8855,21 @@ import './gltf.js';
     var dirCam = up.clone().multiplyScalar(Math.sin(el))
       .addScaledVector(e1, Math.cos(el) * Math.cos(ay))
       .addScaledVector(e2, Math.cos(el) * Math.sin(ay));
+
+    /* ============================================================
+     * v158.35（老板「操作上达到星露谷的标准了吗」）
+     * ------------------------------------------------------------
+     * WASD 必须是**屏幕方向**：按 W 往画面上方走，不管人物朝哪。
+     * 屏幕前方 = 镜头看进去的那一侧 = `-dirCam` 在切平面上的分量。
+     * 每帧写一次，`stepAvatar` 读它当输入基底（相机绕到哪，W 就跟着变）。
+     * ============================================================ */
+    var _hf = dirCam.clone().addScaledVector(up, -dirCam.dot(up));
+    if (_hf.lengthSq() > 1e-6) {
+      _hf.normalize().negate();
+      M._surfFwdW = [_hf.x, _hf.y, _hf.z];
+    } else {
+      M._surfFwdW = null;      /* 正俯视（镜头在正上方）：退化，stepAvatar 退回人物朝向 */
+    }
 
     /* ---- 镜头锚点：走动时滞后，停下立刻归位 ---- */
     var _dt = Math.max(0.001, Math.min(0.05, M._lastAvDt || 0.016));
@@ -9046,10 +9062,17 @@ import './gltf.js';
    * 现在给速度一个一阶状态：起步 ~0.25 秒到全速、松手 ~0.17 秒停住；
    * 撞上陡坡/被挡时速度直接归零（不许顶着山继续"蓄力"）。
    * ============================================================ */
-  M.WALK_ACCEL = 18;           /* m/s²：0 → 4.5 约 0.25 秒 */
-  M.WALK_BRAKE = 26;           /* m/s²：4.5 → 0 约 0.17 秒 */
-  M.BACK_RATE = 0.62;          /* 后退只给 62% 速度 */
-  M._spd = 0;                  /* 当前沿朝向的速度（m/s，带符号） */
+  /* v158.35（老板「达到星露谷的标准了吗」）：加减速**调快一倍**。
+     0.25 秒到全速在手感上就是"按下去等一下才动"；星露谷几乎是瞬时。
+     现在 0.13 秒起、0.10 秒停 —— 仍有重量感（不是开关），但跟手。 */
+  M.WALK_ACCEL = 34;           /* m/s²：0 → 4.5 约 0.13 秒 */
+  M.WALK_BRAKE = 44;           /* m/s²：4.5 → 0 约 0.10 秒 */
+  /* v158.35：`M.BACK_RATE`（后退 62% 速度）随坦克式操作一起退役 ——
+     八方向里"S"是"往画面下方走"，不是倒车，八个方向一律同速。 */
+  M.YAW_TAU = 0.06;            /* 朝向对齐移动方向的时间常数（秒）：≈3.6 帧，几乎瞬时 */
+  M._surfFwdW = null;          /* 屏幕前方（切平面上），由 _surfAvatarCam 每帧写 */
+  M._lastWd = null;            /* 最后一次移动方向：松手后沿它滑停 */
+  M._spd = 0;                  /* 当前速度大小（m/s，v158.35 起恒 ≥0：方向由 _mvDir 定） */
   M.SLIDE_SPEED = 3.0;
   M.SLOPE_LIMIT = 40;
 
@@ -9066,38 +9089,82 @@ import './gltf.js';
       fr.east[1] * Math.sin(yaw) - fr.south[1] * Math.cos(yaw),
       fr.east[2] * Math.sin(yaw) - fr.south[2] * Math.cos(yaw)
     ];
-    var turn = ((keys && keys.d) ? 1 : 0) - ((keys && keys.a) ? 1 : 0);
-    var move = ((keys && keys.w) ? 1 : 0) - ((keys && keys.s) ? 1 : 0);
+    /* ============================================================
+     * v158.35（老板「操作上达到星露谷的标准了吗」）
+     * ------------------------------------------------------------
+     * 之前是**坦克式**：W/S = 前后油门，A/D = 原地转向（yaw += 3 rad/s）。
+     *   实测单按 D 一秒：位移 **0 米**、人原地转 172° —— 按"右"却不往右走。
+     * 星露谷是**八方向**：WASD 直接就是屏幕方向上的位移，
+     *   斜向**归一化**（不会斜着更快），人物朝向自动对齐移动方向，
+     *   没有独立的"转身键"。
+     * 这一版按星露谷口径重写输入层。A/D 从"转身"改成"左右平移"；
+     *   要原地环顾请用右键拖（绕角色转，v158.27 已改好）。
+     * ============================================================ */
+    var _mx = ((keys && keys.d) ? 1 : 0) - ((keys && keys.a) ? 1 : 0);
+    var _my = ((keys && keys.w) ? 1 : 0) - ((keys && keys.s) ? 1 : 0);
+    var _hasIn = (_mx !== 0 || _my !== 0);
     var out = { moved: 0, slide: 0, slope: 0, blocked: 0, ground: 0, gap: 0 };
-    /* v158.19（老板「走的好像老年痴呆一样」）：转向 1.8 → 3.0 rad/s。
-       原来 103°/s，转 90° 要 0.87 秒（真人快速转身约 0.5 秒）—— 按下 A/D 像"磨"，
-       是"痴呆感"的第二来源。3.0 rad/s = 172°/s，转 90° 约 0.52 秒。 */
-    /* v158.33：转身也带加减速 —— 原来按 A/D 是**恒速 3.0 rad/s**，
-       按下去立刻满转、松手立刻停，像转盘不像人。现在 0.2 秒起转、0.18 秒收住。 */
-    var _tgtYaw = turn * 3.0;
-    if (M._yawSpd == null || !isFinite(M._yawSpd)) M._yawSpd = 0;
-    var _dyaw = _tgtYaw - M._yawSpd;
-    var _yrate = (Math.abs(_tgtYaw) > Math.abs(M._yawSpd)) ? 12 : 16;
-    var _ycap = _yrate * dt;
-    if (_dyaw > _ycap) _dyaw = _ycap; else if (_dyaw < -_ycap) _dyaw = -_ycap;
-    M._yawSpd += _dyaw;
-    if (!turn && Math.abs(M._yawSpd) < 0.05) M._yawSpd = 0;
-    if (M._yawSpd) yaw += M._yawSpd * dt;
-    /* ---- v158.32：速度是一阶状态（有起步/刹车），不是一个开关 ---- */
-    var _tgtSpd = move * M.WALK_SPEED * (move < 0 ? M.BACK_RATE : 1);
+
+    /* 屏幕基（切平面上）：前方 = 镜头看进去的那一侧；右 = 前 × 径向
+       （`M._surfFwdW` 由 `_surfAvatarCam` 每帧写；高空时退回人物朝向） */
+    var _sf = fwd;
+    if (M._surf && M._surfFwdW && isFinite(M._surfFwdW[0])) {
+      var _s0 = M._surfFwdW;
+      var _sd0 = _s0[0] * p.dir[0] + _s0[1] * p.dir[1] + _s0[2] * p.dir[2];
+      var _ox = _s0[0] - _sd0 * p.dir[0];
+      var _oy = _s0[1] - _sd0 * p.dir[1];
+      var _oz = _s0[2] - _sd0 * p.dir[2];
+      var _ol = Math.sqrt(_ox * _ox + _oy * _oy + _oz * _oz);
+      if (_ol > 1e-6) _sf = [_ox / _ol, _oy / _ol, _oz / _ol];
+    }
+    var _rt = [
+      _sf[1] * p.dir[2] - _sf[2] * p.dir[1],
+      _sf[2] * p.dir[0] - _sf[0] * p.dir[2],
+      _sf[0] * p.dir[1] - _sf[1] * p.dir[0]
+    ];
+    var _rl = Math.sqrt(_rt[0] * _rt[0] + _rt[1] * _rt[1] + _rt[2] * _rt[2]);
+    _rt = (_rl > 1e-9) ? [_rt[0] / _rl, _rt[1] / _rl, _rt[2] / _rl] : [0, 0, 0];
+
+    /* 输入 → 世界方向。**必须归一化**：不然 W+D 会比单按 W 快 41%
+       （斜向 bug 是 2D 游戏最经典的一处不专业）。 */
+    var _wd = null;
+    if (_hasIn) {
+      var _wx = _sf[0] * _my + _rt[0] * _mx;
+      var _wy = _sf[1] * _my + _rt[1] * _mx;
+      var _wz = _sf[2] * _my + _rt[2] * _mx;
+      var _wl = Math.sqrt(_wx * _wx + _wy * _wy + _wz * _wz);
+      if (_wl > 1e-9) {
+        _wd = [_wx / _wl, _wy / _wl, _wz / _wl];
+        /* 朝向自动对齐移动方向：指数插值，时间常数 M.YAW_TAU（0.06 秒 ≈ 3.6 帧）。
+           不做"转向键"，也不再是恒速转盘 —— 往哪走就朝哪。 */
+        var _ey = _wd[0] * fr.east[0] + _wd[1] * fr.east[1] + _wd[2] * fr.east[2];
+        var _sy = _wd[0] * fr.south[0] + _wd[1] * fr.south[1] + _wd[2] * fr.south[2];
+        var _tgtYaw = Math.atan2(_ey, -_sy);
+        var _dyaw2 = _tgtYaw - yaw;
+        while (_dyaw2 > Math.PI) _dyaw2 -= Math.PI * 2;
+        while (_dyaw2 < -Math.PI) _dyaw2 += Math.PI * 2;
+        yaw += _dyaw2 * (1 - Math.exp(-dt / M.YAW_TAU));
+        M._lastWd = _wd;
+      }
+    }
+    /* ---- 速度是一阶状态（有起步/刹车），但**八个方向同速** ---- */
+    var _tgtSpd = _hasIn ? M.WALK_SPEED : 0;
     if (M._spd == null || !isFinite(M._spd)) M._spd = 0;
     var _dv = _tgtSpd - M._spd;
-    var _rate = (Math.abs(_tgtSpd) > Math.abs(M._spd)) ? M.WALK_ACCEL : M.WALK_BRAKE;
+    var _rate = (_tgtSpd > M._spd) ? M.WALK_ACCEL : M.WALK_BRAKE;
     var _cap = _rate * dt;
     if (_dv > _cap) _dv = _cap; else if (_dv < -_cap) _dv = -_cap;
     M._spd += _dv;
-    if (!move && Math.abs(M._spd) < 0.03) M._spd = 0;   /* 收尾别留 0.02 的"蠕" */
+    if (!_hasIn && Math.abs(M._spd) < 0.03) M._spd = 0;   /* 收尾别留 0.02 的"蠕" */
     var step = M._spd * dt;
+    /* 位移沿**输入方向**（不是人物朝向）：朝向哪怕还在插值，人已经往对的方向走了
+       —— 这就是"跟手"的来源。松手后沿最后一次方向滑停。 */
+    var _mvDir = _wd || M._lastWd || fwd;
     if (Math.abs(step) > 1e-9) {
       var nd = [
-        p.dir[0] + fwd[0] * step / R,
-        p.dir[1] + fwd[1] * step / R,
-        p.dir[2] + fwd[2] * step / R
+        p.dir[0] + _mvDir[0] * step / R,
+        p.dir[1] + _mvDir[1] * step / R,
+        p.dir[2] + _mvDir[2] * step / R
       ];
       var nL = Math.sqrt(nd[0] * nd[0] + nd[1] * nd[1] + nd[2] * nd[2]) || 1;
       nd = [nd[0] / nL, nd[1] / nL, nd[2] / nL];
@@ -9107,9 +9174,9 @@ import './gltf.js';
       if (slope > M.SLOPE_LIMIT && g1 > g0) {
         /* 陡坡上行被挡 + 反向滑落（>40° 是老板原话；5° 滞回防抖）。 */
         var sd = [
-          p.dir[0] - fwd[0] * M.SLIDE_SPEED * dt / R,
-          p.dir[1] - fwd[1] * M.SLIDE_SPEED * dt / R,
-          p.dir[2] - fwd[2] * M.SLIDE_SPEED * dt / R
+          p.dir[0] - _mvDir[0] * M.SLIDE_SPEED * dt / R,
+          p.dir[1] - _mvDir[1] * M.SLIDE_SPEED * dt / R,
+          p.dir[2] - _mvDir[2] * M.SLIDE_SPEED * dt / R
         ];
         var sL = Math.sqrt(sd[0] * sd[0] + sd[1] * sd[1] + sd[2] * sd[2]) || 1;
         p.dir = [sd[0] / sL, sd[1] / sL, sd[2] / sL];
@@ -9128,7 +9195,7 @@ import './gltf.js';
     p.yaw = yaw;
     /* v158.32：`p.v` 从"恒 [0,0,0]"改成**真实速度向量** —— 动画相位、镜头滞后、
        探针都该读它，而不是读那个写死的 WALK_SPEED。 */
-    p.v = [fwd[0] * M._spd, fwd[1] * M._spd, fwd[2] * M._spd];
+    p.v = [_mvDir[0] * M._spd, _mvDir[1] * M._spd, _mvDir[2] * M._spd];
     out.spd = +M._spd.toFixed(4);
     if (Math.abs(M._spd) > 0.15) out.moved = 1;
     M.setPlayerPose(p);

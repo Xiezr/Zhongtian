@@ -21998,6 +21998,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         }
         if (!tgt) { dbg94 += 'no-mid-wild;'; tgt = { x: cx + 2, y: cy, lv: 6, ci: _ciOf(cx + 2, cy) }; }
         else { dbg94 += 'wild@' + tgt.x + ',' + tgt.y + 'Lv' + tgt.lv + ';'; }
+        /* ============================================================
+         * v158.35 · 把靶位等级**钉成 Lv1**（上一轮实测：某天扫不到 Lv1~2 →
+         * 兜底 Lv6 打输 → `r1-no-haul:掠夺失败：平原 Lv8` → 断言假红）
+         * ------------------------------------------------------------
+         * 根因是 `GAME.map.wildLevel()` 里 `day = Math.floor(Date.now()/86400000)`
+         * 参与日盐 —— **换一天跑，同一格的野地等级就变**，典型的时间炸弹。
+         * `wildLevelNow` 优先读 `state.wilds` 的记录值，所以写一条 level:1
+         * 的己方野地记录，守军就弱 = "能赢"这个前提确定。
+         * **判据一个字没改**（仍是"载重内只搬部分 / 换运输平台全搬"）。
+         * `st94.wilds` 在 finally 里换回 bk.wilds，不会污染后续用例。
+         * ============================================================ */
+        if (!GAME.map.wildAt(tgt.ci)) {
+          st94.wilds.push({ pid: GAME.curPid(), ci: tgt.ci, type: 'plain', level: 1,
+            levelDay: GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000) });
+          dbg94 += 'pin-lv1;';
+        }
         st94.settings = st94.settings || {}; st94.settings.battleWatch = false;
         var g0 = (st94.generals || [])[0]; g0.cityId = c0.id; g0.status = 'idle';
         G.battle.expedition = function () { lastR = _exp0.apply(this, arguments); return lastR; };
@@ -50620,14 +50636,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\.followAvatar\(_avDt, _avOut\)/.test(_m3d608);
   })());
 
-  check('§609③ 转向：目标 3.0 rad/s，但**带加减速**（0.2s 起转 / 0.18s 收住）', (function () {
-    /* 规则变更（v158.33）：原来 `yaw += turn * 3.0 * dt` 是恒速 —— 按下去立刻满转、
-       松手立刻停，像转盘不像人。现在走 `M._yawSpd` 一阶状态，上限仍是 3.0 rad/s。
-       街区（district）仍是恒速，两个坐标系各自独立，这里分别钉。 */
+  check('§609③ 转向已并入「朝向自动对齐移动方向」（坦克式转身键退役 · 街区仍独立）', (function () {
+    /* ============================================================
+     * 规则变更（v158.35 · 老板「操作上达到星露谷的标准了吗」）
+     * ------------------------------------------------------------
+     * 旧规则是**坦克式**：A/D = 原地转向（`_tgtYaw = turn * 3.0` + `_yawSpd` 一阶状态）。
+     * 实测：单按 D 一秒位移 **0 米**、人原地转 172° —— "按右不走右"。
+     * 星露谷是八方向： WASD 直接是位移，朝向自动对齐移动方向，**没有转身键**。
+     * 所以 `_yawSpd` / `turn * 3.0` 整段退役（反向守卫钉住不许回来），
+     * 转向改由 `Math.atan2(_ey, -_sy)` + `M.YAW_TAU` 指数插值驱动。
+     * 街区（district.js）是独立坐标系，仍保持恒速 3.0 rad/s —— 这里继续钉它。
+     * ============================================================ */
     var code = stripComment(_m3d608);
-    return /var _tgtYaw = turn \* 3\.0;/.test(code)
-      && /M\._yawSpd \+= _dyaw;/.test(code)
-      && /if \(M\._yawSpd\) yaw \+= M\._yawSpd \* dt;/.test(code)
+    return /var _tgtYaw = Math\.atan2\(_ey, -_sy\);/.test(code)
+      && /yaw \+= _dyaw2 \* \(1 - Math\.exp\(-dt \/ M\.YAW_TAU\)\)/.test(code)
+      /* 反向守卫：坦克式的转身状态不许回来 */
+      && !/M\._yawSpd \+= _dyaw;/.test(code)
+      && !/var _tgtYaw = turn \* 3\.0;/.test(code)
+      /* 街区独立：仍恒速 */
       && /D\.yaw \+= turn \* 3\.0 \* dt/.test(stripComment(_di609));
   })());
 
@@ -50712,6 +50738,73 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §618 v158.35 · 「操作上达到星露谷的标准了吗」
+   * ------------------------------------------------------------
+   * 老板原话：「操作上达到星露谷的标准了吗？」
+   *
+   * 改前是**坦克式**：W/S = 前后油门，A/D = 原地转向。
+   *   实测单按 D 一秒：位移 **0 米**、人原地转 172°（按右不走右）。
+   * 星露谷的五条硬指标（本轮全部实测，探针 p_stardew_ops 9/0）：
+   *   ① 八方向：D 真的往右走（4.24 米 / 秒）
+   *   ② 斜向归一化：W+D / W = **1.0000**（不是 1.41）
+   *   ③ 朝向自动对齐：四方向 yaw 两两相差 89.0~91.0°
+   *   ④ 没有转身键：A/D 都产生位移
+   *   ⑤ 走的是**屏幕方向**：镜头绕 90°，W 的世界方向也变 90°
+   * ============================================================ */
+  check('§618① 输入是八方向向量（_mx/_my），不是「油门+转盘」', (function () {
+    return /var _mx = \(\(keys && keys\.d\) \? 1 : 0\) - \(\(keys && keys\.a\) \? 1 : 0\);/.test(_m3d608)
+      && /var _my = \(\(keys && keys\.w\) \? 1 : 0\) - \(\(keys && keys\.s\) \? 1 : 0\);/.test(_m3d608)
+      /* 反向守卫：坦克式的 turn / move 双通道不许回来 */
+      && !/var turn = \(\(keys && keys\.d\)/.test(_m3d608)
+      && !/var move = \(\(keys && keys\.w\)/.test(_m3d608);
+  })());
+
+  check('§618② 斜向归一化：合成方向必须除以模长（不许斜着快 41%）', (function () {
+    var i = _m3d608.indexOf('var _wd = null;');
+    var blk = i >= 0 ? _m3d608.slice(i, i + 900) : '';
+    return /var _wl = Math\.sqrt\(_wx \* _wx \+ _wy \* _wy \+ _wz \* _wz\);/.test(blk)
+      && /_wd = \[_wx \/ _wl, _wy \/ _wl, _wz \/ _wl\];/.test(blk);
+  })());
+
+  check('§618③ 朝向自动对齐移动方向（atan2 + 指数插值，不是恒速转盘）', (function () {
+    return /var _tgtYaw = Math\.atan2\(_ey, -_sy\);/.test(_m3d608)
+      && /while \(_dyaw2 > Math\.PI\) _dyaw2 -= Math\.PI \* 2;/.test(_m3d608)
+      && /M\.YAW_TAU = 0\.06;/.test(_m3d608);
+  })());
+
+  check('§618④ 位移沿输入方向（不是人物朝向 · 朝向还在插值时也已往对的方向走）', (function () {
+    return /var _mvDir = _wd \|\| M\._lastWd \|\| fwd;/.test(_m3d608)
+      && /p\.dir\[0\] \+ _mvDir\[0\] \* step \/ R,/.test(_m3d608);
+  })());
+
+  check('§618⑤ 移动基准是**屏幕前方**（相机每帧写 _surfFwdW）', (function () {
+    var i = _m3d608.indexOf('M._surfAvatarCam = function');
+    var j = _m3d608.indexOf('M.setPlayerPose = function', i);
+    var blk = (i >= 0 && j > i) ? _m3d608.slice(i, j) : '';
+    return /var _hf = dirCam\.clone\(\)\.addScaledVector\(up, -dirCam\.dot\(up\)\);/.test(blk)
+      && /M\._surfFwdW = \[_hf\.x, _hf\.y, _hf\.z\];/.test(blk)
+      && /M\._surf && M\._surfFwdW && isFinite\(M\._surfFwdW\[0\]\)/.test(_m3d608);
+  })());
+
+  (function () {
+    /* 数值面：八种输入组合归一化后模长必须都是 1（斜向 = 1.0，不是 1.4142）。
+       判据带下限：单方向也必须 ≈1（防 `0/0` 平凡解）。 */
+    var combos = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    var worst = 0, minLen = 9;
+    for (var i = 0; i < combos.length; i++) {
+      var wx = combos[i][0], wy = combos[i][1];
+      var wl = Math.sqrt(wx * wx + wy * wy);
+      var n = Math.sqrt((wx / wl) * (wx / wl) + (wy / wl) * (wy / wl));
+      if (Math.abs(n - 1) > worst) worst = Math.abs(n - 1);
+      if (n < minLen) minLen = n;
+    }
+    check('§618⑥ 数值面：八方向归一化后模长全为 1（斜向 1.000，不是 1.414）',
+      worst < 1e-12 && minLen > 0.99,
+      'worst=' + worst.toExponential(2) + ' min=' + minLen.toFixed(6));
+  })();
 
   /* ============================================================
    * §617 v158.30 · 左键只走、E 才看（键位不再互相覆盖）
