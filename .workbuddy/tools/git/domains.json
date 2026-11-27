@@ -10,7 +10,7 @@
     "label": "核心（改了就全量）",
     "files": [
       "js/state.js", "js/domain.js", "js/core.js", "js/data.js",
-      "js/systems.js", "js/cities.js", "js/main.js", "smoke-test.js", "e2e-test.js",
+      "js/systems.js", "js/cities.js", "smoke-test.js", "e2e-test.js",
       "audit.js", "chain-audit.js", "invariants-test.js",
       ".workbuddy/tools/git/gate.py"
     ]
@@ -26,6 +26,12 @@
       "files": ["js/ui-*.js", "index.html", "js/gicons.js", "js/icons.js", "js/bitmaps.js"],
       "tests": ["e2e-test.js"],
       "note": "界面问题只有真实 DOM 抓得住 —— 这一区必跑 e2e（约 5 分钟）"
+    },
+    "entry": {
+      "label": "动作入口 / 事件分派",
+      "files": ["js/main.js"],
+      "tests": ["e2e-test.js"],
+      "note": "v158.40（老板「架构太结实，改成轻量改动」）：main.js 是 UI 动作总入口，\n        主体是 452 个 data-action 分派，用 e2e 真实 DOM 抓行为链。从 core 拆出，\n        不再每次提交全量 smoke；smoke 里锚定 main.js 的 55 处核心断言（战斗/出征/行军）\n        改由「每几轮集中 --full」兜底。若本轮动了 doOpenExp / battle / march 等核心出口，\n        请显式 GATE_FULL=1 提交，别只靠 e2e。"
     },
     "battle": {
       "label": "战斗 / 兵种 / 策略",
