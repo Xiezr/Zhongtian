@@ -7954,6 +7954,9 @@
          * ============================================================ */
         M._rmbOrbit = true;
         M._rmbDownAt = Date.now(); M._rmbMoved = false;
+        /* v158.36：地表右键要落到 mousemove 的 lookDrag 语义区（绕角色转），
+           这里给一个独立标记；mouseup 的 _rmbOrbit 分支会一并清掉。 */
+        if (M._surf) lookDrag = 2;
         /* 不 return —— 继续落下去初始化为"抓球拖拽"（与左键同一条路） */
       } else if (e.button === 1) {                             /* 中键 = 自由转头 */
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
@@ -8006,7 +8009,13 @@
        *   不留只写不读的字段。
        * ============================================================ */
       M._panDrag = false; M._panBasis = null;
-      if (M._surf) {
+      /* v158.36（从零实测抓到）：v158.28 已定「左键只选、不转相机」，
+         但这里仍为左键抓地初始化 `_panDrag`，mousemove 的
+         `if (M._surf && M._panDrag)` 会平移相机 —— p_edgepan⑤ 实测
+         地表左键拖 216px 后 camPos 变了（orbitYaw/俯角虽不变），
+         违反 §616①「两个模式都守」。开关关闭时不抓地：左键只剩点选，
+         位移交给边缘推镜；右键走 lookDrag/抓球，本就不需要 panBasis。 */
+      if (M._surf && M.LEFT_DRAG_CAM) {
         var _pa0 = _groundPtAt(e.clientX, e.clientY);
         if (_pa0) {
           var _pb0 = _groundPtAt(e.clientX + 1, e.clientY);
@@ -8187,7 +8196,16 @@
        * 现在贴地时左键也走"环视"这条唯一出口（与右键 lookDrag 同一套数学），
        * 拖动 = 绕站立者转视线：左右环视 / 抬头低头，任何方向都有回应。
        * ============================================================ */
-      if (M._surf && drag && !lookDrag && M.SURF_AVATAR !== false) {
+      /* v158.36（从零实测：「右键在地表完全无效」）
+       * ------------------------------------------------------------
+       * 病根：v158.28 给左键加了「只选不转」后，这个分支用 `drag && !lookDrag`
+       * 把右键也吞了 —— 右键在 mousedown 只设 _rmbOrbit、不设 lookDrag，
+       * 于是落到这儿被当成左键，拖动只标 moved、相机一毫米不动。
+       * 老口径 v158.27 明确：地表右键 = 绕角色转（_surfOrbitYaw + 俯角）。
+       * 修法：右键越过「左键只选」分支，落到下方 lookDrag 语义区；
+       * 那里已有完整的 _surfOrbitYaw / SURF_CAM_EL 写入（v158.27 那条）。
+       */
+      if (M._surf && drag && !lookDrag && !M._rmbOrbit && M.SURF_AVATAR !== false) {
         var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
         if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
         lx = e.clientX; ly = e.clientY;
@@ -8199,6 +8217,14 @@
          * 两次都是"左键转相机"。老板现在的口径是左键**只选**，位移交给边缘推镜
          * （`_tickEdgePan`）。所以拖拽只标 moved（防松手被当点击），相机一毫米不动。
          * ============================================================ */
+        /* v158.36（从零实测抓到）：上面注释写的是"拖拽只标 moved（防松手
+           被当点击）"，但代码写成了 `M._rmbMoved` —— 那个字段**只写不读**，
+           mouseup 判据 `if (!wasDrag || moved) return;` 认的是局部 `moved`。
+           于是地表左键拖 216px 后松手仍走 `M.pickAt()` → 触发"点哪走哪"
+           → 小人走过去、相机跟着移动 1.84 米（p_edgepan⑤ 实测 ΔcamPos
+           =[-0.056,-1.396,1.187]）。修法：把标记写给真正被读的 `moved`。
+           M._rmbMoved 保留只写形态（历史字段，它不是本轮引入的）。 */
+        if (Math.abs(_sdx2) + Math.abs(_sdy2) > 3) moved = true;
         /* v158.22 的"绕角色转"整段收进开关里：默认 `LEFT_DRAG_CAM = false` —— 左键不动相机。
            要恢复旧手感只改这一个常量（不是删代码，也不是留不可达分支）。 */
         if (M.LEFT_DRAG_CAM) {
@@ -8208,11 +8234,13 @@
         }
         return;
       }
-      if (M._surf && drag && !lookDrag) {
+      /* v158.36：右键同样越过这个「转头(_surfDir)」分支，落到 lookDrag 的
+         绕角色转(_surfOrbitYaw)，与 v158.27 的键位口径一致。 */
+      if (M._surf && drag && !lookDrag && !M._rmbOrbit) {
         var _sdx2 = e.clientX - lx, _sdy2 = e.clientY - ly;
         if (Math.abs(_sdx2) + Math.abs(_sdy2) < 1) return;
         lx = e.clientX; ly = e.clientY;
-        if (Math.abs(_sdx2) + Math.abs(_sdy2) > 3) M._rmbMoved = true;
+        if (Math.abs(_sdx2) + Math.abs(_sdy2) > 3) moved = true;
         var _radS2 = new THREE.Vector3(cam.position.x, cam.position.y, cam.position.z).normalize();
         var _dS2 = (M._surfDir ? M._surfDir.clone()
           : new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion)).normalize();
@@ -8340,9 +8368,13 @@
         /* 轨道里左键拖动 = 换了地方看球。上一处地表的视线不再有意义，
            清空它，下次落地重新按当前朝向推导（否则会带着旧城市的朝向落地）。 */
         M._surfDir = null; M._surfRight = null; M._surfAnchor = null;
-        /* v158.28：老板「左键只选择地图元素，不转动相机」—— 高空拖拽也停用，
-           看别处改由**边缘推镜**（指针贴边）或右键绕中心。 */
-        if (M.LEFT_DRAG_CAM === false) { touch(); redraw(); return; }
+        /* v158.28：老板「左键只选择地图元素，不转动相机」—— 左键停用；
+           看别处改由**边缘推镜**（指针贴边）或右键绕中心。
+           v158.36（从零实测抓到）：这道闸原文不区分左右键，把右键也一起
+           `return` 了 —— p_cam_free 水平拖累计 0°、高空右键完全无响应，
+           与 §615「右键绕球心」直接冲突。修法：只拦左键，右键越闸落到
+           下方 v157.101 轨迹球抓球（与地表右键 v158.36 修复同型）。 */
+        if (M.LEFT_DRAG_CAM === false && !M._rmbOrbit) { touch(); redraw(); return; }
       }
       if (M._surf && M._panDrag) {
         /* ============================================================
@@ -8613,6 +8645,7 @@
        * ============================================================ */
       if (M._rmbOrbit) {
         M._rmbOrbit = false;
+        lookDrag = 0;   /* v158.36：清掉 mousedown 给地表右键设的 lookDrag=2 */
         M._panBasis = null;
         M._panDrag = false;        /* 右键也走左键那条初始化，必须把它清掉，
                                       否则下一次左键点击会被 `if (M._panDrag)` 吞掉 */
@@ -8980,27 +9013,12 @@
     else g.userData.baseQ = g.quaternion.clone();
     return true;
   }
-  /* ============================================================
-   * v158.20（老板「去掉人物模式 · 只提示人物位置 · 让人物真实走动起来」）
-   * ------------------------------------------------------------
-   * 走路动画**一份**：跟随态（followAvatar）与点击行走（stepWalkTo）共用。
-   * 相位跟速度（步幅 1.5m 慢跑口径）、腿 ±sin*0.6、3cm 颠簸、停下归零。
-   * ============================================================ */
-  function animateFigureWalk(fg, dt, moving) {
-    if (!fg) return;
-    M._figMoving = !!moving;
-    /* v158.32：相位跟**真实速度**，不是写死的 WALK_SPEED（慢走/刹车时腿速要跟着变） */
-    var _spdNow = (avOut && isFinite(avOut.spd)) ? Math.abs(avOut.spd) : (moving ? M.WALK_SPEED : 0);
-    if (_spdNow > 0.12) M._figPhase = (M._figPhase || 0) + dt * (_spdNow / 1.5) * Math.PI;
-    else M._figPhase = 0;
-    var sw = moving ? Math.sin(M._figPhase) * 0.6 : 0;
-    var legs = fg.userData && fg.userData.legs;
-    if (legs && legs.length) {
-      legs[0].rotation.x = sw;
-      if (legs[1]) legs[1].rotation.x = -sw;
-    }
-    if (moving) fg.position.y += Math.abs(Math.sin(M._figPhase)) * 0.03 * (fg.userData.baseScale || 1);
-  }
+  /* ⛔ v158.36 移除：animateFigureWalk（原 v158.20 的走路动画函数）。
+     病因：v158.32 给它加了 `avOut.spd` 读取却没加形参 —— 键盘走路走的是
+     syncAvatarFigure（有参）所以全绿，只有「点一下自动走过去」这条玩家真实
+     路径（stepWalkTo）会抛 ReferenceError: avOut is not defined。
+     去向：走路动画唯一出口 = M.syncAvatarFigure(dt, avOut)（v158.33 起就
+     已实现手臂/躯干/腿相位全套），stepWalkTo 与 followAvatar 都改调它。 */
 
   function buildFigures() {
     if (figRoot) { scene.remove(figRoot); figRoot = null; }
@@ -9585,7 +9603,9 @@
     M.setPlayerPose({ dir: nd, h: M._groundAtUnit(nd), yaw: yaw, v: [0, 0, 0] });
     /* 只挪图元、不重建（重建会闪）；摆腿跟上 */
     var fg = figCache && figCache['stand'] && figCache['stand'].g;
-    if (fg) { placeFigureAtDir(fg, nd, yaw * 180 / Math.PI); animateFigureWalk(fg, dt, true); }
+    /* v158.36：收口到唯一出口 —— 自动走路也走 syncAvatarFigure（有手臂/躯干动画），
+       不再调那个会抛 avOut 的重复函数。 */
+    try { M.syncAvatarFigure(dt, { moved: true, spd: M.WALK_SPEED }); } catch (eAF) { }
     return { moved: +step.toFixed(3), left: +(dist - step).toFixed(1) };
   };
 

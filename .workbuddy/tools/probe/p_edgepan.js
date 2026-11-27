@@ -91,15 +91,18 @@ function ok(t, c, d) {
 
   /* ── ② 贴右边缘：yaw 按时间累积 ── */
   /* ⚠️ 不能拿"球心"当参照：轨道相机永远 lookAt 球心，它的 NDC 恒 0
-     （第一版就是这么假红的）。要用**球面上的固定点**——取玩家所在位置。 */
-  const ballNdc = () => p.evaluate(() => {
+     （第一版就是这么假红的）。
+     v158.36：也不能拿"玩家位置"当参照 —— 初始相机常在玩家背面，
+     该点投影会随 yaw 增大而右移（实测 -0.467→-0.064），把正确行为
+     误判成"方向反了"。改用**推镜前相机正下方的球面点**作固定参照：
+     初始在画面中心，相机往东（yaw 增大）后它必定左移（x 变小）。 */
+  const fixedDir = await p.evaluate(() => GAME.map3d.camO.dir.slice());
+  const ballNdc = () => p.evaluate((fd) => {
     const M = GAME.map3d, cam = (M._camObj ? M._camObj() : M._cam);
-    const pp = M.playerPose();
-    const R2 = M.R + (pp.h || 0);
     cam.updateMatrixWorld();
-    const v = new THREE.Vector3(pp.dir[0] * R2, pp.dir[1] * R2, pp.dir[2] * R2).project(cam);
+    const v = new THREE.Vector3(fd[0] * M.R, fd[1] * M.R, fd[2] * M.R).project(cam);
     return [+v.x.toFixed(3), +v.y.toFixed(3)];
-  });
+  }, fixedDir);
   const ball0 = await ballNdc();
   await p.mouse.move(1430, 450);
   await p.waitForTimeout(150);
@@ -151,10 +154,13 @@ function ok(t, c, d) {
   await p.mouse.up({ button: 'left' });
   await p.waitForTimeout(400);
   const c1 = await snap();
+  var _dPos = c0.camPos.map((v, i) => +(v - c1.camPos[i]).toFixed(4));
   ok('⑤ 地表左键拖 216px：orbitYaw / 俯角 / 相机位置全不变',
     c0.orbitYaw === c1.orbitYaw && c0.el === c1.el
     && JSON.stringify(c0.camPos) === JSON.stringify(c1.camPos),
-    'orbit ' + c0.orbitYaw + '→' + c1.orbitYaw + ' · el ' + c0.el + '→' + c1.el + ' · surf=' + c0.surf);
+    'orbit ' + c0.orbitYaw + '→' + c1.orbitYaw + ' · el ' + c0.el + '→' + c1.el
+    + ' · surf=' + c0.surf + ' · camPos ' + JSON.stringify(c0.camPos) + '→' + JSON.stringify(c1.camPos)
+    + ' · Δ=' + JSON.stringify(_dPos));
 
   await p.mouse.move(1434, 450);
   await p.waitForTimeout(150);

@@ -50713,11 +50713,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /var ang = Math\.acos\(dot\)/.test(body);
   })());
 
-  check('§610⑤ 走路动画一份：跟随态与点图行走共用 animateFigureWalk', (function () {
+  /* v158.36 规则变更：走路动画唯一出口从 animateFigureWalk 换成 syncAvatarFigure。
+     旧函数 v158.32 加了 avOut.spd 读取却没加形参，只有自动走路那条路径会崩
+     （ReferenceError: avOut is not defined，键盘走路全绿掩盖了它）。
+     新判据：① 旧函数整条不在（可执行形态）；② 自动走路与跟随两处都调 syncAvatarFigure。 */
+  check('§610⑤（v158.36 口径）走路动画唯一出口 = syncAvatarFigure，旧 animateFigureWalk 已退役', (function () {
     var code = _mp610;
-    var defs = (code.match(/function animateFigureWalk\(fg, dt, moving\)/g) || []).length;
-    var uses = (code.match(/animateFigureWalk\(fg, /g) || []).length;
-    return defs === 1 && uses >= 2;      /* 定义 1 处、调用 ≥2 处（跟随 + 行走） */
+    var oldDef = (code.match(/function animateFigureWalk\(/g) || []).length;
+    var oldUse = (code.match(/animateFigureWalk\(fg, /g) || []).length;
+    var walkUse = (code.match(/M\.syncAvatarFigure\(dt, \{ moved: true/g) || []).length;
+    var followUse = (code.match(/M\.syncAvatarFigure\(M\._lastAvDt/g) || []).length;
+    return oldDef === 0 && oldUse === 0 && walkUse >= 1 && followUse >= 1;
   })());
 
   check('§610⑥ 脚底光环标位置（只加标记 · 不改模型比例）', (function () {
@@ -50844,13 +50850,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   ② 指针停在画面边缘带 → 画面持续往那一侧走（高空平移观察点 / 地表绕角色转）。
    *   ③ 指针不在边缘带 → **一动不动**（v157.34「停手画面自己动」的边界不能破）。
    * ============================================================ */
-  check('§616① 左键拖拽默认不动相机（两个模式都守）', (function () {
+  /* v158.36 规则变更（旧断言不删，按新口径重写）：原字面守卫
+     `if (M.LEFT_DRAG_CAM === false) {...}` 被两处修复改写 ——
+     ① 高空右键必须越过这道闸（v158.36，见 §619④）；
+     ② 地表左键抓地初始化 `_panDrag` 也在开关关闭时停用（v158.36，
+        p_edgepan⑤ 实测左键拖 216px 仍改 camPos，违反本条原意）。
+     意图不变：左键只选，两个模式都不动相机；右键是明确例外。 */
+  check('§616①（v158.28 + v158.36 口径）左键拖拽默认不动相机，右键例外可抓球（两模式都守）', (function () {
     return /M\.LEFT_DRAG_CAM = false;/.test(_m3d608)
-      /* 地表分支：开关关闭时直接 return，不写 orbitYaw/EL */
+      /* 地表转头分支：开关关闭时不写 orbitYaw/EL */
       && /if \(M\.LEFT_DRAG_CAM\) \{\n\s*if \(_sdx2\) M\._surfOrbitYaw/.test(_m3d608)
-      /* 轨道分支：同一个开关守卫 */
-      && /if \(M\.LEFT_DRAG_CAM === false\) \{ touch\(\); redraw\(\); return; \}/.test(_m3d608)
-      && /if \(M\.LEFT_DRAG_CAM === false\) \{ touch\(\); redraw\(\); return; \}\n      \}/.test(_m3d608);
+      /* 地表抓地平移入口也由同一开关拦住（v158.36 补） */
+      && /if \(M\._surf && M\.LEFT_DRAG_CAM\) \{/.test(_m3d608)
+      /* 轨道分支：只拦左键，右键越闸落到轨迹球 */
+      && /if \(M\.LEFT_DRAG_CAM === false && !M\._rmbOrbit\) \{ touch\(\); redraw\(\); return; \}/.test(_m3d608);
   })());
 
   check('§616② 边缘推镜在渲染循环里、且在 placeCamera 之前（当帧生效）', (function () {
@@ -50895,10 +50908,26 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *      正是老板 v156.55 说的「在视野内摆弄球体」。
    * 规则变更：右键回到「绕中心转」（与左键同一条抓球路径），转头交给中键。
    * ============================================================ */
-  check('§615① 右键不再走 lookDrag（转头），改为抓球拖拽', (function () {
-    return /M\._rmbOrbit = true;/.test(_m3d608)
-      && !/lookDrag = 2;/.test(_m3d608)                  /* 反向守卫：右键转头不许回来 */
-      && /if \(M\._rmbOrbit\) \{/.test(_m3d608);
+  /* ------------------------------------------------------------------
+   * v158.36 规则变更（旧断言不删、不放宽，按新口径重写）：
+   *   §615① 原文写于 v158.27，用「不许出现 lookDrag = 2」当"右键不转头"
+   *   的字面守卫。v158.28 给左键加「只选不转」后，地表右键被 `!lookDrag`
+   *   分支吞掉（p_rmb 实测相机位移 0.00 米）。v158.36 让地表右键借
+   *   `lookDrag = 2` 越过该分支，落入下方 §615② 的 _surfOrbitYaw /
+   *   SURF_CAM_EL「绕角色转」路径；2 是专用枚举，中键 lookDrag = 1 才是
+   *   「自由转头」。新口径：右键进 _rmbOrbit 抓球/绕角色；地表写 2 只
+   *   出现在右键分支内；中键 1 的转头通道保留但右键不得复用。
+   * ------------------------------------------------------------------ */
+  check('§615①（v158.36 口径）右键走 _rmbOrbit 绕角色/球心；地表借 lookDrag=2 越关，不复用中键转头', (function () {
+    var src = _m3d608;
+    var i = src.indexOf('if (e.button === 2) {');
+    var j = i >= 0 ? src.indexOf('} else if (e.button === 1)', i) : -1;
+    var rmbBlk = i >= 0 && j > i ? src.slice(i, j) : '';
+    var inOrbit = /M\._rmbOrbit = true;/.test(rmbBlk)
+      && /if \(M\._surf\) lookDrag = 2;/.test(rmbBlk);
+    var noHeadTurn = !/lookDrag = 1/.test(rmbBlk)
+      && /lookDrag = 1;/.test(src.slice(j, j + 160));
+    return inOrbit && noHeadTurn && /if \(M\._rmbOrbit\) \{/.test(src);
   })());
 
   check('§615② 地表右键驱动镜头真读的两个量（orbitYaw + SURF_CAM_EL）', (function () {
@@ -51165,6 +51194,58 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var i = _m3d608.indexOf('try { syncFigures(); }');
     var blk = i >= 0 ? _m3d608.slice(i, i + 900) : '';
     return /M\.syncAvatarFigure\(M\._lastAvDt/.test(blk);
+  })());
+
+
+  /* ============================================================
+   * §619 v158.36 · 从零重跑抓到的两个真 bug
+   * ------------------------------------------------------------
+   * 老板：「抛弃所有的记忆，从头开始测试」→ 不引用任何"已实现"结论，
+   * 重跑全部探针。p_walk_scan 在自动走路到达时抛
+   *   ReferenceError: avOut is not defined（产品代码 animateFigureWalk）；
+   * p_rmb 地表右键拖 0.00 米（被 v158.28 的"左键只选"分支截胡）。
+   * 两条都是键盘/结构测试测不到、只有玩家真实路径才暴露的缺口。
+   * ============================================================ */
+  check('§619① 自动走路不调那个抛 avOut 的重复函数（墓碑之外零可执行形态）', (function () {
+    var src = _m3d608;
+    return !/function animateFigureWalk\(fg, dt, moving\) *\{/.test(src)
+      && /M\.syncAvatarFigure\(dt, \{ moved: true, spd: M\.WALK_SPEED \}\)/.test(src);
+  })());
+
+  check('§619② 地表右键越过「左键只选」与「转头」两个分支（不再被吞）', (function () {
+    var src = _m3d608;
+    /* 两个地表 mousemove 分支都必须带 !M._rmbOrbit，否则右键被当左键处理 */
+    var guard = (src.match(/M\._surf && drag && !lookDrag && !M\._rmbOrbit/g) || []).length;
+    /* mousedown 里右键要设 lookDrag=2，落到绕角色转的语义区 */
+    var mark = /if \(M\._surf\) lookDrag = 2;/.test(src);
+    /* mouseup 的 _rmbOrbit 分支要清掉它（否则下一次中键被残留） */
+    var clear = /M\._rmbOrbit = false;[\s\S]{0,80}lookDrag = 0;/.test(src);
+    return guard >= 2 && mark && clear;
+  })());
+
+  check('§619③ 自动走路到达出口仍调真勘探出口（修复没有绕开玩法）', (function () {
+    var i = _m3d608.indexOf('if (dist <= 0.6)');
+    var j = i >= 0 ? _m3d608.indexOf('return { arrived: true', i) : -1;
+    var blk = i >= 0 && j > i ? _m3d608.slice(i, j) : '';
+    return /GAME\.resource\.scan\(hitCi\)/.test(blk) && /M\._walkThen/.test(blk);
+  })());
+
+  /* v158.36 第二只真 bug：v158.28 的高空「左键只选」闸不区分左右键，
+     右键也被 `return` 掉（p_cam_free 水平拖累计 0°）。地表右键同型问题
+     已在 §619② 修；这条守住高空越闸路径，右键必须落到 v157.101 轨迹球。 */
+  check('§619④（v158.36 口径）高空右键越过「左键只选」停用闸，落到轨迹球抓球', (function () {
+    var src = _m3d608;
+    return /if \(M\.LEFT_DRAG_CAM === false && !M\._rmbOrbit\) \{ touch\(\); redraw\(\); return; \}/.test(src)
+      && /if \(M\.CAM_TRACKBALL\)/.test(src);   /* 越闸之后确有抓球实现，不是空放 */
+  })());
+
+  check('§619⑤ 地表左键拖写局部 moved（松手不当点击，不把小人送过去）', (function () {
+    var src = _m3d608;
+    var i = src.indexOf('if (M._surf && drag && !lookDrag && !M._rmbOrbit && M.SURF_AVATAR !== false) {');
+    var j = i >= 0 ? src.indexOf('if (M.LEFT_DRAG_CAM)', i) : -1;
+    var blk = i >= 0 && j > i ? src.slice(i, j) : '';
+    return /if \(Math\.abs\(_sdx2\) \+ Math\.abs\(_sdy2\) > 3\) moved = true;/.test(blk)
+      && /if \(!wasDrag \|\| moved\) return;/.test(src);   /* mouseup 真认这个 moved */
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

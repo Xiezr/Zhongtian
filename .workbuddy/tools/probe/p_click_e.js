@@ -107,18 +107,20 @@ function ok(t, c, d) {
     }
     return null;
   });
-  console.log('—— 目标野地 ' + JSON.stringify(w));
-  if (!w) { console.log('FATAL 近景找不到野地格'); await b.close(); return; }
+  /* v158.36：原探针在此写 `w`，而上方变量名是 `pickWild` —— 每次都
+     FATAL w is not defined，① ② 两条断言从未真正执行过。改名对齐。 */
+  console.log('—— 目标野地 ' + JSON.stringify(pickWild));
+  if (!pickWild) { console.log('FATAL 近景找不到野地格'); await b.close(); return; }
 
   const s0 = await state();
-  await p.mouse.click(w.x, w.y);
+  await p.mouse.click(pickWild.x, pickWild.y);
   await p.waitForTimeout(600);
   const s1 = await state();
   await p.waitForTimeout(500);                          /* 让尘土/摆臂走到中段 */
   await p.screenshot({ path: OUT + '/1_click_wild.png' });
   await p.screenshot({ path: OUT + '/1b_walking.png' });
   ok('① 点野地：面板不弹', s1.modal === false, 'modal=' + s1.modal + ' text=' + s1.modalText);
-  ok('① 点野地：真的开始走过去（walkTarget 有值）', s1.walk >= 0, 'walk=' + s1.walk + ' (点的是 ci=' + w.ci + ')');
+  ok('① 点野地：真的开始走过去（walkTarget 有值）', s1.walk >= 0, 'walk=' + s1.walk + ' (点的是 ci=' + pickWild.ci + ')');
 
   /* 站到野地上 → 按 E */
   const eRes = await p.evaluate(() => {

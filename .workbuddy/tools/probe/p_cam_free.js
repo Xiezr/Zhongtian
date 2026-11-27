@@ -75,15 +75,22 @@ function ok(t, c, d) {
      实测 dir 一动不动（上一版就是这么假红的）。 */
   /* ⚠️ 起点必须在**画布**上：y=160 命中的是顶部 DIV 遮挡层，pointerdown 被它吃掉
      （实测 drag 没置位、dir 一动不动）。画布从 y≈230 起。 */
+  /* v158.36：两处探针口径修正（不改判据，只修操作方式）：
+     ① v158.28 后左键只选不转 → 抓球必须用右键；
+     ② 起点/终点限制在画布 y=260~740（y>780 是 HUD、y<230 是顶部遮挡层）。
+     每轮 480px ≈ 2.4 rad；**4 轮必须同向**（向下拖 = dir.y 先升到北极
+     再翻过去）。曾改成"上下交替"，结果每轮净角抵消，dir.y 只在
+     0.316~0.999 之间来回，`minY < -0.5` 永远红 —— 那是探针自己把
+     累计角抵消了，不是产品翻不过极点。 */
   const vert = [];
   for (let round = 0; round < 4; round++) {
-    await p.mouse.move(720, 300);
-    await p.mouse.down();                          /* 每轮重新按下：回位那一下不能算拖拽 */
+    await p.mouse.move(720, 260);
+    await p.mouse.down({ button: 'right' });       /* 右键抓球，每轮重按避免回位算拖拽 */
     for (let i = 1; i <= 20; i++) {
-      await p.mouse.move(720, 300 + i * 26);       /* 300 → 820，共 520px ≈ 2.6 rad */
+      await p.mouse.move(720, 260 + i * 24);        /* 260→740，480px ≈ 2.4 rad */
       if (i % 2 === 0) vert.push((await snap()).dir);
     }
-    await p.mouse.up();
+    await p.mouse.up({ button: 'right' });
     await p.waitForTimeout(120);
   }
   await p.waitForTimeout(400);
@@ -104,15 +111,20 @@ function ok(t, c, d) {
   await p.evaluate(() => { const M = GAME.map3d; M.camO.quat = null; M.camO.yaw = 0.8; M.camO.pitch = 0.42; });
   await p.waitForTimeout(300);
   const h0 = await snap();
-  await p.mouse.move(200, 450);
-  await p.mouse.down();
+  /* v158.36：原探针用默认左键拖（v158.28 后只选不转 → 累计恒 0°），
+     且单次按下里 x 到 1304 后跳回 200，回位那段把累计角抵消掉。
+     改为右键、5 轮各 60×20px（每轮重新按下），回位不计入拖拽。 */
   const horiz = [];
-  for (let i = 0; i < 90; i++) {
-    const x = 200 + ((i % 70) * 16);
-    await p.mouse.move(Math.min(1420, x), 450);
-    if (i % 5 === 0) horiz.push((await snap()).dir);
+  for (let round = 0; round < 5; round++) {
+    await p.mouse.move(200, 450);
+    await p.mouse.down({ button: 'right' });
+    for (let i = 1; i <= 60; i++) {
+      await p.mouse.move(Math.min(1420, 200 + i * 20), 450);
+      if (i % 6 === 0) horiz.push((await snap()).dir);
+    }
+    await p.mouse.up({ button: 'right' });
+    await p.waitForTimeout(80);
   }
-  await p.mouse.up();
   await p.waitForTimeout(400);
   const h1 = await snap();
   const totalH = horiz.reduce((s, d, i) => i ? s + ang(horiz[i - 1], d) : 0, 0);

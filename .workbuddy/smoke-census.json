@@ -1,12 +1,12 @@
 {
- "full": 4648,
+ "full": 4667,
  "fullDetail": {
-  "pass": 4625,
-  "fail": 1,
-  "warn": 21,
+  "pass": 4646,
+  "fail": 0,
+  "warn": 20,
   "skip": 1
  },
- "fullAt": "2026-11-26T22:06:44",
+ "fullAt": "2026-11-27T21:59:16",
  "lastSplit": {
   "total": 4473,
   "pass": 4459,
@@ -19,5 +19,5 @@
   "sig": "5a6d7ed1f85d"
  },
  "titles": null,
- "fullSig": "980a385b3119"
+ "fullSig": "c69f04064752"
 }
