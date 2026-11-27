@@ -3331,7 +3331,9 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
     }
     var t = ui._expTarget;
     if (!t) { ui.toast('请先在地图上选择目标'); return; }
-    ui.openExpModal(t);
+    /* v158.38：未探明格由一级面板的「派队探索」进来，保留"抵达后显形"的入口提示。 */
+    var _fog38 = !!(t.kind === 'wild' && GAME.fog && GAME.fog.get && GAME.fog.get(t.ci) === 0);
+    ui.openExpModal(t, _fog38 ? { hint: '未探明 —— 派一队过去，抵达后周围就会显现' } : undefined);
   };
 
   /* 确认出征（读取当前方式与兵力） */
@@ -3830,13 +3832,11 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         } else {
           /* v151（老板「地图就是本体」）：2D 兜底路径也要给未探明格一个手势 ——
              与 3D 的 map3d.pickAt 同口径：点雾里 = 派队过去看看。 */
-          var _fh = GAME.fog && GAME.fog.get ? (GAME.fog.get(hit.ci) === 0) : false;
-          if (_fh && ui.openExpModal) {
-            ui.openExpModal({ kind: 'wild', ci: hit.ci },
-              { hint: '未探明 —— 派一队过去，抵达后周围就会显现' });
-          } else {
-            ui.openLandModalCi(hit.ci);
-          }
+          /* v158.38（老板「统一」）：未探明格也先开一级详情面板（雾格专属出口），
+             已探明格仍走原地块面板；两者都由底部按钮再进出征调配。 */
+          var _fog38 = GAME.fog && GAME.fog.get && GAME.fog.get(hit.ci) === 0;
+          if (_fog38 && ui.openFogModalCi) ui.openFogModalCi(hit.ci);
+          else ui.openLandModalCi(hit.ci);
         }
       }
     }

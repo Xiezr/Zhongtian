@@ -465,7 +465,11 @@
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
     var reg = M.regionAt ? M.regionAt(ci) : null;
     var ref = M.cellRef && M.cellRef[ci];
-    if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
+    /* v158.38（老板「统一」）：未探明格先开一级详情面板（ui.openFogModalCi），
+       与已探明格一样"先看再行动"；行动按钮才进出征调配。放在 kind 分派之前，
+       避免未探明格靠 cellKind 兜底漏进野地详情。观察钩子仍在末尾统一登记。 */
+    if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0 && ui.openFogModalCi) ui.openFogModalCi(ci);
+    else if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
     else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
     else if (kind === 'fort' && GAME.map.fortAt) {
@@ -10466,14 +10470,10 @@
       /* v152（老板：「点哪都是'那边还没探明'」）：未探明**不再是一次性提示**，
          而是一个能落地的选择 —— 派队过去（抵达即显形），而不是把人挡在门外。
          前传另有 P.mapClick 在上面先接走（走过去本身就是探路）。 */
-      if (GAME.ui && GAME.ui.openExpModal) {
-        try {
-          GAME.ui.openExpModal({ kind: 'wild', ci: ci },
-            { hint: '未探明 —— 派一队过去，抵达后周围就会显现' });
-        } catch (e0) { /* 打不开发征面板也不要挡住地图 */ }
-      } else if (GAME.ui && GAME.ui.toast) {
-        GAME.ui.toast('🌫 这一带还没有记载 —— 派一队过去就能看见');
-      }
+      /* v158.38（老板「统一」）：未探明格**不再直达**出征调配面板 —— 与已探明格一样
+         先走一级详情面板（ui.openLandModalCi 内的未探明分支：坐标 + 派队探索按钮），
+         要行动再由按钮走 exp-open → openExpModal。面板出口仍是 M.openCellPanel 一个。 */
+      M.openCellPanel(ci);
       if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
       return;
     }
@@ -31942,6 +31942,32 @@ ui.openDuel = function (fid, moveId) {
      整函数删除 —— 这就是老板说的「前传的任务机制」那排按钮。
      现在 `openLandModalCi` 只有一套面板（正式阶段：守军/侦察/掠夺/占领）。 */
 
+  /* ============================================================
+   * v158.38（老板「统一」）：未探明格的一级详情面板。
+   * ------------------------------------------------------------
+   * 改前：3D/2D 点未探明格直接 openExpModal（将领/目标/兵力调配），
+   *       已探明格却是"先看详情、再点按钮进出征" —— 两套入口，玩家晕。
+   * 改后：所有地块统一先开一层详情：未探明就明说未探明，只给坐标和
+   *       「派队探索」按钮（复用 exp-open 唯一出口）再进出征调配面板。
+   * ⛔ 独立出口、不放进 openLandModalCi：那个出口还被程序化调用（造局/测试/
+   *   面板内跳转），它们不该被迷雾截住；只有玩家点图的分派才走这里。
+   * ⛔ 未探明时不泄露地形/守军/产出。
+   * ============================================================ */
+  ui.openFogModalCi = function (ci) {
+    ui._expTarget = { kind: 'wild', ci: ci };
+    ui._expMode = 'occupy';
+    ui.openModal(
+      '<div class="gold-heading">🌫 未探明地块</div>' +
+      '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:8px;">' +
+        '🧭 球系坐标 ' + GAME.map.coordTextCi(ci) + '</div>' +
+      '<div class="q-empty">这一带还没有记载。派一队过去，抵达后周围就会显现；' +
+        '未探明时看不到地形、守军与产出。</div>' +
+      '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+        '<button class="btn gold" data-action="exp-open" data-kind="wild" data-mode="occupy"' +
+          ' title="在出征面板选将、选方式、调兵；抵达后这一带就会显现">🚶 派队探索</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>');
+  };
+
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;
     /* v158.17（老板「参考现有成熟设计完善」⑤）：「生」这种单字在面板里是黑话。
@@ -42398,7 +42424,9 @@ ui.openDuel = function (fid, moveId) {
     }
     var t = ui._expTarget;
     if (!t) { ui.toast('请先在地图上选择目标'); return; }
-    ui.openExpModal(t);
+    /* v158.38：未探明格由一级面板的「派队探索」进来，保留"抵达后显形"的入口提示。 */
+    var _fog38 = !!(t.kind === 'wild' && GAME.fog && GAME.fog.get && GAME.fog.get(t.ci) === 0);
+    ui.openExpModal(t, _fog38 ? { hint: '未探明 —— 派一队过去，抵达后周围就会显现' } : undefined);
   };
 
   /* 确认出征（读取当前方式与兵力） */
@@ -42897,13 +42925,11 @@ ui.openDuel = function (fid, moveId) {
         } else {
           /* v151（老板「地图就是本体」）：2D 兜底路径也要给未探明格一个手势 ——
              与 3D 的 map3d.pickAt 同口径：点雾里 = 派队过去看看。 */
-          var _fh = GAME.fog && GAME.fog.get ? (GAME.fog.get(hit.ci) === 0) : false;
-          if (_fh && ui.openExpModal) {
-            ui.openExpModal({ kind: 'wild', ci: hit.ci },
-              { hint: '未探明 —— 派一队过去，抵达后周围就会显现' });
-          } else {
-            ui.openLandModalCi(hit.ci);
-          }
+          /* v158.38（老板「统一」）：未探明格也先开一级详情面板（雾格专属出口），
+             已探明格仍走原地块面板；两者都由底部按钮再进出征调配。 */
+          var _fog38 = GAME.fog && GAME.fog.get && GAME.fog.get(hit.ci) === 0;
+          if (_fog38 && ui.openFogModalCi) ui.openFogModalCi(hit.ci);
+          else ui.openLandModalCi(hit.ci);
         }
       }
     }

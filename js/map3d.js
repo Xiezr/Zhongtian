@@ -171,7 +171,11 @@ import './gltf.js';
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';
     var reg = M.regionAt ? M.regionAt(ci) : null;
     var ref = M.cellRef && M.cellRef[ci];
-    if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
+    /* v158.38（老板「统一」）：未探明格先开一级详情面板（ui.openFogModalCi），
+       与已探明格一样"先看再行动"；行动按钮才进出征调配。放在 kind 分派之前，
+       避免未探明格靠 cellKind 兜底漏进野地详情。观察钩子仍在末尾统一登记。 */
+    if (GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0 && ui.openFogModalCi) ui.openFogModalCi(ci);
+    else if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
     else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
     else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
     else if (kind === 'fort' && GAME.map.fortAt) {
@@ -10172,14 +10176,10 @@ import './gltf.js';
       /* v152（老板：「点哪都是'那边还没探明'」）：未探明**不再是一次性提示**，
          而是一个能落地的选择 —— 派队过去（抵达即显形），而不是把人挡在门外。
          前传另有 P.mapClick 在上面先接走（走过去本身就是探路）。 */
-      if (GAME.ui && GAME.ui.openExpModal) {
-        try {
-          GAME.ui.openExpModal({ kind: 'wild', ci: ci },
-            { hint: '未探明 —— 派一队过去，抵达后周围就会显现' });
-        } catch (e0) { /* 打不开发征面板也不要挡住地图 */ }
-      } else if (GAME.ui && GAME.ui.toast) {
-        GAME.ui.toast('🌫 这一带还没有记载 —— 派一队过去就能看见');
-      }
+      /* v158.38（老板「统一」）：未探明格**不再直达**出征调配面板 —— 与已探明格一样
+         先走一级详情面板（ui.openLandModalCi 内的未探明分支：坐标 + 派队探索按钮），
+         要行动再由按钮走 exp-open → openExpModal。面板出口仍是 M.openCellPanel 一个。 */
+      M.openCellPanel(ci);
       if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
       return;
     }

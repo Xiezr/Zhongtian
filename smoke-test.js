@@ -51287,6 +51287,65 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return hits >= 2 && poseHits >= 2 && hits >= poseHits;
   })());
 
+  /* ============================================================
+   * §621 v158.38 · 老板「统一」：未探明格先一级详情，不再直进出征调配
+   * ------------------------------------------------------------
+   * 改前：3D/2D 点 fog=0 格 → openExpModal（将领/目标/兵力）；已探明格 → 详情面板。
+   * 改后 3D：pickAt 的雾分支 → M.openCellPanel → openFogModalCi（一级详情）；
+   *      → 面板「派队探索」(exp-open) → doOpenExp → openExpModal。
+   * 改后 2D：同口径，雾格走 openFogModalCi，其余仍走 openLandModalCi。
+   * ⛔ 雾面板是独立出口，不塞进 openLandModalCi：那里还被造局/测试程序化调用，
+   *    塞进去会让"已占野地/采集区"等断言被迷雾误截（e2e 19 红的真凶）。
+   * 用 stripComment：注释里保留了旧行为说明，不剥注释会误判"还有旧调用"。
+   * ============================================================ */
+  var _m3d621 = stripComment(_m3d608);
+  var _um621 = stripComment(_um608);
+  var _mn621 = stripComment(_mn608);
+
+  check('§621① 3D 未探明格点击改走一级面板出口（旧 openExpModal 直达零残留）', (function () {
+    var i = _m3d621.indexOf('if (fogHides(ci))');
+    var j = i >= 0 ? _m3d621.indexOf('M.centerOn', i) : -1;
+    var seg = i >= 0 && j > i ? _m3d621.slice(i, j) : '';
+    return /M\.openCellPanel\(ci\)/.test(seg) && !/openExpModal/.test(seg);
+  })());
+
+  check('§621② 2D 未探明格也开一级面板（旧 _fh 直达分支零残留）', (function () {
+    return !/var _fh = GAME\.fog/.test(_mn621)
+      && !/ui\.openExpModal\(\{\s*kind:\s*'wild',\s*ci:\s*hit\.ci/.test(_mn621)
+      && /ui\.openFogModalCi\(hit\.ci\)/.test(_mn621)
+      && /ui\.openLandModalCi\(hit\.ci\)/.test(_mn621);
+  })());
+
+  check('§621③ 一级面板有未探明分支：坐标 + 派队探索(exp-open)，不泄露地形/守军', (function () {
+    var i = _um621.indexOf('ui.openFogModalCi = function (ci)');
+    var j = i >= 0 ? _um621.indexOf('ui.openLandModalCi = function (ci)', i) : -1;
+    var blk = i >= 0 && j > i ? _um621.slice(i, j) : '';
+    return /未探明地块/.test(blk)
+      && /data-action="exp-open"/.test(blk)
+      && /派队探索/.test(blk)
+      && !/openExpModal/.test(blk)
+      && !/wildDefenseAt|守军约/.test(blk);
+  })());
+
+  check('§621④ 派队探索仍走 doOpenExp 唯一出口，且未探明提示没丢', (function () {
+    var i = _mn621.indexOf('GAME.doOpenExp = function');
+    var j = i >= 0 ? _mn621.indexOf('GAME.doOneKeyMarch = function', i) : -1;
+    var blk = i >= 0 && j > i ? _mn621.slice(i, j) : '';
+    return /GAME\.fog\.get\(t\.ci\) === 0/.test(blk)
+      && /ui\.openExpModal\(t, _fog38 \? \{ hint: '未探明/.test(blk)
+      && (blk.match(/ui\.openExpModal\(/g) || []).length >= 1;
+  })());
+
+  check('§621⑤ openCellPanel 在 kind 分派之前先截未探明格（不漏进野地详情）', (function () {
+    var i = _m3d621.indexOf('function _openCellPanel(ci)');
+    var j = i >= 0 ? _m3d621.indexOf('if (GAME.questline && GAME.questline.onLook)', i) : -1;
+    var blk = i >= 0 && j > i ? _m3d621.slice(i, j) : '';
+    var fog = blk.indexOf('GAME.fog.get(ci) === 0');
+    var own = blk.indexOf("kind === 'own'");
+    return fog >= 0 && own > fog && /ui\.openFogModalCi\(ci\)/.test(blk)
+      && !/openExpModal/.test(blk);
+  })());
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));
