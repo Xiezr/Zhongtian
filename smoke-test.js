@@ -36973,8 +36973,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         /id="bb-zoom"/.test(u243) && /ui\.view === 'map'/.test(u243) && /map3d\.setZoom/.test(u243));
       c243('§243③ 缩放条为 0~100 连续拖动（type=range）',
         /type="range" min="0" max="100"[^>]*id="bb-zoom"|id="bb-zoom"[^>]*min="0" max="100"/.test(u243));
-      c243('§243④ 滚轮缩放与滑块同源（wheel 用 M.ZOOM_MIN/MAX 钳制）',
-        /camO\.dist = Math\.max\(M\.ZOOM_MIN, Math\.min\(M\.ZOOM_MAX/.test(m243));
+      c243('§243④ 缩放钳制同源（clearFocus 用 ZOOM_MIN/MAX 夹住目标距离）',
+        /_zoomTo\(Math\.max\(M\.ZOOM_MIN, Math\.min\(M\.ZOOM_MAX/.test(m243));
       /* v92.243（老板：「提供适当的背景光亮度，可为全空间或单向光（模拟太阳）」）
          —— 光照唯一出口在册：mix/sun/ambient 三档 + 太阳方向可调 + 昼夜线可关。 */
       c243('§243⑧ 光照唯一出口在册（M.setLight · mix/sun/ambient · 昼夜线 term 可关）',
@@ -36992,7 +36992,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         c243('§243⑥ setZoom(1) → 极大视野（frac=1）', G.map3d.zoomFrac() === 1, 'dist=' + G.map3d.camO.dist.toFixed(1));
         G.map3d.setZoom(0.5);
         c243('§243⑦ setZoom(0.5) 居中（frac≈0.5）', Math.abs(G.map3d.zoomFrac() - 0.5) < 0.01);
+        /* v158.42：setZoom 走平滑跳转只写 _zoomTarget、不写 camO.dist —— 清理必须
+           同时复位目标，否则下一帧阻尼会把 dist 拉回 setZoom(0.5) 的目标。 */
         G.map3d.camO.dist = _d243;
+        if (G.map3d._syncZoom) G.map3d._syncZoom();
       } else {
         c243('§243⑤-⑦ 无 THREE 环境 → 运行时部分跳过（结构已验）', true);
       }
@@ -50093,7 +50096,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /M\.AUTO_DISTRICT !== false/.test(mpFh15814)
       && /GAME\.district\.enter\(_adCi, _adCity\)/.test(mpFh15814)
       && /M\.setPlayerPose\(M\.playerPose\(\)\)/.test(mpFh15814)
-      && /M\.surfaceMode\(false\)/.test(mpFh15814)
+      /* v158.42：退出跟随改走平滑跳转（_zoomTo(R*2.9)），不再 surfaceMode(false) 硬跳 */
+      && /_zoomTo\(R \* 2\.9\)/.test(mpFh15814)
       && /ui\.renderFollowHud\(on\)/.test(mpFh15814)
       && (mnFh15814.match(/\.setFollow\(false\)/g) || []).length >= 2
       && (function () {
@@ -50103,7 +50107,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var blk = mnFh15814.slice(at, at + 420);
         return /_mkAv\.setFollow\(false\)/.test(blk) && !/district\.exit/.test(blk);
       })(),
-      'AUTO_DISTRICT + enter + surfaceMode(false) + Q 单出口');
+      'AUTO_DISTRICT + enter + 退跟随平滑复位 + Q 单出口');
 
     /* 街区 HUD 文案也要写方向键；且它接管时跟随条必须让位（一屏两处「WASD 走动」） */
     check('§589bb 街区 HUD 写方向键 + 接管时跟随条让位（v158.14）',

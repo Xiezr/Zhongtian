@@ -6297,6 +6297,25 @@ import './gltf.js';
   function _syncZoom() { _zoomTarget = camO.dist - R; }
   M._syncZoom = _syncZoom;
   /* ============================================================
+   * v158.42（老板「绝不允许高度跳变」）：**平滑跳转唯一出口**。
+   * ------------------------------------------------------------
+   * 病根：focusOnCell / centerOn / setZoom(滑块) / clearFocus / 进出地表
+   *   这些「瞬移类」入口都直接写 `camO.dist` 再 `_syncZoom()` —— 前者瞬间改高度、
+   *   后者把阻尼目标也瞬间设成新值，于是 placeCamera 的 _zoomDamp 下一帧直接吸附，
+   *   **高度零过渡硬跳**（从 R*2.9 的战略视野啪一下贴到 R+HSC*1.5，或反过来）。
+   *   滚轮不跳，是因为它只写 `_zoomTarget`，把「到达」交给每帧的阻尼去逼近。
+   *
+   * 修法：给这些入口同一个 `_zoomTo` —— 只写目标（`_zoomTarget = 目标海拔`），
+   *   不碰 `camO.dist`，让 _zoomDamp 用同一套 70ms 时间常数平滑过渡。
+   *   `snap=true` = 立即到位（探针 / 自动化 / 自检要拍「最终态」截图，
+   *   不能拍到半透明中间态；这些不是玩家体验，保留瞬间落位）。
+   * ============================================================ */
+  function _zoomTo(targetDist, snap) {
+    if (snap) { camO.dist = targetDist; _syncZoom(); }
+    else { _zoomTarget = targetDist - R; }   /* 阻尼每帧逼近，高度连续 */
+  }
+  M._zoomTo = _zoomTo;
+  /* ============================================================
    * v158.28（老板「左键只选择地图元素，不转动相机。地图位置的变动，
    *          通过鼠标在地图四周……画面持续向右移动，显示右方地图」）
    * ------------------------------------------------------------
@@ -8566,22 +8585,27 @@ import './gltf.js';
      zoomFrac()：0 = 极小视野（最近）→ 1 = 极大视野（最远）—— 供底栏滑块落位。 */
   /* v92.242：1.02R ~ 50R 跨度 49 倍，线性滑块会有一大半行程"看不出变化" → 改用对数刻度。 */
   M.zoomFrac = function () {
+    /* v158.42：读**目标球心距离**（R + _zoomTarget）而非当前 camO.dist ——
+       滑块落位要反映「你要去哪」，而不是「阻尼中间态」，否则设完值滑块滞后 70ms
+       在后面追赶。目标为空（初始态）回退到当前 dist。 */
+    var _base = (_zoomTarget == null || !isFinite(_zoomTarget)) ? camO.dist : (R + _zoomTarget);
     var a = Math.log(M.ZOOM_MIN), b = Math.log(M.ZOOM_MAX);
-    var v = Math.log(Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist)));
+    var v = Math.log(Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, _base)));
     return Math.max(0, Math.min(1, (v - a) / (b - a)));
   };
   /* setZoom(frac)：滑块拖动 → 设视野（0 近 · 1 远）；不动朝向。返回当前 frac。 */
   M.setZoom = function (frac) {
     frac = Math.max(0, Math.min(1, Number(frac) || 0));
     var a = Math.log(M.ZOOM_MIN), b = Math.log(M.ZOOM_MAX);
-    camO.dist = Math.exp(a + (b - a) * frac);
+    var _tz = Math.exp(a + (b - a) * frac);
     /* v157.32：滑块与滚轮同一把下限（camFloorAt），否则能把相机拖进山里 */
     try {
       var _flz = M.camFloorAt ? M.camFloorAt(camO.dir) : 0;
-      if (_flz && camO.dist < _flz) camO.dist = _flz;
+      if (_flz && _tz < _flz) _tz = _flz;
       if (M._groundAt) M._fadeGround = M._groundAt();
     } catch (eZ) { }
-    _syncZoom();
+    /* v158.42：滑块也走平滑跳转（原直接写 dist 会跳变，与滚轮手感不一致）。 */
+    _zoomTo(_tz);
     if (frac > 0.05) M.camFree = true;
     if (frac <= 0.02) M.camFree = false;
     if (M._lastAct != null) M._lastAct = Date.now();       /* 视为一次操作（重置自转计时）*/
@@ -8644,7 +8668,7 @@ import './gltf.js';
   M.camFree = false;
   M.clearFocus = function (opts) {
     M._focus = null; M._pendingFocus = null;
-    if (opts && opts.dist != null) { camO.dist = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, opts.dist)); _syncZoom(); }
+    if (opts && opts.dist != null) { _zoomTo(Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, opts.dist))); }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return false;
   };
@@ -8659,8 +8683,8 @@ import './gltf.js';
     var d = c.dir;
     camO.yaw = Math.atan2(d[0], d[2]);
     camO.pitch = Math.max(-1.55, Math.min(1.55, Math.asin(Math.max(-1, Math.min(1, d[1])))));
-    camO.dist = R + HSC * 1.5;                    /* ≈ 一格半的视距（站在这一格上方）*/
-    _syncZoom();
+    /* v158.42：贴地看这一格走平滑跳转，高度连续（不直接写 dist，否则战略视野啪一下砸到地表）。 */
+    _zoomTo(R + HSC * 1.5);                       /* ≈ 一格半的视距（站在这一格上方）*/
     M._focus = null;
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     return true;
@@ -9586,14 +9610,15 @@ import './gltf.js';
            （位姿逐位不动），只为让 setPlayerPose 内部按 dir 反算格锚。 */
         M.setPlayerPose(M.playerPose());
       }
-      M.surfaceMode(true);
+      /* v158.42：进出地表走平滑跳转，高度连续（原 surfaceMode 直接写 dist 会硬跳）。 */
+      _zoomTo(R + elevAvgAt(camO.dir || [0, 1, 0]) + (M.SURF_EYE || 1.7) * 1.5);
       M._followPos = null;
     } else {
       /* v158.14：退出跟随必须把相机放回轨道高度。只清 FOLLOW 会让 camO.dist
          停在进地表时写的 302，人走了、镜头还贴在地面上 —— 实机表现是
          「Q 回星球后满屏一片蓝」（就是贴在球面上看海）。surfaceMode(false)
          把 dist 复位到 R*2.9，即进地表前的战略视野。 */
-      try { M.surfaceMode(false); } catch (eSm) { }
+      try { _zoomTo(R * 2.9); } catch (eSm) { }
     }
     M.FOLLOW = on;
     /* v158.14（老板「我至今没有发现操作选项」）：跟随态常驻操作条。
@@ -10333,7 +10358,8 @@ import './gltf.js';
        ⚠️ 别改成"直接写 quat"：setFromEuler(-pitch, yaw, roll, 'YXZ') 与
           placeCamera 同一套约定，重建即为唯一出口，避免两处算出不同 roll。 */
     camO.quat = null; camO._euler = null; camO.dir = null;
-    camO.dist = R * 1.9; _syncZoom();
+    /* v158.42：回城也走平滑跳转，高度连续（原直接 camO.dist = R*1.9 会瞬间跳变）。 */
+    _zoomTo(R * 1.9);
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   /* ============================================================
