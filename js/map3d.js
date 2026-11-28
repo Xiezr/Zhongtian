@@ -1057,6 +1057,7 @@ import './gltf.js';
          · 地表在**切模式之前**就淡完（FAR=62 = AGL_SURF 55 + 滞后 7），
            不再有"看不见地面却还在地表模式"的怪状态。 */
     var t = 0;
+    var aglE = -1;                       /* 分档/预览共用的"有效高度" */
     if (M._surf) {
       /* ⛔ v157.35（P0-A1）：判据 = 海拔 − **快照地形高**（不是每帧地形，也不是裸海拔）。
          ------------------------------------------------------------
@@ -1069,25 +1070,62 @@ import './gltf.js';
          平移期间一个数都不动；只有玩家主动缩放才改判据。 */
       var _altN = (M._rAlt != null) ? M._rAlt : (M._agl || 0);
       var _gh = M._fadeGround || 0;
-      var agl = Math.max(0, _altN - _gh);
+      aglE = Math.max(0, _altN - _gh);
       /* 建造模式机位更高（28 米），全实范围必须跟着放宽 ——
          否则一进建造模式地砖就半透明，方格看着发虚。 */
-      var f0 = (M.mode === M.MODE_BUILD) ? 35 : M.SURF_FADE_NEAR;
+      var f0 = (M.mode === M.MODE_BUILD) ? Math.max(M.SURF_FADE_NEAR, 35) : M.SURF_FADE_NEAR;
       /* ============================================================
-       * v157.50（老板「阈值处要求全面平滑」）—— 淡出的终点必须钉在**切模式的那个高度**上。
-       * ------------------------------------------------------------
-       * 旧口径 f1 = 常数 62（用的是"离地高度"，含快照地形高）。站在 10 米丘陵上时，
-       * 海拔 62 米处 agl 只有 52 → fade 还剩 0.4：**地表层半透明地叠在轨道视角上**，
-       * 切模式那一帧"地形突然换了角度和比例"——这是硬切感的另一半（不只是视线）。
-       * 现在 f1 = 切模式海拔 − 地形高：海拔一到 62（模式切换点），fade 恰好归零，
-       * "地面淡完 → 才变轨道"，两件事不再重叠。
+       * v158.48（老板「相机在海拔 60-40 之间，景物加载有跳变」）：规则变更 ——
+       * 淡入窗口从「40 ~ 切模式高度(62)」扩成统一 **40 ~ 70**：
+       *   出地表（62m 切模式）时还有 ~0.2 余影，继续淡到 70 才消失 ——
+       *   与轨道态预览（下方 else 分支）同一条曲线，进出无接缝。
+       * v157.50 老口径「淡完才变轨道」按新规则让位于「60~40 全程平滑」。
        * ============================================================ */
-      var _aglOut50 = (M.AGL_SURF || 55) + (M.AGL_HYST == null ? 7 : M.AGL_HYST);
-      var f1 = Math.max(6, Math.min(M.SURF_FADE_FAR, _aglOut50 - _gh));
-      f0 = Math.max(2, Math.min(f0, f1 * 0.72));
-      t = 1 - Math.min(1, Math.max(0, (agl - f0) / (f1 - f0)));
+      var FAR48 = 70;
+      t = 1 - Math.min(1, Math.max(0, (aglE - f0) / (FAR48 - f0)));
       t = t * t * (3 - 2 * t);                    /* smoothstep：两头缓、中间快 */
+    } else {
+      /* ============================================================
+       * v158.48（老板「在这个比较高空的时候，元素就应该是加载出来了，
+       *   只不过显示它的缩略版……让他的缩略物逐渐精细化，随着高度」）：
+       * 轨道态低空**预览** —— agl < 65 就提前构建地表层（构建时 alpha≈0
+       *   看不见，55 进地表不再"突然 new"）；65~40 区间 alpha 渐入到 0.45
+       *   （"缩略版"淡影先现）；细节分档见下方（先树后草石）。
+       * 65 以上不构建；75 以上余影淡完后拆层（滞回防抖动）。 */
+      var _aglP = Math.max(0, (M._rAlt != null ? M._rAlt : (camO.dist - R)));
+      if (_aglP < 65) {
+        /* 懒构建 + 平移重锚（3 格 ≈15.75m 外重建；SR 陈旧时回到低空不露错位） */
+        try {
+          var _needP48 = !SR || !SR.dir || !camO.dir
+            || (camO.dir[0] * SR.dir[0] + camO.dir[1] * SR.dir[1] + camO.dir[2] * SR.dir[2])
+               < Math.cos((5.25 / R) * 3);
+          if (_needP48) rebuildSurf(camO.dir || [0, 1, 0]);
+        } catch (ePrev48) { }
+        aglE = _aglP;
+        t = 1 - Math.min(1, Math.max(0, (_aglP - M.SURF_FADE_NEAR) / (70 - M.SURF_FADE_NEAR)));
+        t = t * t * (3 - 2 * t);
+        t = Math.min(0.45, t);                   /* 预览最多半实（缩略感） */
+      } else if (_aglP >= 75 && !_surfKillPending) {
+        _surfKillPending = true;                 /* 淡完即拆（下方统一出口） */
+      }
     }
+    /* v158.48 分档缩略：aglE > 48 只显树（草/石/芦苇隐）—— 先大件后细节，
+       随着高度降低逐渐精细化。sig 去重，状态不变不写 visible。 */
+    try {
+      if (SR && M._surfScat && M._surfScat.meshes) {
+        var _wantSmall48 = aglE <= 48;
+        if (_wantSmall48 !== M._scatSmall) {
+          M._scatSmall = _wantSmall48;
+          for (var _si48 = 0; _si48 < M._surfScat.meshes.length; _si48++) {
+            var _im48 = M._surfScat.meshes[_si48];
+            if (!_im48 || !_im48.name) continue;
+            var _k48 = _im48.name.slice('surfScatter_'.length);
+            if (_k48 === 'trunk' || _k48 === 'crown') continue;
+            _im48.visible = _wantSmall48;
+          }
+        }
+      }
+    } catch (eScat48) { }
     /* v157.47（P1 探索实体化）：地标（遗迹/村社/营地）每 500ms 对一次"数量签名"，
        变了才重建 —— 发现一处遗迹时**不用等下一次平移**就能立起来。
        不每帧重建：那等于每帧 new 一批 mesh 再 dispose，GPU 会被抖死。
@@ -1135,10 +1173,15 @@ import './gltf.js';
     if (_surfFade > 1) _surfFade = 1;
     _surfApplyAlpha(_surfFade);
 
-    /* 已经退出地表、余影也淡完了 → 这时才真正拆掉 */
-    if (_surfKillPending && _surfFade <= 0.005 && !M._surf) {
-      _surfKillPending = false;
-      try { destroySurf(); } catch (eK) { }
+    /* 已经退出地表、余影也淡完了 → 这时才真正拆掉。
+       v158.48：预览层在 ≥75m 或出地表（killPending）且淡完时拆；
+       65~75 之间淡完也**保留**（alpha=0 不可见，防横跳反复建拆）。 */
+    if (!M._surf && _surfFade <= 0.005) {
+      var _agK48 = Math.max(0, (M._rAlt != null ? M._rAlt : (camO.dist - R)));
+      if (_surfKillPending || _agK48 >= 75) {
+        _surfKillPending = false;
+        try { destroySurf(); } catch (eK) { }
+      }
     }
   }
   M._surfFade = function () { return _surfFade; };
@@ -2395,6 +2438,7 @@ import './gltf.js';
     /* ③ 景物：按地形类型撒树/草/芦苇/石（与地砖同源，只铺在平台范围内） */
     var scat = null;
     try { scat = _surfScatter(pg.list, root); } catch (eS) { scat = null; }
+    M._surfScat = scat;                     /* v158.48：分档缩略（先树后草石）用 */
     var _tt3 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     /* ④ 方形建造网格（实验层，M.BUILD_GRID=false 即回退到纯六边形；
         v157.56：再受 SURF_LINES 管控 —— 关掉后不画） */
@@ -6287,7 +6331,19 @@ import './gltf.js';
   var _zoomLastT = 0;            /* 上一帧时间戳（ms），用来算阻尼系数 */
   /* 灵敏度曲线：返回"一格（deltaY=100）对应的比例"。连续、单调、无分段。 */
   function _zoomK(agl) {
-    return 0.045 + 1.05 / (1 + Math.max(0, agl) / 6.5);
+    /* v158.48（老板「滚轮每格的精度……到近地面 50、40 的时候每格只降 1~2m，
+       不然就有高度跳变」）：分段曲线 ——
+       · agl ≥ 60：旧曲线（高空每格大值，60 处 ≈18%/格 ≈10.7m）；
+       · 52~60：线性过渡急剧收窄；
+       · agl < 52：近地曲线（50 处 4%/格≈2m、40 处 4.4%≈1.8m、20 处 6.7%≈1.3m、
+         2 处 27%≈0.55m、0.6 处 41%≈0.25m —— 贴地越滚越细，无高度跳变）。 */
+    if (agl >= 60) return 0.045 + 1.05 / (1 + Math.max(0, agl) / 6.5);
+    if (agl >= 52) {
+      var _k60 = 0.045 + 1.05 / (1 + agl / 6.5);
+      var _w52 = (agl - 52) / 8;
+      return _k60 * _w52 + 0.042 * (1 - _w52);
+    }
+    return 0.02 + 0.4 / (1 + Math.max(0, agl) / 2.5);
   }
   /* 把滚轮事件换算成目标 agl（唯一入口：wheel / setZoom / surfaceMode 都走它） */
   function _zoomStepTo(target, deltaY) {

@@ -36627,17 +36627,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          ③ 快照只在输入时更新（滚轮 / 滑块 / 进地表）—— 平移期间冻结，否则又回到"走过山忽实忽虚"。
          背景：裸 _rAlt 是绝对海拔，站上 25 米丘陵时判据算出 26.7 米 → 地表 31% 透明（实测 0.689）。
          v157.35 后同一位置 0.965。 */
-      c243('§243①g 地表淡出判据 = 海拔 − 快照地形高（v157.35/50）',
+      c243('§243①g 地表淡出判据 = 海拔 − 快照地形高（v157.35/50 · v158.48 统一窗口口径）',
         /var _altN = \(M\._rAlt != null\) \? M\._rAlt : \(M\._agl \|\| 0\)/.test(m243)
         /* v157.50：地形高先取到 `_gh`（同一份快照），f1 也要用它对齐切模式高度 */
         && /Math\.max\(0, _altN - _gh\)/.test(m243)
         && !/var agl = \(M\._rAlt != null\) \? M\._rAlt/.test(m243)
         && /M\._fadeGround = M\._groundAt\(\)/.test(m243)
         && /if \(on && M\._groundAt\) M\._fadeGround = M\._groundAt\(\)/.test(m243)
-        /* v157.50（老板「阈值处要全面平滑」）：fade 终点必须钉在**切模式海拔**上
-           —— 否则站在丘陵上时，海拔 62 处地表还剩 40% 不透明，切模式那帧"地形
-           半透明地叠在轨道视角上"，这就是硬切感的另一半。 */
-        && /var f1 = Math\.max\(6, Math\.min\(M\.SURF_FADE_FAR, _aglOut50 - _gh\)\)/.test(m243)
+        /* v158.48 规则变更（老板「相机在海拔 60-40 之间，景物加载有跳变」）：
+           淡入窗口统一 40~70（FAR48=70），v157.50 的「f1 钉切模式高度」退役 ——
+           出地表（62m）余影延续到 70 淡完，与轨道态预览同一条曲线。 */
+        && /var FAR48 = 70/.test(m243)
+        && /\(aglE - f0\) \/ \(FAR48 - f0\)/.test(m243)
+        && !/var f1 = Math\.max\(6, Math\.min\(M\.SURF_FADE_FAR, _aglOut50 - _gh\)\)/.test(m243)
         && /if \(t < _prevFade\)/.test(m243));
 
       /* v157.36（P0-A2）· 阈值必须收在"地表模式区间"内：
@@ -36772,30 +36774,41 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        *      旧实现 120 米处从 0.0006 硬切 0.0012（同格 +25 变 +55 米）。
        *   ② 交班衰减 —— 62 米满值、95 米归零、中间单调；旧实现这一格视线跳 75°。
        * ============================================================ */
-      c243('§243①q 滚轮灵敏度是连续曲线（按高度、不按滚轮位移）：倍数单调不增 · 无分段硬切', (function () {
+      c243('§243①q 滚轮灵敏度曲线：高空大值 · 近地 1~2m/格 · 随高度单调不增（v158.48 分段口径）', (function () {
         var M3 = GAME.map3d;
         if (!M3 || !M3._zoomCurveProbe) return false;
-        /* 对数采样：贴地 1.7 米 → 最远 8000 米，覆盖全部量程 */
-        var prevRatio = null, bad = 0, maxJump = 0;
-        for (var i = 0; i <= 40; i++) {
-          var agl = 1.7 * Math.pow(8000 / 1.7, i / 40);
-          var nxt = M3._zoomCurveProbe(agl, 100);
-          var ratio = nxt / agl;
-          if (prevRatio != null) {
-            if (ratio > prevRatio + 1e-6) bad++;                 /* 必须随高度不增 */
-            maxJump = Math.max(maxJump, Math.abs(ratio - prevRatio));
-          }
-          prevRatio = ratio;
+        /* v158.48 规则变更（老板「滚轮每格的精度……到近地面 50、40 的时候
+           每格只降 1~2m，不然就有高度跳变」）：旧判据要求全程平滑（相邻采样档
+           倍数差 <0.09）——新曲线必须在 52~60 急剧收窄（60 处 9.5m/格 → 50 处 2m/格），
+           那段必然超旧阈值。按新口径钉两端 + 单调不增 + 分段连接连续。 */
+        var one = function (a) { return M3._zoomCurveProbe(a, 100) / Math.max(0.1, a); };
+        /* v158.48 口径：单调性判"每格绝对米数"（agl×ratio−agl），不是"倍数" ——
+           新近地曲线百分比随高度降低微升（4.0%→4.4%→6.7%），但绝对米数单调降
+           （50 处 2m → 40 处 1.8m → 20 处 1.3m → 5 处 0.8m）—— 这正是"近地每格
+           只降 1~2m、越贴地越细"的老板口径。 */
+        var bad = 0, prev = null;
+        var pts = [8000, 1000, 200, 100, 60, 52, 50, 40, 30, 20, 10, 5, 2, 0.6];
+        for (var i = 0; i < pts.length; i++) {
+          var r = one(pts[i]);
+          var m = pts[i] * (r - 1);          /* 每格绝对米数 */
+          if (prev != null && m > prev + 1e-6) bad++;
+          prev = m;
         }
-        /* 源码里不得再有"按 agl 分两段取 K"的写法 */
-        var noSplit = !/_K\s*=\s*\(_aglNow\s*<\s*120\)/.test(m243);
-        return bad === 0 && maxJump < 0.09 && noSplit
+        /* 两端口径：60 处每格 ≥ 1.15（≈9.5m 大值）；50 处 ≤ 1.045（≈2m）；40 处 ≤ 1.055；
+           20 处 ≤ 1.08；2 处 ≤ 1.30（≈0.55m）—— 近地细、高空大 */
+        var r60 = one(60), r50 = one(50), r40 = one(40), r20 = one(20), r2 = one(2);
+        /* 52 处分段连接连续（两侧 K 差 → 倍数比 < 1.01） */
+        var conn = one(51.9) / one(52.1);
+        return bad === 0
+          && r60 > 1.15 && r50 < 1.045 && r40 < 1.055 && r20 < 1.08 && r2 < 1.30
+          && conn > 0.99 && conn < 1.01
           && m243.indexOf('function _zoomK(agl)') >= 0
           && m243.indexOf('_zoomStepTo(') >= 0;
       })(), (function () {
         var M3 = GAME.map3d; if (!M3) return '';
-        return '贴地一格 ×' + (M3._zoomCurveProbe(1.7, 100) / 1.7).toFixed(2)
-          + ' → 4000 米一格 ×' + (M3._zoomCurveProbe(4000, 100) / 4000).toFixed(3);
+        var r50 = M3._zoomCurveProbe(50, 100) / 50;
+        var r60 = M3._zoomCurveProbe(60, 100) / 60;
+        return '60m 一格 ×' + r60.toFixed(3) + '（大值）→ 50m 一格 ×' + r50.toFixed(3) + '（≈2m）';
       })());
       /* v157.74（老板「滚轮只管高度，不要再自动转移那个相机的方向」）——
          规则反转：旧版这条要求「交班衰减 62m 满值 → 95m 归零」，
@@ -51752,6 +51765,54 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && 16 * Math.pow(one, -10) > 3.2   /* 连续可降到下限 */
       && 3.2 < 16
       && Math.abs(Math.exp(-100 * K) - 0.923) < 0.01;
+  })());
+
+  /* ============================================================
+   * §627 v158.48 · 老板「相机在海拔 60-40 之间，景物加载有跳变……
+   *   元素就应该在高空加载出来，显示缩略版，随高度逐渐精细化」
+   * ------------------------------------------------------------
+   * 规则：
+   *   ① 轨道态 agl < 65 就**提前构建**地表层（构建时 alpha≈0 看不见；
+   *      平移 3 格外重锚）；55 进地表不再"突然 new"；
+   *   ② 淡入窗口统一 40~70：预览（轨道态）alpha 渐入、封顶 0.45（缩略感）；
+   *      出地表（62m）仍有余影继续淡到 70 —— 60~40 全程无硬切；
+   *   ③ 分档缩略：aglE > 48 只显树（草/石/芦苇隐），随高度降低逐渐精细化；
+   *   ④ 销毁：出地表（killPending）或 ≥75m 且淡完才拆，65~75 保留防横跳。
+   * 结构面锁源码形态；行为下限由探针 p_surf_lod_v15848 承担。
+   * ============================================================ */
+  check('§627① 轨道态 65m 下提前构建地表层 + 预览 alpha 渐入封顶 0.45', (function () {
+    var src = _m3d608;
+    var i = src.indexOf('function _tickSurfFade');
+    var blk = i >= 0 ? src.slice(i, i + 6400) : '';
+    return /_aglP < 65/.test(blk)
+      && /if \(_needP48\) rebuildSurf\(camO\.dir \|\| \[0, 1, 0\]\)/.test(blk)
+      && /Math\.cos\(\(5\.25 \/ R\) \* 3\)/.test(blk)
+      && /t = Math\.min\(0\.45, t\);/.test(blk)
+      && /FAR48 = 70/.test(blk)
+      && /M\._surfScat = scat;/.test(src);
+  })());
+
+  check('§627② 分档缩略：aglE>48 只显树（trunk/crown 保留，草/石/芦苇隐）+ 销毁 ≥75m 滞回', (function () {
+    var src = _m3d608;
+    var i = src.indexOf('function _tickSurfFade');
+    var blk = i >= 0 ? src.slice(i, i + 6400) : '';
+    return /_wantSmall48 = aglE <= 48/.test(blk)
+      && /_k48 === 'trunk' \|\| _k48 === 'crown'/.test(blk)
+      && /_im48\.visible = _wantSmall48/.test(blk)
+      && /_surfKillPending \|\| _agK48 >= 75/.test(blk)
+      && /_agK48/.test(blk);
+  })());
+
+  check('§627③ 数值面：预览窗口 65 处 alpha≈0.04、55 处 0.45 封顶、48 处 0.45（缩略感上限）', (function () {
+    var sm = function (x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    var tOf = function (agl) {
+      var t = 1 - Math.min(1, Math.max(0, (agl - 40) / 30));
+      return Math.min(0.45, sm(t));
+    };
+    var t65 = tOf(65), t55 = tOf(55), t48 = tOf(48);
+    return t65 > 0.02 && t65 < 0.08
+      && t55 > 0.44 && t55 <= 0.45
+      && t48 > 0.44 && t48 <= 0.45;
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
