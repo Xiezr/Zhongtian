@@ -51584,88 +51584,123 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })());
 
   /* ============================================================
-   * §623 v158.43 · 诉求1高空「空天飞机 WASD 飞行」
+   * §623 v158.52 · 诉求1高空「三角锥战舰自由惯性飞行」（全量重写 v158.51 口径）
    * ------------------------------------------------------------
-   * 老板拍板（AskUserQuestion）：「设置一个飞行物（代表相机），比如空天飞机，
-   *   然后通过 WASD 操纵，飞行速度曲线和轨迹参考太空飞行及其他飞行题材游戏设定」
-   *   +「无实体模型·纯相机飞行」+「带惯性加减速」。
-   * 规则：
-   *   ① 高空（轨道态）WASD = 飞行：W 加速 / S 减速（可倒飞，上限 0.6×前飞）/
-   *      A D 转机头（lookYaw，与位置解耦）；松键惯性衰减（FLY_DECAY）；左键按下停惯性
-   *      （诉求 1 原文「相机本体可以维持一个持续的速度，直至左键操作」）。
-   *   ② 高空右键 = 转头（lookYaw/lookPitch，位置不动；见 §615① v158.43 口径）。
-   *   ③ 地表 WASD 仍归走路（GAME._keys / stepAvatar），飞行键通道 GAME._flyKeys
-   *      独立隔离（与街区/载具三级不串线）。
-   * 结构面锁源码形态；行为下限（帧数 ≥1）由探针 p_fly_v15843 承担。
+   * 老板原文：「高空的相机移动不对，一是高度固定，不合理，二是把QE加减速改为
+   *   ←→加减速，↑↓改变海拔高度。3是方向问题，前进不是前进，后退不是后退。
+   *   4是转向中没有体现速度，物体本身在太空中速度应该恒定，除非受到别的力，
+   *   现在完全没有体现转向中的运动轨迹，让人感觉反倒是在转星球本身。
+   *   5，赋予相机一个形体，简单的三角锥战舰吧，把运动体现出来」
+   *
+   * ⚠️ 规则变更（重写，不是删除/放宽）：v158.51 的「锁球面切向推进 + QE 加减速 +
+   *    松键指数衰减 FLY_DECAY + lookYaw 转头 + 左键停惯性」整条退役，改为：
+   *   ① 自由 3D 位置 fly.pos/head/vel，不再锁球面 → ↑↓/滚轮改海拔（高度可变）；
+   *   ② ←→ 是唯一常规发动机力（右加速/左减速倒飞），无输入速度恒定（牛顿第一定律）；
+   *   ③ W/S 俯仰、A/D 转机头 head —— 前进=沿机头/速度矢量，不是"转星球"；
+   *   ④ 速度矢量 vel 以有限角率追随 head，转向留弧线侧滑角但收敛
+   *      （FLY_VEL_TURN 0.65 发散到 140° 被探针⑥抓出后修正为 2.4）；
+   *   ⑤ 三角锥 ConeGeometry + 引擎球 + THREE.Line 尾迹 + 第三人称机位（后 18m）。
+   * 结构面锁源码形态；行为下限（帧数 ≥1、侧滑角张开/收敛、速度恒定）由探针
+   * p_fly_v15852 承担（§623⑤ 锁探针存在与关键判据，防止行为面被悄悄摘掉）。
    * ============================================================ */
   (function () {
-    check('§623① 飞行常量/状态/入口齐备，渲染循环 placeCamera 前当帧生效', (function () {
+    check('§623①（v158.52 口径）自由飞行常量/状态/入口齐备，渲染循环 placeCamera 前当帧生效', (function () {
       var src = _m3d608;
-      var i = src.indexOf('function _tickFlight');
-      var blk = i >= 0 ? src.slice(i, i + 4200) : '';
       var k = src.indexOf('_tickFlight(_epDt)');
       var p = src.indexOf('placeCamera();', k);
-      /* v158.45（老板「相机移动速度太低了」）提速：45→120、27→72、18→48、
-         0.9→1.1、1.2→1.35 —— 数值随规则变更，结构判据不变。 */
-      /* v158.46c：飞行 tick 与 placeCamera 之间插入高度 HUD 驱动块（含静止淡出），
-         距离阈值 1200 → 2000 随结构更新（同 §616②，语义不变）。 */
-      /* v158.51（老板「QE 加减速、WSAD 只负责方向、无操作自动调平」）：
-         新增 FLY_PITCH（俯仰率）/ FLY_LEVEL_AFTER（调平延迟）/ FLY_LEVEL_RATE
-         （调平速率）三个常量；surf 早退加 FOLLOW 守卫（跟随态不飞行不调平）。 */
+      /* v158.52 规则变更：FLY_DECAY 退役；新增 VEL_TURN/CLIMB/CAM 系列/TRAIL_MAX；
+         _fly 从「只有一个 v」升级为「pos/head/vel/active/climb/trail 全状态」。 */
       return /M\.FLY_MAX = 120;/.test(src)
         && /M\.FLY_BACK_MAX = 72;/.test(src)
         && /M\.FLY_ACCEL = 48;/.test(src)
         && /M\.FLY_TURN = 1\.1;/.test(src)
-        && /M\.FLY_DECAY = 1\.35;/.test(src)
+        && /M\.FLY_VEL_TURN = 2\.4;/.test(src)
+        && /M\.FLY_CLIMB = 24;/.test(src)
+        && /M\.FLY_CAM_BACK = 24;/.test(src)
+        && /M\.FLY_CAM_UP = 9;/.test(src)
+        && /M\.FLY_CAM_LOOK = 60;/.test(src)
+        && /M\.FLY_TRAIL_MAX = 120;/.test(src)
         && /M\.FLY_PITCH = 0\.9;/.test(src)
         && /M\.FLY_LEVEL_AFTER = 2\.5;/.test(src)
         && /M\.FLY_LEVEL_RATE = 0\.5;/.test(src)
-        && /M\._fly = \{ v: 0 \};/.test(src)
+        && /M\._fly = \{ v: 0, pos: null, head: null, vel: null, active: false,/.test(src)
         && /M\.flyTick = _tickFlight;/.test(src)
         && /M\.flyProbe = function \(\)/.test(src)
         && k > 0 && p > k && (p - k) < 2000
-        && /if \(M\._surf \|\| M\.FOLLOW\) \{ if \(fly\.v\) fly\.v = 0; return false; \}/.test(blk);
+        && /if \(M\._surf \|\| M\.FOLLOW\)/.test(src);
     })());
 
-    check('§623②（v158.51 口径）E/Q 加减速、W/S 机头俯仰、A/D 转 lookYaw、无操作自动调平、松 QE 指数衰减、dir 推进 + 第 5 处 pitch 反算', (function () {
+    check('§623②（v158.52 口径）←→ 加减速且无输入恒速、↑↓ 改海拔、A/D 转机头 W/S 俯仰、vel 有限角率追随、pos 沿 vel 推进', (function () {
       var src = _m3d608;
-      return /if \(e\) fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
-        && /if \(q\) fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
-        && /if \(w\) _lpP \+= \(M\.FLY_PITCH \|\| 0\.9\) \* dt; else _lpP -= \(M\.FLY_PITCH \|\| 0\.9\) \* dt/.test(src)
-        && /camO\.lookPitch = Math\.max\(-1\.55, Math\.min\(1\.55, _lpP\)\)/.test(src)
-        && /var _idleDir = !\(w \|\| s \|\| a \|\| d \|\| !!M\._rmbLook\)/.test(src)
-        && /M\._flyIdleT > \(M\.FLY_LEVEL_AFTER \|\| 2\.5\)/.test(src)
-        && /_lpL -= Math\.sign\(_lpL\) \* Math\.min\(Math\.abs\(_lpL\), \(M\.FLY_LEVEL_RATE \|\| 0\.5\) \* dt\)/.test(src)
-        && /else camO\.lookPitch = 0/.test(src)
-        && /fly\.v \*= Math\.exp\(-\(M\.FLY_DECAY \|\| 1\.35\) \* dt\)/.test(src)
-        && /if \(fly\.v > _vmax\) fly\.v = _vmax/.test(src)
-        && /if \(fly\.v < _vmin\) fly\.v = _vmin/.test(src)
-        && /if \(a\) camO\.lookYaw -= _tv \* dt; else camO\.lookYaw \+= _tv \* dt/.test(src)
-        && /addScaledVector\(_tanF, _stepF\)/.test(src)
-        && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _ndF\.y\)\)\)/.test(src);
+      var tick = src.slice(src.indexOf('function _tickFlight'), src.indexOf('M.flyTick = _tickFlight'));
+      return /if \(r\) fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        && /if \(l\) fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        /* 规则变更：FLY_DECAY 整条退役 —— 太空中无外力速度恒定，不许靠衰减兜底 */
+        && !/FLY_DECAY/.test(tick)
+        && /var _climb = u \? \(M\.FLY_CLIMB \|\| 24\) : \(dn \? -\(M\.FLY_CLIMB \|\| 24\) : 0\)/.test(src)
+        && /if \(a\) head\.applyAxisAngle\(radial, -\(M\.FLY_TURN \|\| 1\.1\) \* dt\)/.test(src)
+        && /if \(d\) head\.applyAxisAngle\(radial, \(M\.FLY_TURN \|\| 1\.1\) \* dt\)/.test(src)
+        && /if \(w\) head\.applyAxisAngle\(right, \(M\.FLY_PITCH \|\| 0\.9\) \* dt\)/.test(src)
+        && /if \(s\) head\.applyAxisAngle\(right, -\(M\.FLY_PITCH \|\| 0\.9\) \* dt\)/.test(src)
+        && /var _vt = \(M\.FLY_VEL_TURN \|\| 2\.4\) \* \(0\.25 \+ 0\.75 \* Math\.min\(1, Math\.abs\(fly\.v\) \/ _vmax\)\)/.test(src)
+        && /vel\.lerp\(head, Math\.min\(1, _vt \* dt\)\)\.normalize\(\)/.test(src)
+        && /pos\.addScaledVector\(vel, fly\.v \* dt\)/.test(src)
+        /* 位置反算写回旧相机状态机（地表交班/探针唯一接口），不许漏 */
+        && /camO\.dist = _nr;/.test(src)
+        && /camO\.dir = \[_ndF\.x, _ndF\.y, _ndF\.z\]/.test(src)
+        && /camO\.yaw = Math\.atan2\(_ndF\.x, _ndF\.z\)/.test(src);
     })());
 
-    check('§623③ 飞行键通道 GAME._flyKeys 隔离（含 QE）；keyup/blur 清；左键停惯性；飞行 HUD 挂载', (function () {
-      return /GAME\._flyKeys\[AV_KEY_ALIAS\[_avCode\] \|\| _avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(_mn608)
-        && /\^Key\[WASDQE\]\$/.test(_mn608)
-        && /GAME\._flyKeys\[_c\.charAt\(3\)\.toLowerCase\(\)\] = 0/.test(_mn608)
+    check('§623③（v158.52 口径）飞行键通道 ←→↑↓ + WASD 隔离；keyup 按原始 e.code 清；滚轮与升降共存；飞行 HUD 挂载', (function () {
+      return /var _flyK52 = null;/.test(_mn608)
+        && /_avCode === 'ArrowLeft'\) _flyK52 = 'left'/.test(_mn608)
+        && /_avCode === 'ArrowRight'\) _flyK52 = 'right'/.test(_mn608)
+        && /_avCode === 'ArrowUp'\) _flyK52 = 'up'/.test(_mn608)
+        && /_avCode === 'ArrowDown'\) _flyK52 = 'down'/.test(_mn608)
+        && /\^Key\[WASD\]\$/.test(_mn608)
+        /* 规则变更：AV_KEY_ALIAS 把方向键归一成 KeyW/A/S/D，keyup 必须读原始 e.code
+           （_c0）才清得到 left/right/up/down，否则按键粘住。 */
+        && /var _fc52 = _c0 === 'ArrowLeft'/.test(_mn608)
+        && /GAME\._flyKeys\[_fc52\] = 0/.test(_mn608)
         && /GAME\._flyKeys = \{\}/.test(_mn608)
-        && /if \(e\.button === 0 && M\._fly && M\._fly\.v\) M\._fly\.v = 0;/.test(_m3d608)
+        /* 规则变更：左键停惯性退役；滚轮改为「先消费目标再叠加 ↑↓」，不再被 tick 覆盖 */
+        && /var _zt = \(_zoomTarget != null && isFinite\(_zoomTarget\)\) \? _zoomTarget : \(pos\.length\(\) - R\)/.test(_m3d608)
+        && /_zoomTarget = _nr - R; _zoomLastT = 0/.test(_m3d608)
         && /ui\.renderFlyHud = function \(v\)/.test(_um608)
         && /renderFlyHud/.test(_m3d608);
     })());
 
-    check('§623④（v158.51 口径）数值面：加速 2~3s、倒飞 0.6×、静止转向率 0.25、滑停 3.5~6s、调平延迟 2.5s + 极限回正 ≈3s、HUD 键位文案', (function () {
+    check('§623④（v158.52 口径）数值面：加速 2~3s、倒飞 0.6×、速度追随率 > 机头率（侧滑角收敛）、战舰形体 + 第三人称机位、HUD 键位文案', (function () {
       var src = _m3d608;
       var t = 120 / 48;                    /* FLY_MAX / FLY_ACCEL */
-      var stopT = Math.log(120 / 0.3) / 1.35;   /* 满速指数衰减到 0.3 m/s 的时长 */
-      var levelT = 1.55 / 0.5;             /* 极限 lookPitch 调平回正时长 */
+      /* v158.52 规则变更：不再有"滑停时长"（太空无外力不该自己停）；
+         改为追随率收敛条件 —— v=80 时有效追随 = 2.4×(0.25+0.75×2/3)=1.8
+         > 机头 1.1 rad/s；旧值 0.65 时仅 0.49，夹角发散到 140°（探针⑥实测）。 */
+      var effVelTurn = 2.4 * (0.25 + 0.75 * (80 / 120));
       return t > 2 && t < 3
         && 72 / 120 > 0.55 && 72 / 120 < 0.65
-        && stopT > 3.5 && stopT < 6
-        && levelT > 2.5 && levelT < 4
-        && /Math\.max\(0\.25, Math\.min\(1, Math\.abs\(fly\.v\) \/ _vmax\)\)/.test(src)
-        && /E 加速 · Q 减速 · W\/S 俯仰 · A\/D 转向/.test(_um608);
+        && effVelTurn > 1.1
+        && /new THREE\.ConeGeometry\(1\.2, 4, 3\)/.test(src)
+        && /new THREE\.SphereGeometry\(0\.5, 8, 6\)/.test(src)
+        && /new THREE\.Line\(tg, new THREE\.LineBasicMaterial/.test(src)
+        && /cam\.position\.copy\(_sp\)\.addScaledVector\(_hd, -\(M\.FLY_CAM_BACK \|\| 24\)\)/.test(src)
+        && /cam\.up\.copy\(_upR\)/.test(src)
+        && /M\._flyCam = \{ pos: cam\.position\.toArray\(\), up: _upR\.toArray\(\) \}/.test(src)
+        && /←→ 加减速 · ↑↓ 升降 · W\/S 俯仰 · A\/D 转向/.test(_um608)
+        && /空天战舰/.test(_um608);
+    })());
+
+    check('§623⑤（v158.52 口径）行为下限由专用探针承担：真调飞行 tick、判据带下限、覆盖五条诉求', (function () {
+      /* 规则变更：v158.51 行为面只在注释里"由探针承担"，没锁探针本身，
+         导致探针写错对象（M._flyKeys）时 smoke 全绿而功能坏 —— 这里把探针
+         存在性与关键下限判据也纳入门禁，不许悄悄摘掉。 */
+      var pr = _r608('.workbuddy/tools/probe/p_fly_v15852.js');
+      return /GAME\._flyKeys\[key\] = 1/.test(pr)             /* 真按键转向，不是静态读源码 */
+        && /Math\.abs\(sN1\.v - sN0\.v\) < 1\.0/.test(pr)      /* 速度恒定下限 */
+        && /sT\.short\.a1 > sT\.short\.a0 \+ 8/.test(pr)       /* 侧滑角张开下限 */
+        && /sT\.release\.a1 < 12/.test(pr)                     /* 松手收敛上限 */
+        && /sU1\.alt - sU0\.alt > 18/.test(pr)                 /* 升降下限 */
+        && (pr.match(/check\('/g) || []).length >= 10;         /* 五条诉求 + 隔离 + 无错 */
     })());
   })();
 

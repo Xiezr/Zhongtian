@@ -4256,12 +4256,19 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
            街区 D.keys / 载具 vehicle.keys 三级互不串线。map3d._tickFlight 消费。
            v158.51（老板「QE 加减速，WSAD 只负责方向」）：Q/E 同入通道 ——
            E 加速 / Q 减速；W/S 机头俯仰、A/D 转向。 */
-        if (!_mkAv.FOLLOW && !_mkAv._surf
-            && (/^Key[WASDQE]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])
+        /* v158.52：←→ 加减速、↑↓ 升降（替代 Q/E）；W/S 俯仰、A/D 转向。
+           方向键在地表仍走走路通道（上面分支已 return），高空单独映射。 */
+        var _flyK52 = null;
+        if (_avCode === 'ArrowLeft') _flyK52 = 'left';
+        else if (_avCode === 'ArrowRight') _flyK52 = 'right';
+        else if (_avCode === 'ArrowUp') _flyK52 = 'up';
+        else if (_avCode === 'ArrowDown') _flyK52 = 'down';
+        else if (/^Key[WASD]$/.test(_avCode)) _flyK52 = _avCode.charAt(3).toLowerCase();
+        if (!_mkAv.FOLLOW && !_mkAv._surf && _flyK52
             && !(_mkAv.DISTRICT && GAME.district && GAME.district.active)
             && !(GAME.vehicle && GAME.vehicle.mounted)) {
           if (!GAME._flyKeys) GAME._flyKeys = {};
-          GAME._flyKeys[AV_KEY_ALIAS[_avCode] || _avCode.charAt(3).toLowerCase()] = 1;
+          GAME._flyKeys[_flyK52] = 1;
           e.preventDefault();
           return;
         }
@@ -4323,9 +4330,12 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         GAME.vehicle.keys[_c.charAt(3).toLowerCase()] = 0;
       }
       /* v158.43（高空飞行通道）：飞行键独立清，不借 GAME._keys。 */
-      if (/^Key[WASDQE]$/.test(_c) && GAME._flyKeys) {
-        GAME._flyKeys[_c.charAt(3).toLowerCase()] = 0;
-      }
+      /* v158.52：先按**原始 code** 判方向键 —— _c 已被 AV_KEY_ALIAS 归一成 KeyA/D/W/S，
+         拿它判不到 ArrowLeft/Right/Up/Down（老坑复现）。 */
+      var _fc52 = _c0 === 'ArrowLeft' ? 'left' : _c0 === 'ArrowRight' ? 'right'
+        : _c0 === 'ArrowUp' ? 'up' : _c0 === 'ArrowDown' ? 'down'
+        : (/^Key[WASD]$/.test(_c) ? _c.charAt(3).toLowerCase() : null);
+      if (_fc52 && GAME._flyKeys) GAME._flyKeys[_fc52] = 0;
     });
     window.addEventListener('blur', function () { GAME._keys = {}; });
     window.addEventListener('blur', function () { if (GAME.district) GAME.district.keys = {}; });

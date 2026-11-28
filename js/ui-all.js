@@ -17079,9 +17079,9 @@ import './ui.js';
       return el;
     }
     var _sp = Math.round(Math.abs(v));
-    el.innerHTML = '<span style="opacity:.9;">🚀 空天飞机 · </span>'
+    el.innerHTML = '<span style="opacity:.9;">🚀 空天战舰 · </span>'
       + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
-      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">E 加速 · Q 减速 · W/S 俯仰 · A/D 转向</span>';
+      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">←→ 加减速 · ↑↓ 升降 · W/S 俯仰 · A/D 转向</span>';
     el.style.display = 'block';
     return el;
   };
