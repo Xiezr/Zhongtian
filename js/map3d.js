@@ -3684,47 +3684,82 @@ import './gltf.js';
           hArr[y * N + x] = Math.max(0, e) * HSC;      /* 世界单位的相对高度 */
         }
       }
-      /* ---- 由 h 求物体空间法线（差分）与曲率遮蔽，写进法线图集 ---- */
-      var du = 2 / N;                                  /* 参数步长 */
+      /* ---- 球面原生法线 + 曲率遮蔽，写进法线图集 ----
+       * v158.54（老板「星球闪变…始终没有解决为什么星球有死角，有该死的轴线。
+       *   那轴线只做标识用。从生成层面消失死角」）——
+       * 病根（探针 p_diag_v15854_atlas_seam 实测）：改前每个 cube 面用**自己的面参数
+       *   fn(u,v) 的切向 + 面内差分**烘焙法线，六个面在共享棱上切基不同、边缘还是
+       *   单边差分 → 图集法线跨棱平均差 68.65/765、最大 358/765（近乎反向）。
+       *   顶点法线虽早在 v157.89 焊接到 0.02°，但 RELIEF_TEX 下片元读的是这张图集 ——
+       *   那条看起来像"轴线/死角"的直线、以及转动时的闪变，就来自这里。
+       * 修法（生成层，不是相机/渲染补丁）：法线改由**球面原生 3D 梯度**生成 ——
+       *   同一 3D 方向 d 在任意 cube 面、任意纹素都得到同一条法线（与面参数化无关），
+       *   跨棱零缝。切基只依赖 d 且带极点兜底（与 SP.tangentOf 同口径，避免新极点）。
+       * 曲率遮蔽同样是球面原生（4 邻域沿 d 的切向取），不再用面参数 hArr 的单边邻居。 */
+      var epsS = 1.5 / N;                             /* 球面角步长 ≈ 一个纹素 */
+      var _t1 = [0, 0, 0], _t2 = [0, 0, 0], _d0 = [0, 0, 0];
+      function sphBasis(d) {
+        /* 全局一致的球面切平面基：只依赖方向 d，不依赖 cube 面参数。
+           极点（|y|>0.9）换参考轴，消除 d=(0,±1,0) 处 cross 退化。 */
+        var wx = 0, wy = 1, wz = 0;
+        if (Math.abs(d[1]) > 0.9) { wx = 1; wy = 0; }
+        var px = wy * d[2] - wz * d[1], py = wz * d[0] - wx * d[2], pz = wx * d[1] - wy * d[0];
+        var pl = Math.sqrt(px * px + py * py + pz * pz) || 1;
+        _t1[0] = px / pl; _t1[1] = py / pl; _t1[2] = pz / pl;
+        _t2[0] = d[1] * _t1[2] - d[2] * _t1[1];
+        _t2[1] = d[2] * _t1[0] - d[0] * _t1[2];
+        _t2[2] = d[0] * _t1[1] - d[1] * _t1[0];
+      }
+      /* 球面法线专用的**低频高度**：法线只描述山脊/谷地的形状趋势，高频颗粒由
+         uDetailTex 负责。完整 sphElev 是 8 octaves，逐像素差分把高频也 EXAG 放大，
+         正是"星球闪变"（细碎明暗随转动跳）的来源之一。
+         这里只用 SP.fbm3 的低 3 阶（与 contField/mountainField 同源），省 5/8 算力
+         且法线更平滑；颜色图集仍用完整 sphElev，地形配色不受影响。 */
+      function elevAt(d, t, s) {
+        var x = d[0] + t[0] * s, y = d[1] + t[1] * s, z = d[2] + t[2] * s;
+        var l = Math.sqrt(x * x + y * y + z * z) || 1;
+        x /= l; y /= l; z /= l;
+        var sd = (SP && SP.seed3) ? SP.seed3() : 0;
+        var base = SP.fbm3([x, y, z], 1.1, sd + 11) * 2.2;   /* 大陆骨架 */
+        var ridge = 1 - Math.abs(2 * SP.fbm3([x, y, z], 2.8, sd + 77) - 1);
+        return Math.max(0, base + ridge * ridge * 0.9);
+      }
       for (var yy = 0; yy < N; yy++) {
         for (var xx = 0; xx < N; xx++) {
-          /* ⚠️ v157.94 首版用"环绕"索引（%N）→ 面边缘把**地球另一侧**当邻居，
-             法线全错 → 六个面各一条细黑线。改成**边缘单边差分**（不环绕）。*/
-          var xm = xx > 0 ? xx - 1 : xx, xp = xx < N - 1 ? xx + 1 : xx;
-          var ym = yy > 0 ? yy - 1 : yy, yp = yy < N - 1 ? yy + 1 : yy;
           var hC = hArr[yy * N + xx];
-          var dhdu = (hArr[yy * N + xp] - hArr[yy * N + xm]) / ((xp - xm) * du || du);
-          var dhdv = (hArr[yp * N + xx] - hArr[ym * N + xx]) / ((yp - ym) * du || du);
-          /* 该点方向与切向基（面函数解析求，纯算术）*/
+          /* 该纹素的球面方向 d（与颜色采样同一 pC，跨面同 d 必同法线）*/
           var uu = -1 + 2 * (xx + 0.5) / N, vv = -1 + 2 * (yy + 0.5) / N;
           var pC = fn(uu, vv);
           var lC = Math.sqrt(pC[0] * pC[0] + pC[1] * pC[1] + pC[2] * pC[2]) || 1;
           var rx = pC[0] / lC, ry = pC[1] / lC, rz = pC[2] / lC;
-          var eps = 1e-3;
-          var pU = fn(uu + eps, vv), pV = fn(uu, vv + eps);
-          var Tux = pU[0] / (Math.sqrt(pU[0] * pU[0] + pU[1] * pU[1] + pU[2] * pU[2]) || 1) - rx;
-          var Tuy = pU[1] / (Math.sqrt(pU[0] * pU[0] + pU[1] * pU[1] + pU[2] * pU[2]) || 1) - ry;
-          var Tuz = pU[2] / (Math.sqrt(pU[0] * pU[0] + pU[1] * pU[1] + pU[2] * pU[2]) || 1) - rz;
-          var Tvx = pV[0] / (Math.sqrt(pV[0] * pV[0] + pV[1] * pV[1] + pV[2] * pV[2]) || 1) - rx;
-          var Tvy = pV[1] / (Math.sqrt(pV[0] * pV[0] + pV[1] * pV[1] + pV[2] * pV[2]) || 1) - ry;
-          var Tvz = pV[2] / (Math.sqrt(pV[0] * pV[0] + pV[1] * pV[1] + pV[2] * pV[2]) || 1) - rz;
-          /* 曲面切向 ≈ R·T + r·(dh/du)：高度远小于半径，取一阶近似 */
-          var Pux = R * Tux + rx * dhdu, Puy = R * Tuy + ry * dhdu, Puz = R * Tuz + rz * dhdu;
-          var Pvx = R * Tvx + rx * dhdv, Pvy = R * Tvy + ry * dhdv, Pvz = R * Tvz + rz * dhdv;
+          _d0[0] = rx; _d0[1] = ry; _d0[2] = rz;
+          sphBasis(_d0);
+          /* e0 必须与 elevAt 同口径（低频），否则 g=(邻-e0) 混了两套尺度 →
+             海洋处冒出巨大常数梯度。hC 仍给颜色/曲率的完整高度用。 */
+          var e0 = elevAt(_d0, _t1, 0);
+          /* 球面原生梯度：中心差分（对称 → 棱两侧同 d 必同法线；前向差分实测
+             接缝反而从 18 涨到 30，因为不对称放大了采样点微差）。4 邻域共用一次
+             方向量化缓存，cube 六面共享棱的采样点方向重合 → 命中，压住首屏耗时。 */
+          var eT1p = elevAt(_d0, _t1, epsS), eT1m = elevAt(_d0, _t1, -epsS);
+          var eT2p = elevAt(_d0, _t2, epsS), eT2m = elevAt(_d0, _t2, -epsS);
+          var g1 = (eT1p - eT1m) / (2 * epsS);
+          var g2 = (eT2p - eT2m) / (2 * epsS);
+          /* 曲面切向 = R·t + r·(dh/ds)；高度远小于半径，一阶近似 */
+          var Pux = R * _t1[0] + rx * g1 * HSC, Puy = R * _t1[1] + ry * g1 * HSC, Puz = R * _t1[2] + rz * g1 * HSC;
+          var Pvx = R * _t2[0] + rx * g2 * HSC, Pvy = R * _t2[1] + ry * g2 * HSC, Pvz = R * _t2[2] + rz * g2 * HSC;
           var nx = Puy * Pvz - Puz * Pvy, ny = Puz * Pvx - Pux * Pvz, nz = Pux * Pvy - Puy * Pvx;
           var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
           nx /= nl; ny /= nl; nz /= nl;
           if (nx * rx + ny * ry + nz * rz < 0) { nx = -nx; ny = -ny; nz = -nz; }
-          /* v157.94：**法线夸张搬到烘焙里** —— 与顶点版同一口径（切向 ×EXAG，tanθ'=EXAG·tanθ）。
-             不夸张时逐像素明暗比原来"弱"（真实平滑法线本来就比网格法线温和），立体感会退。*/
+          /* 法线夸张：与顶点版同口径（切向 ×EXAG，tanθ'=EXAG·tanθ）*/
           var _exg = (M.RELIEF_EXAG == null ? 2.0 : +M.RELIEF_EXAG);
           var _dd = nx * rx + ny * ry + nz * rz;
           var _tx = nx - _dd * rx, _ty = ny - _dd * ry, _tz = nz - _dd * rz;
           var _ex = rx + _tx * _exg, _ey = ry + _ty * _exg, _ez = rz + _tz * _exg;
           var _el = Math.sqrt(_ex * _ex + _ey * _ey + _ez * _ez) || 1;
           nx = _ex / _el; ny = _ey / _el; nz = _ez / _el;
-          /* 曲率遮蔽：与顶点版同一口径（谷地暗、山脊微亮），只是这里逐纹素 */
-          var lap = hC - (hArr[yy * N + xp] + hArr[yy * N + xm] + hArr[yp * N + xx] + hArr[ym * N + xx]) / 4;
+          /* 曲率遮蔽（球面原生 4 邻域）：谷地暗、山脊微亮 */
+          var lap = hC - (eT1p + eT1m + eT2p + eT2m) * HSC / 4;
           var sh = 1 + lap * (M.CURV_K == null ? 0.18 : M.CURV_K);
           if (sh < 0.74) sh = 0.74; else if (sh > 1.06) sh = 1.06;
           var no = ((oy + yy) * A + (ox + xx)) * 4;
