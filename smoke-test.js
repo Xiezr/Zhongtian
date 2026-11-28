@@ -51676,10 +51676,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /pos\.addScaledVector\(vel, fly\.v \* dt\)/.test(src)
         && /M\._bankAngle = Math\.acos/.test(src)
         && /M\._flyNav = M\._flyNavState\(\);/.test(src)
-        /* 鼠标两个轴都真改 fly.head（不是只改 lookYaw/lookPitch） */
-        && /_fh\.applyAxisAngle\(_frad, -_dx \* \(M\.FLY_LOOK_K \|\| 0\.0042\)\)/.test(src)
-        && /_fh\.applyAxisAngle\(_fright, -_dy \* \(M\.FLY_LOOK_K \|\| 0\.0042\)\)/.test(src)
+        /* v158.55（规则变更，重写不放宽）：鼠标两轴的旋转轴从"径向基"改成
+           "机体基"——旧 cross(radial,head) 在 head∥radial（正对/背对球心）时
+           退化翻转，探针实测连翻 31 次（老板「越过屏幕中线一下正面一下背面」）。
+           新：yaw 绕机体 up、pitch 绕 machine right=cross(head,up)，head 与 up
+           同步旋转，正对球心不退化。旧形态必须彻底消失。 */
+        && /var _K = \(M\.FLY_LOOK_K \|\| 0\.0042\);/.test(src)
+        && /var _fu = M\._fly\.up \? _flyVec\(M\._fly\.up\) : null;/.test(src)
+        && /_fu\.addScaledVector\(_fh, -_fu\.dot\(_fh\)\);/.test(src)
+        && /_qLook\.setFromAxisAngle\(_fu, -_dx \* _K\);/.test(src)
+        && /var _fright = new THREE\.Vector3\(\)\.crossVectors\(_fh, _fu\)\.normalize\(\);/.test(src)
+        && /_qLook\.setFromAxisAngle\(_fright, -_dy \* _K\);/.test(src)
+        && /_fh\.applyQuaternion\(_qLook\); _fu\.applyQuaternion\(_qLook\);/.test(src)
+        && /M\._fly\.up = \[_fu\.x, _fu\.y, _fu\.z\]/.test(src)
         && /M\._fly\.head = \[_fh\.x, _fh\.y, _fh\.z\]/.test(src)
+        /* 旧退化轴整条退役：不许 _fright 再用 radial、不许 applyAxisAngle 旧式 */
+        && !/crossVectors\(_frad, _fh\)/.test(src)
+        && !/_fh\.applyAxisAngle\(_frad, -_dx/.test(src)
+        && !/_fh\.applyAxisAngle\(_fright, -_dy/.test(src)
         /* 位置反算写回旧相机状态机（地表交班/探针唯一接口），不许漏 */
         && /camO\.dist = _nr;/.test(src)
         && /camO\.dir = \[_ndF\.x, _ndF\.y, _ndF\.z\]/.test(src)

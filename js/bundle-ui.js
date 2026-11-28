@@ -8907,15 +8907,50 @@
          * ============================================================ */
         if (!M._surf && M._fly && M._fly.active && M._fly.head
             && (lookDrag === 1) && (!M.FOLLOW)) {
+          /* ============================================================
+           * v158.55（老板「右键长按拖动，越过屏幕中线 → 近乎 180° 翻转，
+           *   一下正面一下背面快速切换」）—— 根因是旧式旋转轴退化：
+           *   旧 pitch 轴 = cross(radial, head)：当 head 趋向 ±radial（正对/
+           *   背对球心，即"越过中线"）时叉乘 → 0，兜底 (1,0,0) 与真实右向
+           *   反向 → 轴每帧翻 180°，机头在正/背面之间高频弹跳（探针实测
+           *   head·rad 越过 0.998 后连翻 21 次）。yaw 轴用 radial 也有同病：
+           *   head∥radial 时绕 radial 转 = 机体自转，左右拖看不见转向。
+           *   正解（无人深空式机体基）：yaw 绕**机体 up**、pitch 绕**机体
+           *   right = cross(head, up)** —— 二者与 head 恒正交，正对球心处
+           *   不退化；head 与 up 一起旋转，机基始终自洽，绝不弹跳。
+           * ============================================================ */
+          var _K = (M.FLY_LOOK_K || 0.0042);
           var _fh = _flyVec(M._fly.head).normalize();
-          var _fp = _flyVec(M._fly.pos), _frad = _fp.clone().normalize();
-          var _fright = new THREE.Vector3().crossVectors(_frad, _fh);
-          if (_fright.lengthSq() < 1e-8) _fright.set(1, 0, 0);
-          _fright.normalize();
-          if (_dx) _fh.applyAxisAngle(_frad, -_dx * (M.FLY_LOOK_K || 0.0042));
-          if (_dy) _fh.applyAxisAngle(_fright, -_dy * (M.FLY_LOOK_K || 0.0042));
-          _fh.normalize();
+          var _fu = M._fly.up ? _flyVec(M._fly.up) : null;
+          if (!_fu) {
+            var _fp0 = _flyVec(M._fly.pos);
+            _fu = (_fp0.lengthSq() > 1e-8) ? _fp0.normalize() : new THREE.Vector3(0, 1, 0);
+          }
+          /* 防御：up 必须 ⊥ head（_tickFlight 每帧已正交化，这里再兜一次） */
+          _fu.addScaledVector(_fh, -_fu.dot(_fh));
+          if (_fu.lengthSq() < 1e-8) {
+            var _frad0 = _flyVec(M._fly.pos).normalize();
+            _fu.crossVectors(_frad0, _fh);
+            if (_fu.lengthSq() < 1e-8) _fu.crossVectors(new THREE.Vector3(0, 1, 0), _fh);
+            if (_fu.lengthSq() < 1e-8) _fu.crossVectors(new THREE.Vector3(1, 0, 0), _fh);
+          }
+          _fu.normalize();
+          var _qLook = new THREE.Quaternion();
+          /* 左右拖 = 绕机体 up 偏航（head 正对球心时仍是真转向，不是自转） */
+          if (_dx) {
+            _qLook.setFromAxisAngle(_fu, -_dx * _K);
+            _fh.applyQuaternion(_qLook); _fu.applyQuaternion(_qLook);
+          }
+          /* 上下拖 = 绕机体 right 俯仰；right = cross(head, up) 与 head 恒正交，
+             正对球心不退化 —— 这是消除 180° 翻转的关键。 */
+          var _fright = new THREE.Vector3().crossVectors(_fh, _fu).normalize();
+          if (_dy) {
+            _qLook.setFromAxisAngle(_fright, -_dy * _K);
+            _fh.applyQuaternion(_qLook); _fu.applyQuaternion(_qLook);
+          }
+          _fh.normalize(); _fu.normalize();
           M._fly.head = [_fh.x, _fh.y, _fh.z];
+          M._fly.up = [_fu.x, _fu.y, _fu.z];
           if (Math.abs(_dx) + Math.abs(_dy) > 3) moved = true;
           touch(); redraw(); return;
         }
