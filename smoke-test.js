@@ -51649,9 +51649,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * 结构面锁源码形态；行为下限（屏占比恒定）由探针 p_fig_scale_v15844 承担。
    * ============================================================ */
   (function () {
-    check('§624①（v158.46 口径）基准比例上限收紧到 1.0（人 1.2m ≈ 最矮树一半）；屏占比常量与入口齐备', (function () {
+    check('§624①（v158.46d 口径）基准比例上限收紧到 0.5（人 0.6m ≈ 最矮树 1/4）；屏占比常量与入口齐备', (function () {
       var src = _m3d608;
-      return /Math\.min\(1\.0, cellW \* 0\.45 \/ 1\.2\)/.test(src)
+      return /Math\.min\(0\.5, cellW \* 0\.45 \/ 1\.2\)/.test(src)
         && /M\.FIG_SCREEN_FRAC = 0\.025;/.test(src)
         && /M\.FIG_BASE_H = 1\.2;/.test(src)
         && /M\.figScaleTick = _figScaleTick;/.test(src)
@@ -51665,26 +51665,26 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var k = src.indexOf('_figScaleTick();');   /* 渲染循环调用（带分号，避开函数声明） */
       var p = k > 0 ? src.lastIndexOf('placeCamera();', k) : -1;
       return /_whF = \(M\.FIG_SCREEN_FRAC \|\| 0\.025\) \* 2 \* _dF \* Math\.tan\(cam\.fov \* Math\.PI \/ 360\)/.test(blk)
-        && /_sF = Math\.max\(1, _whF \/ \(M\.FIG_BASE_H \|\| 1\.2\)\)/.test(blk)
+        && /_sF = _whF \/ \(M\.FIG_BASE_H \|\| 1\.2\);/.test(blk)
         && /figCache\.stand/.test(blk)
         && /_fst\.g\.scale\.setScalar\(Math\.max\(_base, _sF\)\)/.test(blk)
         && /Math\.hypot\(/.test(blk)
         && k > 0 && p > 0 && (k - p) < 600;
     })());
 
-    check('§624③（v158.46 口径）数值面：870m 放大 ≥8×、16m 保持基准 1.0、屏占比恒 2.5%', (function () {
-      var base = 1.0, frac = 0.025, fov = 42, H = 1.2;
+    check('§624③（v158.46d 口径）数值面：870m 放大 ≥8×、16m 保持基准 0.5、屏占比恒 2.5%', (function () {
+      var base = 0.5, frac = 0.025, fov = 42, H = 1.2;
       var sOf = function (d) {
         var wh = frac * 2 * d * Math.tan(fov * Math.PI / 360);
-        return Math.max(1, wh / H);
+        return wh / H;
       };
       var s16 = Math.max(base, sOf(16));
       var s870 = Math.max(base, sOf(870));
       var frac870 = (H * s870) / (2 * 870 * Math.tan(fov * Math.PI / 360));
-      return s16 === 1.0
+      return s16 === 0.5
         && s870 >= 8
         && frac870 > 0.02 && frac870 < 0.03
-        && 1.2 * base < 3.4 * 0.78;    /* 地面人高 1.2 < 最矮树 2.65（人小比例尺大） */
+        && 1.2 * base < 3.4 * 0.78;    /* 地面人高 0.6 < 最矮树 2.65（人小比例尺大） */
     })());
   })();
 

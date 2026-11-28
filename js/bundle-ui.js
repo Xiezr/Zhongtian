@@ -6861,7 +6861,10 @@
       cam.position.z - pp.dir[2] * _pr);
     _dF = Math.max(0.1, _dF);
     var _whF = (M.FIG_SCREEN_FRAC || 0.025) * 2 * _dF * Math.tan(cam.fov * Math.PI / 360);
-    var _sF = Math.max(1, _whF / (M.FIG_BASE_H || 1.2));
+    /* v158.46d：_sF 不再有 Math.max(1, …) 下限 —— 近处屏占比对应的目标尺寸
+       小于 1× 时允许小于 1（基准 base 才是真下限：0.5 → 人 0.6m）。
+       旧写法 max(1,…) 会把地表人物钉死在 1×，基准 0.5 永远不生效。 */
+    var _sF = _whF / (M.FIG_BASE_H || 1.2);
     M._figScale = _sF;                 /* 探针读数 */
     M._figDist = _dF;
     /* 只缩**玩家小人**（stand）—— 城市人偶（city）是"城市的标志"，跟着放大
@@ -6873,11 +6876,12 @@
     }
   }
   M.figScaleTick = _figScaleTick;
-  /* 探针出口（只读纯函数）：给定距离算目标 scale（同 _figScaleTick 公式） */
+  /* 探针出口（只读纯函数）：给定距离算目标 scale（同 _figScaleTick 公式；
+     v158.46d 起无 1× 下限，与 _figScaleTick 同源） */
   M.figScaleOf = function (d, fov) {
     var f = fov == null ? 42 : fov;
     var wh = (M.FIG_SCREEN_FRAC || 0.025) * 2 * Math.max(0.1, d) * Math.tan(f * Math.PI / 360);
-    return Math.max(1, wh / (M.FIG_BASE_H || 1.2));
+    return wh / (M.FIG_BASE_H || 1.2);
   };
   /* 探针出口（只读）：stand/city 人偶当前 scale —— 供行为断言用
      （figCache 是闭包变量，测试不能直接读）。 */
@@ -9410,7 +9414,10 @@
     /* v158.46（老板「人小一点好了，整个比例尺相应就大了」）：上限 1.45 → **1.0**
        —— 人 1.2 米 ≈ 最矮树（2.7m）的一半，山/城/星球相对人物更显体量；
        高空可见性仍由屏占比固定缩放（FIG_SCREEN_FRAC）兜住，不因缩小而看不见。 */
-    var sc = Math.max(0.8, Math.min(1.0, cellW * 0.45 / 1.2));
+    /* v158.46d（老板「人还是太高了，再一半」）：上限 1.0 → **0.5**
+       —— 人 0.6 米 ≈ 最矮树的 1/4，格子/城池/山体相对人更显庞大；
+       高空屏占比固定缩放不受影响（base 只是下限）。 */
+    var sc = Math.max(0.4, Math.min(0.5, cellW * 0.45 / 1.2));
     var who = [];
     /* ⛔ v157.85：前传的「金色君主人偶」分支已删 —— 现在一律画当前城市。 */
     var pc = GAME.currentCity && GAME.currentCity();

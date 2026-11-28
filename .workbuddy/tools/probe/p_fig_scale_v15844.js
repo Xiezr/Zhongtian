@@ -64,20 +64,20 @@ const check = (name, ok, extra) => {
   check('② 高空屏占比 ≈ 2.5%（恒定口径）',
     fracHi > 0.02 && fracHi < 0.03, (fracHi * 100).toFixed(2) + '%');
 
-  /* ③ 滚轮降到地表：人偶回真实比例 1.0（人 1.2m ≈ 最矮树一半） */
+  /* ③ 滚轮降到地表：人偶回真实比例 0.5（人 0.6m，v158.46d「再一半」） */
   await p.mouse.move(720, 450);
   for (let i = 0; i < 62; i++) { await p.mouse.wheel(0, -120); await p.waitForTimeout(45); }
   await p.waitForTimeout(300);   /* 滚轮后短等：高度 HUD 仍在显示窗口内（<3s） */
   const sLo = await figProbe();
   console.log('地表: ' + JSON.stringify(sLo));
-  check('③（v158.46 口径）地表人偶回基准 1.0（人小、比例尺大）',
-    sLo.stand != null && sLo.stand >= 0.95 && sLo.stand <= 1.05
-    && sLo.base != null && sLo.base <= 1.0, JSON.stringify(sLo));
+  check('③（v158.46d 口径）地表人偶回基准 0.5（人 0.6m、比例尺更大）',
+    sLo.stand != null && sLo.stand >= 0.45 && sLo.stand <= 0.55
+    && sLo.base != null && sLo.base <= 0.5, JSON.stringify(sLo));
 
   /* ④ 缩放只作用于 stand：城市人偶保持基准，不随高度放大 */
   const sCity = await figProbe();
-  check('④ 城市人偶不被屏占比缩放（city scale 恒 ≤ 1.0，与高空 stand 不同源）',
-    sCity.city != null && sCity.city <= 1.0 && sHi.stand > sCity.city,
+  check('④ 城市人偶不被屏占比缩放（city scale 恒 ≤ 0.5，与高空 stand 不同源）',
+    sCity.city != null && sCity.city <= 0.5 && sHi.stand > sCity.city,
     'city=' + sCity.city + ' standHi=' + sHi.stand);
 
   /* ⑤ 高度 HUD：常驻显示、海拔口径（数值随滚轮变化） */
