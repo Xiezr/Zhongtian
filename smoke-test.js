@@ -50096,11 +50096,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
            「见「⚙️ 设置」页」引导语零残留 —— 指示必须出现在操作现场。
            ⚠️ 墓碑注释会引用原文（含"设置"两字），反向证据必须钉完整引导短语，
            不能用裸词「设置」。 */
+        /* ⛔ v158.46c 规则变更（老板「不要占据用户的心智，任何游戏主体之外的内容，
+           不要长久挂载占据界面和过程」）：键位条**每局首次进地表显示 8 秒后淡出**，
+           不再常驻 —— 判据补"限时淡出"三件：_fhShown 一次性标记 + 8000ms 计时 +
+           opacity 淡出过渡。 */
         return /getElementById\('follow-hud'\)/.test(body)
           && /左键/.test(body)
           && /WASD/.test(body)
           && !/见「⚙️ 设置」/.test(body)
-          && !/data-action=/.test(body);
+          && !/data-action=/.test(body)
+          && /_fhShown/.test(body)
+          && /8000/.test(body)
+          && /opacity \.8s/.test(body);
       })(),
       '别名表 + 双向归一化 + 常驻条（无按钮）');
 
@@ -51582,6 +51589,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var p = src.indexOf('placeCamera();', k);
       /* v158.45（老板「相机移动速度太低了」）提速：45→120、27→72、18→48、
          0.9→1.1、1.2→1.35 —— 数值随规则变更，结构判据不变。 */
+      /* v158.46c：飞行 tick 与 placeCamera 之间插入高度 HUD 驱动块（含静止淡出），
+         距离阈值 1200 → 2000 随结构更新（同 §616②，语义不变）。 */
       return /M\.FLY_MAX = 120;/.test(src)
         && /M\.FLY_BACK_MAX = 72;/.test(src)
         && /M\.FLY_ACCEL = 48;/.test(src)
@@ -51590,7 +51599,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /M\._fly = \{ v: 0 \};/.test(src)
         && /M\.flyTick = _tickFlight;/.test(src)
         && /M\.flyProbe = function \(\)/.test(src)
-        && k > 0 && p > k && (p - k) < 1200
+        && k > 0 && p > k && (p - k) < 2000
         && /if \(M\._surf\) \{ if \(fly\.v\) fly\.v = 0; return false; \}/.test(blk);
     })());
 
@@ -51684,15 +51693,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ------------------------------------------------------------
    * 口径拍板（AskUserQuestion）：**海拔高度**（dist − R，不含地形高）——
    * 与滚轮缩放、模式切换同一把尺（_rAlt）。
-   * HUD：左上角常驻一行「📐 相机高度 N m（海拔）」，渲染循环按 sig 去重
+   * HUD：左上角一行「📐 相机高度 N m（海拔）」，渲染循环按 sig 去重
    * （取整变化才写 DOM），不挡中央视野。
+   * v158.46c（老板「不要占据用户的心智」）：**变化时显示、静止 3 秒淡出**。
    * ============================================================ */
-  check('§625① 高度 HUD 挂载：renderAltHud 出口 + 海拔口径（_rAlt，不读地形）+ sig 去重', (function () {
+  check('§625① 高度 HUD 挂载：renderAltHud 出口 + 海拔口径（_rAlt，不读地形）+ sig 去重 + 静止 3s 淡出', (function () {
     return /ui\.renderAltHud = function \(agl\)/.test(_um608)
       && /海拔/.test(_um608)
       && /M\._rAlt != null \? M\._rAlt : \(camO\.dist - R\)/.test(_m3d608)
       && /_sig46 !== \(M\._altHudSig \|\| -1\)/.test(_m3d608)
-      && /renderAltHud\(_ag46\)/.test(_m3d608);
+      && /renderAltHud\(_ag46\)/.test(_m3d608)
+      && /_altLastChg/.test(_m3d608)
+      && /> 3000/.test(_m3d608)
+      && /renderAltHud\(null\)/.test(_m3d608);
   })());
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'

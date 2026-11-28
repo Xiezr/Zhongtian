@@ -5761,7 +5761,10 @@ if (svBtn) {
     await sleep(200);
     const e089 = lg89.energy;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="tao"]'));
-    await sleep(240);
+    /* v158.46c（修 e2e 自身竞态）：scene3d.play 在 jsdom 无 WebGL 时的结算
+       是异步的 —— 固定 sleep(240) 多次实测不够（连红 4 次中的 3 次；插 console.log
+       即绿 = I/O 让出事件循环让异步任务跑完）。改为轮询等结算：最多 2 秒。 */
+    for (let _w9 = 0; _w9 < 20 && lg89.energy >= e089 - 0.01; _w9++) await sleep(100);
     check('v90.93：清剿不再进全屏剧本（#scene-fx 零残留 · sxf-* 四层动作全清）', (function () {
       const el = document.getElementById('scene-fx');
       return (!el || el.style.display === 'none')

@@ -7205,14 +7205,20 @@ import './gltf.js';
       }
     } catch (eFH) { }
     /* v158.46：相机高度 HUD —— 海拔口径（老板拍板：dist−R，不含地形）；
-       sig 去重（取整变化才写 DOM），地图页常驻 */
+       sig 去重（取整变化才写 DOM）。v158.46c（老板「不要占据用户的心智」）：
+       **高度变化时显示，静止 3 秒自动淡出** —— 实时在需要时给，静止不占屏 */
     try {
       if (GAME.ui && GAME.ui.renderAltHud) {
         var _ag46 = M._rAlt != null ? M._rAlt : (camO.dist - R);
         var _sig46 = Math.round(Math.max(0, _ag46));
+        var _now46 = Date.now();
         if (_sig46 !== (M._altHudSig || -1)) {
           M._altHudSig = _sig46;
+          M._altLastChg = _now46;
           GAME.ui.renderAltHud(_ag46);
+        } else if (M._altLastChg && (_now46 - M._altLastChg) > 3000) {
+          M._altLastChg = 0;   /* 清标记防每帧重复触发淡出 */
+          GAME.ui.renderAltHud(null);
         }
       }
     } catch (eAH) { }

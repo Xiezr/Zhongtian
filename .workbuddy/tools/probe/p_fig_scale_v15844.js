@@ -67,7 +67,7 @@ const check = (name, ok, extra) => {
   /* ③ 滚轮降到地表：人偶回真实比例 1.0（人 1.2m ≈ 最矮树一半） */
   await p.mouse.move(720, 450);
   for (let i = 0; i < 62; i++) { await p.mouse.wheel(0, -120); await p.waitForTimeout(45); }
-  await p.waitForTimeout(1500);
+  await p.waitForTimeout(300);   /* 滚轮后短等：高度 HUD 仍在显示窗口内（<3s） */
   const sLo = await figProbe();
   console.log('地表: ' + JSON.stringify(sLo));
   check('③（v158.46 口径）地表人偶回基准 1.0（人小、比例尺大）',
@@ -95,6 +95,21 @@ const check = (name, ok, extra) => {
     altHud.visible && /海拔/.test(altHud.text) && /\d+/.test(altHud.text)
     && Math.abs(parseInt((altHud.text.match(/\d+/) || [])[0], 10) - Math.round(altHud.rAlt)) <= 1,
     altHud.text + ' rAlt=' + altHud.rAlt);
+
+  /* ⑥（v158.46c 老板「不要占据用户的心智」）：静止 3 秒后高度 HUD 淡出；
+     键位条（follow-hud）首次进地表 8 秒后淡出 —— 游戏外内容不长久挂屏 */
+  await p.waitForTimeout(4200);   /* 距最后高度变化已 > 4.5s（3s 阈值 + 淡出余量） */
+  const altGone = await p.evaluate(() => {
+    const el = document.getElementById('alt-hud');
+    return !el || el.style.display === 'none' || el.style.opacity === '0';
+  });
+  await p.waitForTimeout(5500);   /* 进地表已 > 10s */
+  const fhGone = await p.evaluate(() => {
+    const el = document.getElementById('follow-hud');
+    return !el || el.style.display === 'none' || el.style.opacity === '0';
+  });
+  check('⑥ 静止 3 秒后高度 HUD 淡出、键位条 8 秒后淡出（不长久挂载）',
+    altGone && fhGone, 'altGone=' + altGone + ' fhGone=' + fhGone);
 
   check('⑤ 全程无页面运行时错误', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log('结果：' + pass + ' 通过 / ' + fail + ' 失败');

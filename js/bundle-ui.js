@@ -7499,14 +7499,20 @@
       }
     } catch (eFH) { }
     /* v158.46：相机高度 HUD —— 海拔口径（老板拍板：dist−R，不含地形）；
-       sig 去重（取整变化才写 DOM），地图页常驻 */
+       sig 去重（取整变化才写 DOM）。v158.46c（老板「不要占据用户的心智」）：
+       **高度变化时显示，静止 3 秒自动淡出** —— 实时在需要时给，静止不占屏 */
     try {
       if (GAME.ui && GAME.ui.renderAltHud) {
         var _ag46 = M._rAlt != null ? M._rAlt : (camO.dist - R);
         var _sig46 = Math.round(Math.max(0, _ag46));
+        var _now46 = Date.now();
         if (_sig46 !== (M._altHudSig || -1)) {
           M._altHudSig = _sig46;
+          M._altLastChg = _now46;
           GAME.ui.renderAltHud(_ag46);
+        } else if (M._altLastChg && (_now46 - M._altLastChg) > 3000) {
+          M._altLastChg = 0;   /* 清标记防每帧重复触发淡出 */
+          GAME.ui.renderAltHud(null);
         }
       }
     } catch (eAH) { }
@@ -33159,7 +33165,8 @@ ui.openDuel = function (fid, moveId) {
       el = document.createElement('div');
       el.id = 'follow-hud';
       el.style.cssText = 'position:absolute;left:22px;bottom:88px;z-index:1901;'
-        + 'display:none;pointer-events:none;font-size:14px;line-height:1.9;';
+        + 'display:none;pointer-events:none;font-size:14px;line-height:1.9;'
+        + 'opacity:1;transition:opacity .8s;';
       /* ⛔ v158.46b（老板「『操作说明见设置页』就是我见过最垃圾最废物的文案和指示」）：
          HUD 直接印键位，不再写任何"去设置页看"的废话指示 ——
          指示就该出现在操作现场，不能把玩家打发去翻设置。 */
@@ -33169,7 +33176,27 @@ ui.openDuel = function (fid, moveId) {
         + '<span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　左键长按 平移镜头　·　右键长按 转视角　·　WASD/方向键 走动　·　E 交互　·　滚轮 升空</span></span>';
       root.appendChild(el);
     }
-    el.style.display = on ? 'block' : 'none';
+    if (!on) { el.style.display = 'none'; return el; }
+    /* v158.46c（老板「不要占据用户的心智，任何游戏主体之外的内容，
+       不要长久挂载占据界面和过程」）：键位条不再常驻 ——
+       **每局首次进地表显示 8 秒后自动淡出**，之后不再打扰。 */
+    if (!GAME._fhShown) {
+      GAME._fhShown = true;
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+      el.style.display = 'block';
+      if (ui._fhTimer) clearTimeout(ui._fhTimer);
+      ui._fhTimer = setTimeout(function () {
+        var e2 = document.getElementById('follow-hud');
+        if (!e2) return;
+        e2.style.transition = 'opacity .8s';
+        e2.style.opacity = '0';
+        setTimeout(function () {
+          var e3 = document.getElementById('follow-hud');
+          if (e3) e3.style.display = 'none';
+        }, 850);
+      }, 8000);
+    }
     return el;
   };
   /* ============================================================
@@ -33188,10 +33215,22 @@ ui.openDuel = function (fid, moveId) {
         + 'pointer-events:none;display:none;white-space:nowrap;'
         + 'background:rgba(12,18,26,.72);color:#bfe3ff;'
         + 'border:1px solid rgba(110,160,210,.35);border-radius:6px;'
-        + 'padding:3px 9px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;';
+        + 'padding:3px 9px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;'
+        + 'opacity:1;transition:opacity .6s;';
       root.appendChild(el);
     }
-    if (agl == null || !isFinite(agl)) { el.style.display = 'none'; return el; }
+    if (agl == null || !isFinite(agl)) {
+      /* v158.46c（老板「不要占据用户的心智」）：静止即淡出，不留残影 */
+      if (el.style.display !== 'none') {
+        el.style.transition = 'opacity .6s';
+        el.style.opacity = '0';
+        if (ui._ahTimer) clearTimeout(ui._ahTimer);
+        ui._ahTimer = setTimeout(function () { el.style.display = 'none'; }, 650);
+      }
+      return el;
+    }
+    el.style.transition = 'none';
+    el.style.opacity = '1';
     el.textContent = '📐 相机高度 ' + Math.round(agl) + ' m（海拔）';
     el.style.display = 'block';
     return el;
