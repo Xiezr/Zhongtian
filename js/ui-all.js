@@ -17081,7 +17081,7 @@ import './ui.js';
     var _sp = Math.round(Math.abs(v));
     el.innerHTML = '<span style="opacity:.9;">🚀 空天飞机 · </span>'
       + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
-      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">W/S 加减速 · A/D 转向 · 右键 转头</span>';
+      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">E 加速 · Q 减速 · W/S 俯仰 · A/D 转向</span>';
     el.style.display = 'block';
     return el;
   };
@@ -21321,7 +21321,7 @@ import './ui.js';
           '<b>地面</b>：<b>W A S D</b> 或 <b>↑↓←→</b> 走动　·　<b>左键</b> 点哪走哪　·　<b>左键长按拖动</b> 平移镜头　·　<b>右键长按拖动</b> 转动视角<br>' +
           '<b>交互</b>：走到目标旁按 <b>E</b> 查看 / 上车 / 对话　·　<b>滚轮</b> 升降视野高度<br>' +
           '<b>建造</b>：切「建造」模式后，左键点地块 = 勘探 / 放置　·　<b>R</b> 旋转手持物<br>' +
-          '<b>高空</b>：<b>W</b> 加速 / <b>S</b> 减速（空天飞机惯性滑行）　·　<b>A D</b> 转向　·　<b>右键</b> 转头（双击回正）　·　<b>滚轮</b> 缩放　·　<b>左键</b> 停止飞行' +
+          '<b>高空</b>：<b>E</b> 加速 / <b>Q</b> 减速（空天飞机惯性滑行）　·　<b>W S</b> 俯仰　·　<b>A D</b> 转向　·　松方向键自动调平　·　<b>右键</b> 转头（双击回正）　·　<b>滚轮</b> 缩放　·　<b>左键</b> 停止飞行' +
         '</div>' +
       '</div>' +
       /* v151（老板：「打一场仗要盯 3~5 分钟，设置里还找不到开关」）：

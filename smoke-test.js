@@ -51602,29 +51602,41 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§623① 飞行常量/状态/入口齐备，渲染循环 placeCamera 前当帧生效', (function () {
       var src = _m3d608;
       var i = src.indexOf('function _tickFlight');
-      var blk = i >= 0 ? src.slice(i, i + 2600) : '';
+      var blk = i >= 0 ? src.slice(i, i + 4200) : '';
       var k = src.indexOf('_tickFlight(_epDt)');
       var p = src.indexOf('placeCamera();', k);
       /* v158.45（老板「相机移动速度太低了」）提速：45→120、27→72、18→48、
          0.9→1.1、1.2→1.35 —— 数值随规则变更，结构判据不变。 */
       /* v158.46c：飞行 tick 与 placeCamera 之间插入高度 HUD 驱动块（含静止淡出），
          距离阈值 1200 → 2000 随结构更新（同 §616②，语义不变）。 */
+      /* v158.51（老板「QE 加减速、WSAD 只负责方向、无操作自动调平」）：
+         新增 FLY_PITCH（俯仰率）/ FLY_LEVEL_AFTER（调平延迟）/ FLY_LEVEL_RATE
+         （调平速率）三个常量；surf 早退加 FOLLOW 守卫（跟随态不飞行不调平）。 */
       return /M\.FLY_MAX = 120;/.test(src)
         && /M\.FLY_BACK_MAX = 72;/.test(src)
         && /M\.FLY_ACCEL = 48;/.test(src)
         && /M\.FLY_TURN = 1\.1;/.test(src)
         && /M\.FLY_DECAY = 1\.35;/.test(src)
+        && /M\.FLY_PITCH = 0\.9;/.test(src)
+        && /M\.FLY_LEVEL_AFTER = 2\.5;/.test(src)
+        && /M\.FLY_LEVEL_RATE = 0\.5;/.test(src)
         && /M\._fly = \{ v: 0 \};/.test(src)
         && /M\.flyTick = _tickFlight;/.test(src)
         && /M\.flyProbe = function \(\)/.test(src)
         && k > 0 && p > k && (p - k) < 2000
-        && /if \(M\._surf\) \{ if \(fly\.v\) fly\.v = 0; return false; \}/.test(blk);
+        && /if \(M\._surf \|\| M\.FOLLOW\) \{ if \(fly\.v\) fly\.v = 0; return false; \}/.test(blk);
     })());
 
-    check('§623② W/S 加减速有上限、A/D 转 lookYaw（机头）、松键指数衰减、dir 推进 + 第 5 处 pitch 反算', (function () {
+    check('§623②（v158.51 口径）E/Q 加减速、W/S 机头俯仰、A/D 转 lookYaw、无操作自动调平、松 QE 指数衰减、dir 推进 + 第 5 处 pitch 反算', (function () {
       var src = _m3d608;
-      return /fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
-        && /fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+      return /if \(e\) fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        && /if \(q\) fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        && /if \(w\) _lpP \+= \(M\.FLY_PITCH \|\| 0\.9\) \* dt; else _lpP -= \(M\.FLY_PITCH \|\| 0\.9\) \* dt/.test(src)
+        && /camO\.lookPitch = Math\.max\(-1\.55, Math\.min\(1\.55, _lpP\)\)/.test(src)
+        && /var _idleDir = !\(w \|\| s \|\| a \|\| d \|\| !!M\._rmbLook\)/.test(src)
+        && /M\._flyIdleT > \(M\.FLY_LEVEL_AFTER \|\| 2\.5\)/.test(src)
+        && /_lpL -= Math\.sign\(_lpL\) \* Math\.min\(Math\.abs\(_lpL\), \(M\.FLY_LEVEL_RATE \|\| 0\.5\) \* dt\)/.test(src)
+        && /else camO\.lookPitch = 0/.test(src)
         && /fly\.v \*= Math\.exp\(-\(M\.FLY_DECAY \|\| 1\.35\) \* dt\)/.test(src)
         && /if \(fly\.v > _vmax\) fly\.v = _vmax/.test(src)
         && /if \(fly\.v < _vmin\) fly\.v = _vmin/.test(src)
@@ -51633,8 +51645,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /camO\.pitch = Math\.asin\(Math\.max\(-1, Math\.min\(1, _ndF\.y\)\)\)/.test(src);
     })());
 
-    check('§623③ 飞行键通道 GAME._flyKeys 隔离；keyup/blur 清；左键停惯性；飞行 HUD 挂载', (function () {
+    check('§623③ 飞行键通道 GAME._flyKeys 隔离（含 QE）；keyup/blur 清；左键停惯性；飞行 HUD 挂载', (function () {
       return /GAME\._flyKeys\[AV_KEY_ALIAS\[_avCode\] \|\| _avCode\.charAt\(3\)\.toLowerCase\(\)\] = 1/.test(_mn608)
+        && /\^Key\[WASDQE\]\$/.test(_mn608)
         && /GAME\._flyKeys\[_c\.charAt\(3\)\.toLowerCase\(\)\] = 0/.test(_mn608)
         && /GAME\._flyKeys = \{\}/.test(_mn608)
         && /if \(e\.button === 0 && M\._fly && M\._fly\.v\) M\._fly\.v = 0;/.test(_m3d608)
@@ -51642,14 +51655,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /renderFlyHud/.test(_m3d608);
     })());
 
-    check('§623④（v158.45 提速口径）数值面：加速时间 2~3s、倒飞 = 0.6×前飞、静止转向率 = 满速的 0.25、满速滑停 3.5~6s', (function () {
+    check('§623④（v158.51 口径）数值面：加速 2~3s、倒飞 0.6×、静止转向率 0.25、滑停 3.5~6s、调平延迟 2.5s + 极限回正 ≈3s、HUD 键位文案', (function () {
       var src = _m3d608;
       var t = 120 / 48;                    /* FLY_MAX / FLY_ACCEL */
       var stopT = Math.log(120 / 0.3) / 1.35;   /* 满速指数衰减到 0.3 m/s 的时长 */
+      var levelT = 1.55 / 0.5;             /* 极限 lookPitch 调平回正时长 */
       return t > 2 && t < 3
         && 72 / 120 > 0.55 && 72 / 120 < 0.65
         && stopT > 3.5 && stopT < 6
-        && /Math\.max\(0\.25, Math\.min\(1, Math\.abs\(fly\.v\) \/ _vmax\)\)/.test(src);
+        && levelT > 2.5 && levelT < 4
+        && /Math\.max\(0\.25, Math\.min\(1, Math\.abs\(fly\.v\) \/ _vmax\)\)/.test(src)
+        && /E 加速 · Q 减速 · W\/S 俯仰 · A\/D 转向/.test(_um608);
     })());
   })();
 

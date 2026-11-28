@@ -6506,19 +6506,56 @@ import './gltf.js';
   M.FLY_TURN = 1.1;        /* 满速转向率（rad/s）；随速度缩放，静止不能原地转 */
   M.FLY_DECAY = 1.35;      /* 松键惯性衰减率（1/s）：满速滑行约 4~5 秒滑停
                              （p_fly_v15843 实测 0.35 时 5s 后仍余 17% 速度，拖沓） */
+  M.FLY_PITCH = 0.9;       /* v158.51：W/S 机头俯仰率（rad/s）；与右键转头同 1.55 clamp */
+  M.FLY_LEVEL_AFTER = 2.5; /* v158.51：无方向输入 N 秒后开始自动调平 */
+  M.FLY_LEVEL_RATE = 0.5;  /* v158.51：调平速率（rad/s）——极限 1.55 约 3 秒回正（缓慢） */
   M._fly = { v: 0 };       /* 运行时态（不入档）：标量速度，倒飞为负 */
   function _tickFlight(dt) {
     var fly = M._fly || (M._fly = { v: 0 });
     var keys = (GAME && GAME._flyKeys) || null;
-    /* 地表 = 走路态：飞行速度清空（WASD 归 stepAvatar） */
-    if (M._surf) { if (fly.v) fly.v = 0; return false; }
-    var w = !!(keys && keys.w), s = !!(keys && keys.s), a = !!(keys && keys.a), d = !!(keys && keys.d);
+    /* 地表/跟随 = 走路态：飞行速度清空（WASD 归 stepAvatar）；跟随态不飞行不调平 */
+    if (M._surf || M.FOLLOW) { if (fly.v) fly.v = 0; return false; }
+    var q = !!(keys && keys.q), e = !!(keys && keys.e),
+        w = !!(keys && keys.w), s = !!(keys && keys.s),
+        a = !!(keys && keys.a), d = !!(keys && keys.d);
     /* ⚠️ 上限放 0.12 秒：headless rAF 节流到 1~2fps 时加速/转向不会慢 20 倍
        （与 _tickEdgePan 同口径）。 */
     dt = Math.max(0.001, Math.min(0.12, dt || 0.016));
+    /* ============================================================
+     * v158.51（老板「QE 加减速，WSAD 只负责方向」+「无操作后方向自动
+     * 缓慢转为与地面平行」）：
+     *   ① 方向输入 = W/S（机头俯仰）、A/D（转向）、右键转头（_rmbLook）。
+     *      无方向输入累计 _flyIdleT，超过 FLY_LEVEL_AFTER 后把 lookPitch
+     *      以 FLY_LEVEL_RATE 缓慢拉回 0 —— 视线回看球心、画面正立
+     *      （脚底是星球、头顶朝外太空；极端仰角下 _camRollOf 会把画面
+     *      翻倒成"头顶是星球"，回 0 即缓慢转回"脚底是星球"）。
+     *      lookYaw 不回（任何水平朝向都与地面平行）；推进恒切向 =
+     *      飞行方向恒与地面平行。
+     *   ② W/S = 机头俯仰（W 抬头看天 / S 低头看球心），看哪飞哪由
+     *      推进的视线切平面投影自动成立；A/D 转向不变。
+     *   ③ Q = 减速（可倒飞）/ E = 加速；松 QE 指数衰减滑行。
+     * ============================================================ */
+    var _idleDir = !(w || s || a || d || !!M._rmbLook);
+    if (_idleDir) {
+      M._flyIdleT = (M._flyIdleT || 0) + dt;
+      if (M._flyIdleT > (M.FLY_LEVEL_AFTER || 2.5)) {
+        var _lpL = camO.lookPitch || 0;
+        if (Math.abs(_lpL) > 0.01) {
+          _lpL -= Math.sign(_lpL) * Math.min(Math.abs(_lpL), (M.FLY_LEVEL_RATE || 0.5) * dt);
+          camO.lookPitch = _lpL;
+        } else camO.lookPitch = 0;
+      }
+    } else {
+      M._flyIdleT = 0;
+    }
     if (w || s) {
-      if (w) fly.v += (M.FLY_ACCEL || 48) * dt;
-      if (s) fly.v -= (M.FLY_ACCEL || 48) * dt;
+      var _lpP = (camO.lookPitch || 0);
+      if (w) _lpP += (M.FLY_PITCH || 0.9) * dt; else _lpP -= (M.FLY_PITCH || 0.9) * dt;
+      camO.lookPitch = Math.max(-1.55, Math.min(1.55, _lpP));
+    }
+    if (q || e) {
+      if (e) fly.v += (M.FLY_ACCEL || 48) * dt;
+      if (q) fly.v -= (M.FLY_ACCEL || 48) * dt;
     } else {
       fly.v *= Math.exp(-(M.FLY_DECAY || 1.35) * dt);
       if (Math.abs(fly.v) < 0.3) fly.v = 0;
@@ -6538,7 +6575,7 @@ import './gltf.js';
     }
     if (!fly.v) {
       try { M._lastAct = Date.now(); } catch (eT) { }
-      return !!(a || d);
+      return !!(a || d || w || s);
     }
     /* ---- 位置推进：dir += 机头切向 × 弧长 ----
        机头 = 相机视线（含右键 lookYaw/lookPitch 偏移）在切平面的投影。

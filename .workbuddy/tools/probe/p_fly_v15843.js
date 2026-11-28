@@ -62,13 +62,13 @@ const check = (name, ok, extra) => {
   check('① 开局即高空轨道态（飞行系统就位、速度 0、无运行时错误）',
     !s0.surf && s0.v === 0 && !s0._flErr, 'surf=' + s0.surf + ' v=' + s0.v + ' err=' + s0._flErr);
 
-  /* A. W 加速：按住 1.5s，速度平滑爬升且不超上限 */
-  await p.keyboard.down('KeyW');
+  /* A. E 加速：按住 1.5s，速度平滑爬升且不超上限 */
+  await p.keyboard.down('KeyE');
   await p.waitForTimeout(1500);
   const sW = await snap();
-  await p.keyboard.up('KeyW');
-  console.log('按住 W 1.5s: ' + JSON.stringify(sW));
-  check('② W 加速 1.5s：速度爬升 60~120 m/s（有下限、不超上限 · v158.45 提速口径）',
+  await p.keyboard.up('KeyE');
+  console.log('按住 E 1.5s: ' + JSON.stringify(sW));
+  check('② E 加速 1.5s：速度爬升 60~120 m/s（有下限、不超上限 · v158.45 提速口径）',
     sW.v > 60 && sW.v <= 120.01, 'v=' + sW.v);
   check('③ 飞行中 HUD 显示速度', sW.hud, 'hud=' + sW.hud);
 
@@ -82,13 +82,13 @@ const check = (name, ok, extra) => {
     sD1.v > 0.5 && sD1.v < sW.v * 0.98, 'v ' + sW.v + ' → ' + sD1.v);
   check('⑤ 5s 后滑停（v < 0.5）', Math.abs(sD2.v) < 0.5, 'v=' + sD2.v);
 
-  /* C. 倒飞：按住 S 1.5s，速度为负且 |v| ≤ 0.6×45 */
-  await p.keyboard.down('KeyS');
+  /* C. 倒飞：按住 Q 1.5s，速度为负且 |v| ≤ 0.6×120 */
+  await p.keyboard.down('KeyQ');
   await p.waitForTimeout(1500);
   const sS = await snap();
-  await p.keyboard.up('KeyS');
-  console.log('按住 S 1.5s: ' + JSON.stringify(sS));
-  check('⑥ S 减速到倒飞：v < 0 且 |v| ≤ 72（倒飞上限 · v158.45）',
+  await p.keyboard.up('KeyQ');
+  console.log('按住 Q 1.5s: ' + JSON.stringify(sS));
+  check('⑥ Q 减速到倒飞：v < 0 且 |v| ≤ 72（倒飞上限 · v158.45）',
     sS.v < -5 && sS.v >= -72.01, 'v=' + sS.v);
   await p.waitForTimeout(4500);   /* 等它滑停，避免污染下一段 */
 
@@ -118,13 +118,16 @@ const check = (name, ok, extra) => {
     'A: n=' + sTurn.a.n + ' dl=' + sTurn.a.dl.toFixed(3) + ' dDir=' + sTurn.a.dDir.toFixed(4)
     + ' · D: n=' + sTurn.d.n + ' dl=' + sTurn.d.dl.toFixed(3));
 
-  /* E. 飞行推进：按住 W 2s，camO.dir 必须真变（位置移动，不是空转） */
+  /* E. 飞行推进（v158.51：E 加速 + W 抬头 = 视线近水平、投影≈满，推进最大）：
+     E 按住获得速度 → W 同按 2s（抬头）→ 位置 dir 必须真变 */
   const sP0 = await snap();
-  await p.keyboard.down('KeyW'); await p.waitForTimeout(2000); await p.keyboard.up('KeyW');
+  await p.keyboard.down('KeyE'); await p.waitForTimeout(1500);
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(2000);
+  await p.keyboard.up('KeyW'); await p.keyboard.up('KeyE');
   const sP1 = await snap();
   const dDir = Math.hypot(sP1.dir[0] - sP0.dir[0], sP1.dir[1] - sP0.dir[1], sP1.dir[2] - sP0.dir[2]);
-  console.log('W 2s 推进: Δdir=' + dDir.toFixed(5));
-  check('⑧ W 飞行 2s：位置 dir 真推进（Δdir > 0.02）',
+  console.log('E+W 推进: Δdir=' + dDir.toFixed(5));
+  check('⑧ E 加速 + W 抬头飞行 2s：位置 dir 真推进（Δdir > 0.02）',
     dDir > 0.02, 'Δdir=' + dDir.toFixed(5));
   await p.waitForTimeout(4500);
 
@@ -155,7 +158,7 @@ const check = (name, ok, extra) => {
     'lookYaw=' + sR1.lookYaw + ' lookPitch=' + sR1.lookPitch + ' Δdir=' + dDirR.toFixed(5));
 
   /* G. 左键停止惯性：飞行中左键点击 → v 归 0 */
-  await p.keyboard.down('KeyW'); await p.waitForTimeout(1000); await p.keyboard.up('KeyW');
+  await p.keyboard.down('KeyE'); await p.waitForTimeout(1000); await p.keyboard.up('KeyE');
   const sG0 = await snap();
   await p.mouse.click(720, 450);
   await p.waitForTimeout(150);
@@ -163,6 +166,30 @@ const check = (name, ok, extra) => {
   console.log('点击前: ' + JSON.stringify(sG0) + ' · 点击后: ' + JSON.stringify(sG1));
   check('⑩ 飞行中左键点击 = 停止惯性（「直至左键操作」）',
     sG0.v > 1 && Math.abs(sG1.v) < 0.01, 'v ' + sG0.v + ' → ' + sG1.v);
+
+  /* I. v158.51：W/S 机头俯仰 + 无操作自动调平（「脚底回星球侧」）。
+     先清速度（俯仰与推进解耦，位置不动），真键盘 W 抬头 → S 低头 → 松键静置。 */
+  await p.evaluate(() => { GAME.map3d._fly.v = 0; });
+  await p.waitForTimeout(500);
+  const sI0 = await snap();
+  await p.keyboard.down('KeyW'); await p.waitForTimeout(2000); await p.keyboard.up('KeyW');
+  const sI1 = await snap();
+  const dDirI1 = Math.hypot(sI1.dir[0] - sI0.dir[0], sI1.dir[1] - sI0.dir[1], sI1.dir[2] - sI0.dir[2]);
+  console.log('W 抬头 2s: lookPitch ' + sI0.lookPitch + ' → ' + sI1.lookPitch + ' Δdir=' + dDirI1.toFixed(5));
+  check('⑬ W 抬头 2s：lookPitch 增到 ≥ +1.3（clamp 1.55）且位置不动（无速度不推进）',
+    sI1.lookPitch >= 1.3 && dDirI1 < 1e-4,
+    'lookPitch=' + sI1.lookPitch + ' Δdir=' + dDirI1.toFixed(5));
+  await p.keyboard.down('KeyS'); await p.waitForTimeout(4000); await p.keyboard.up('KeyS');
+  const sI2 = await snap();
+  console.log('S 低头 4s: lookPitch=' + sI2.lookPitch);
+  check('⑭ S 低头 4s：lookPitch 减到 ≤ -1.3（从 +1.55 全程低头到下限 · 与右键同 clamp）',
+    sI2.lookPitch <= -1.3, 'lookPitch=' + sI2.lookPitch);
+  /* 静置：2.5s 调平延迟 + 1.55/0.5 ≈ 3.1s 回正 + 余量 */
+  await p.waitForTimeout(6500);
+  const sI3 = await snap();
+  console.log('静置 6.5s 后: lookPitch=' + sI3.lookPitch);
+  check('⑮ 无操作自动调平：lookPitch 缓慢回 0（画面正立 · 脚底是星球 · 头顶朝外太空）',
+    Math.abs(sI3.lookPitch) < 0.05, 'lookPitch=' + sI3.lookPitch);
 
   /* H. 地表 WASD 仍归走路（通道隔离）：滚轮降到地表 → W 推人物、飞行 v=0
      （playerPose 位置量在 pp.dir —— 单位方向向量；pp.v 是瞬时速度恒 0） */

@@ -4253,9 +4253,11 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         }
         /* v158.43（诉求1·高空「空天飞机 WASD 飞行」）：轨道态（非 FOLLOW/_surf）
            WASD = 飞行操纵 —— 独立通道 GAME._flyKeys，与走路 GAME._keys /
-           街区 D.keys / 载具 vehicle.keys 三级互不串线。map3d._tickFlight 消费。 */
+           街区 D.keys / 载具 vehicle.keys 三级互不串线。map3d._tickFlight 消费。
+           v158.51（老板「QE 加减速，WSAD 只负责方向」）：Q/E 同入通道 ——
+           E 加速 / Q 减速；W/S 机头俯仰、A/D 转向。 */
         if (!_mkAv.FOLLOW && !_mkAv._surf
-            && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])
+            && (/^Key[WASDQE]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])
             && !(_mkAv.DISTRICT && GAME.district && GAME.district.active)
             && !(GAME.vehicle && GAME.vehicle.mounted)) {
           if (!GAME._flyKeys) GAME._flyKeys = {};
@@ -4321,7 +4323,7 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         GAME.vehicle.keys[_c.charAt(3).toLowerCase()] = 0;
       }
       /* v158.43（高空飞行通道）：飞行键独立清，不借 GAME._keys。 */
-      if (/^Key[WASD]$/.test(_c) && GAME._flyKeys) {
+      if (/^Key[WASDQE]$/.test(_c) && GAME._flyKeys) {
         GAME._flyKeys[_c.charAt(3).toLowerCase()] = 0;
       }
     });

@@ -1329,7 +1329,7 @@ import './ui.js';
     var _sp = Math.round(Math.abs(v));
     el.innerHTML = '<span style="opacity:.9;">🚀 空天飞机 · </span>'
       + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
-      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">W/S 加减速 · A/D 转向 · 右键 转头</span>';
+      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">E 加速 · Q 减速 · W/S 俯仰 · A/D 转向</span>';
     el.style.display = 'block';
     return el;
   };

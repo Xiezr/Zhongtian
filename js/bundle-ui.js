@@ -6800,19 +6800,56 @@
   M.FLY_TURN = 1.1;        /* 满速转向率（rad/s）；随速度缩放，静止不能原地转 */
   M.FLY_DECAY = 1.35;      /* 松键惯性衰减率（1/s）：满速滑行约 4~5 秒滑停
                              （p_fly_v15843 实测 0.35 时 5s 后仍余 17% 速度，拖沓） */
+  M.FLY_PITCH = 0.9;       /* v158.51：W/S 机头俯仰率（rad/s）；与右键转头同 1.55 clamp */
+  M.FLY_LEVEL_AFTER = 2.5; /* v158.51：无方向输入 N 秒后开始自动调平 */
+  M.FLY_LEVEL_RATE = 0.5;  /* v158.51：调平速率（rad/s）——极限 1.55 约 3 秒回正（缓慢） */
   M._fly = { v: 0 };       /* 运行时态（不入档）：标量速度，倒飞为负 */
   function _tickFlight(dt) {
     var fly = M._fly || (M._fly = { v: 0 });
     var keys = (GAME && GAME._flyKeys) || null;
-    /* 地表 = 走路态：飞行速度清空（WASD 归 stepAvatar） */
-    if (M._surf) { if (fly.v) fly.v = 0; return false; }
-    var w = !!(keys && keys.w), s = !!(keys && keys.s), a = !!(keys && keys.a), d = !!(keys && keys.d);
+    /* 地表/跟随 = 走路态：飞行速度清空（WASD 归 stepAvatar）；跟随态不飞行不调平 */
+    if (M._surf || M.FOLLOW) { if (fly.v) fly.v = 0; return false; }
+    var q = !!(keys && keys.q), e = !!(keys && keys.e),
+        w = !!(keys && keys.w), s = !!(keys && keys.s),
+        a = !!(keys && keys.a), d = !!(keys && keys.d);
     /* ⚠️ 上限放 0.12 秒：headless rAF 节流到 1~2fps 时加速/转向不会慢 20 倍
        （与 _tickEdgePan 同口径）。 */
     dt = Math.max(0.001, Math.min(0.12, dt || 0.016));
+    /* ============================================================
+     * v158.51（老板「QE 加减速，WSAD 只负责方向」+「无操作后方向自动
+     * 缓慢转为与地面平行」）：
+     *   ① 方向输入 = W/S（机头俯仰）、A/D（转向）、右键转头（_rmbLook）。
+     *      无方向输入累计 _flyIdleT，超过 FLY_LEVEL_AFTER 后把 lookPitch
+     *      以 FLY_LEVEL_RATE 缓慢拉回 0 —— 视线回看球心、画面正立
+     *      （脚底是星球、头顶朝外太空；极端仰角下 _camRollOf 会把画面
+     *      翻倒成"头顶是星球"，回 0 即缓慢转回"脚底是星球"）。
+     *      lookYaw 不回（任何水平朝向都与地面平行）；推进恒切向 =
+     *      飞行方向恒与地面平行。
+     *   ② W/S = 机头俯仰（W 抬头看天 / S 低头看球心），看哪飞哪由
+     *      推进的视线切平面投影自动成立；A/D 转向不变。
+     *   ③ Q = 减速（可倒飞）/ E = 加速；松 QE 指数衰减滑行。
+     * ============================================================ */
+    var _idleDir = !(w || s || a || d || !!M._rmbLook);
+    if (_idleDir) {
+      M._flyIdleT = (M._flyIdleT || 0) + dt;
+      if (M._flyIdleT > (M.FLY_LEVEL_AFTER || 2.5)) {
+        var _lpL = camO.lookPitch || 0;
+        if (Math.abs(_lpL) > 0.01) {
+          _lpL -= Math.sign(_lpL) * Math.min(Math.abs(_lpL), (M.FLY_LEVEL_RATE || 0.5) * dt);
+          camO.lookPitch = _lpL;
+        } else camO.lookPitch = 0;
+      }
+    } else {
+      M._flyIdleT = 0;
+    }
     if (w || s) {
-      if (w) fly.v += (M.FLY_ACCEL || 48) * dt;
-      if (s) fly.v -= (M.FLY_ACCEL || 48) * dt;
+      var _lpP = (camO.lookPitch || 0);
+      if (w) _lpP += (M.FLY_PITCH || 0.9) * dt; else _lpP -= (M.FLY_PITCH || 0.9) * dt;
+      camO.lookPitch = Math.max(-1.55, Math.min(1.55, _lpP));
+    }
+    if (q || e) {
+      if (e) fly.v += (M.FLY_ACCEL || 48) * dt;
+      if (q) fly.v -= (M.FLY_ACCEL || 48) * dt;
     } else {
       fly.v *= Math.exp(-(M.FLY_DECAY || 1.35) * dt);
       if (Math.abs(fly.v) < 0.3) fly.v = 0;
@@ -6832,7 +6869,7 @@
     }
     if (!fly.v) {
       try { M._lastAct = Date.now(); } catch (eT) { }
-      return !!(a || d);
+      return !!(a || d || w || s);
     }
     /* ---- 位置推进：dir += 机头切向 × 弧长 ----
        机头 = 相机视线（含右键 lookYaw/lookPitch 偏移）在切平面的投影。
@@ -33390,7 +33427,7 @@ ui.openDuel = function (fid, moveId) {
     var _sp = Math.round(Math.abs(v));
     el.innerHTML = '<span style="opacity:.9;">🚀 空天飞机 · </span>'
       + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
-      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">W/S 加减速 · A/D 转向 · 右键 转头</span>';
+      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">E 加速 · Q 减速 · W/S 俯仰 · A/D 转向</span>';
     el.style.display = 'block';
     return el;
   };
@@ -37633,7 +37670,7 @@ ui.openDuel = function (fid, moveId) {
           '<b>地面</b>：<b>W A S D</b> 或 <b>↑↓←→</b> 走动　·　<b>左键</b> 点哪走哪　·　<b>左键长按拖动</b> 平移镜头　·　<b>右键长按拖动</b> 转动视角<br>' +
           '<b>交互</b>：走到目标旁按 <b>E</b> 查看 / 上车 / 对话　·　<b>滚轮</b> 升降视野高度<br>' +
           '<b>建造</b>：切「建造」模式后，左键点地块 = 勘探 / 放置　·　<b>R</b> 旋转手持物<br>' +
-          '<b>高空</b>：<b>W</b> 加速 / <b>S</b> 减速（空天飞机惯性滑行）　·　<b>A D</b> 转向　·　<b>右键</b> 转头（双击回正）　·　<b>滚轮</b> 缩放　·　<b>左键</b> 停止飞行' +
+          '<b>高空</b>：<b>E</b> 加速 / <b>Q</b> 减速（空天飞机惯性滑行）　·　<b>W S</b> 俯仰　·　<b>A D</b> 转向　·　松方向键自动调平　·　<b>右键</b> 转头（双击回正）　·　<b>滚轮</b> 缩放　·　<b>左键</b> 停止飞行' +
         '</div>' +
       '</div>' +
       /* v151（老板：「打一场仗要盯 3~5 分钟，设置里还找不到开关」）：
@@ -43999,9 +44036,11 @@ ui.openDuel = function (fid, moveId) {
         }
         /* v158.43（诉求1·高空「空天飞机 WASD 飞行」）：轨道态（非 FOLLOW/_surf）
            WASD = 飞行操纵 —— 独立通道 GAME._flyKeys，与走路 GAME._keys /
-           街区 D.keys / 载具 vehicle.keys 三级互不串线。map3d._tickFlight 消费。 */
+           街区 D.keys / 载具 vehicle.keys 三级互不串线。map3d._tickFlight 消费。
+           v158.51（老板「QE 加减速，WSAD 只负责方向」）：Q/E 同入通道 ——
+           E 加速 / Q 减速；W/S 机头俯仰、A/D 转向。 */
         if (!_mkAv.FOLLOW && !_mkAv._surf
-            && (/^Key[WASD]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])
+            && (/^Key[WASDQE]$/.test(_avCode) || AV_KEY_ALIAS[_avCode])
             && !(_mkAv.DISTRICT && GAME.district && GAME.district.active)
             && !(GAME.vehicle && GAME.vehicle.mounted)) {
           if (!GAME._flyKeys) GAME._flyKeys = {};
@@ -44067,7 +44106,7 @@ ui.openDuel = function (fid, moveId) {
         GAME.vehicle.keys[_c.charAt(3).toLowerCase()] = 0;
       }
       /* v158.43（高空飞行通道）：飞行键独立清，不借 GAME._keys。 */
-      if (/^Key[WASD]$/.test(_c) && GAME._flyKeys) {
+      if (/^Key[WASDQE]$/.test(_c) && GAME._flyKeys) {
         GAME._flyKeys[_c.charAt(3).toLowerCase()] = 0;
       }
     });
