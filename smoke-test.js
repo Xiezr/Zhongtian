@@ -51626,146 +51626,161 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * （§623⑤ 锁探针存在与关键判据，防止行为面被悄悄摘掉）。
    * ============================================================ */
   (function () {
-    check('§623①（v158.53 口径）无人深空范式常量/状态/出口齐备，FLY_VEL_TURN 与 FLY_PITCH 不得复活', (function () {
+    check('§623①（v158.56 口径）飞行常量/状态/出口齐备；FLY_CLIMB 电梯退役，AIM/SCREEN_Y/起降程序在册', (function () {
       var src = _m3d608;
       var k = src.indexOf('_tickFlight(_epDt)');
       var p = src.indexOf('placeCamera();', k);
-      var tick = src.slice(src.indexOf('function _tickFlight'), src.indexOf('M.flyTick = _tickFlight'));
-      /* v158.53 规则变更：VEL_TURN（侧滑）/PITCH（W/S 俯仰）退役；
-         新增 LOOK_K/ROLL/BANK_TURN + 机体 up 状态 + 导航单一出口。 */
       return /M\.FLY_MAX = 120;/.test(src)
         && /M\.FLY_BACK_MAX = 72;/.test(src)
         && /M\.FLY_ACCEL = 48;/.test(src)
-        && /M\.FLY_TURN = 1\.1;/.test(src)
         && /M\.FLY_LOOK_K = 0\.0042;/.test(src)
         && /M\.FLY_ROLL = 1\.7;/.test(src)
         && /M\.FLY_BANK_TURN = 0\.75;/.test(src)
-        && /M\.FLY_CLIMB = 24;/.test(src)
-        && /M\.FLY_CAM_BACK = 24;/.test(src)
-        && /M\.FLY_CAM_UP = 9;/.test(src)
-        && /M\.FLY_CAM_LOOK = 60;/.test(src)
-        && /M\.FLY_TRAIL_MAX = 120;/.test(src)
-        && /M\.FLY_LEVEL_AFTER = 2\.5;/.test(src)
-        && /M\.FLY_LEVEL_RATE = 0\.5;/.test(src)
-        /* 两条旧常量整条退役：墓碑注释允许提名字，不许再有定义形 */
+        /* v158.56 新增：鼠标绝对指示 / 屏幕落点 / 机位分离 / 起降程序 ---------- */
+        && /M\.FLY_AIM_MAX = 1\.15;/.test(src)
+        && /M\.FLY_AIM_PITCH = 0\.85;/.test(src)
+        && /M\.FLY_AIM_DEAD = 0\.10;/.test(src)
+        && /M\.FLY_AIM_RATE = 1\.7;/.test(src)
+        && /M\.FLY_SCREEN_Y = 0\.66;/.test(src)
+        && /M\.FLY_CAM_BACK = 26;/.test(src)
+        && /M\.FLY_CAM_UP = 6;/.test(src)
+        && /M\.FLY_CAM_MIX = 0\.3;/.test(src)
+        && /M\.FLY_TAKEOFF_T = 2\.4;/.test(src)
+        && /M\.FLY_LAND_T = 2\.6;/.test(src)
+        && /M\.FLY_TAKEOFF_V = 62;/.test(src)
+        /* 规则变更：↑↓ 改加减速 → FLY_CLIMB 整条退役（旧三条一律不许复活） */
+        && !/M\.FLY_CLIMB\s*=/.test(src)
         && !/M\.FLY_VEL_TURN\s*=/.test(src)
         && !/M\.FLY_PITCH\s*=/.test(src)
         && /M\._fly = \{ v: 0, pos: null, head: null, vel: null, up: null, active: false,/.test(src)
+        && /aim: null, phase: 'cruise', phaseT: 0,/.test(src)
+        && /M\.flyLaunch = function \(/.test(src)
+        && /M\.flyLand = function \(/.test(src)
+        && /M\.flyToggle = function \(/.test(src)
+        && /M\._flyAimAt = function \(/.test(src)
+        && /function _commitFlight\(fly, pos, head, bank\)/.test(src)
+        && /function _tickProgram\(dt\)/.test(src)
         && /M\._flyNavState = function \(\)/.test(src)
         && /M\.flyTick = _tickFlight;/.test(src)
         && /M\.flyProbe = function \(\)/.test(src)
-        && !/vel\.lerp\(head/.test(tick)
-        && k > 0 && p > k && (p - k) < 2000
+        && !/vel\.lerp\(head/.test(src)
+        /* 结构距离：v158.56 机位段加了反解推导注释，阈值随规则变更上调（非放宽语义，
+           仍是"placeCamera 必须紧随渲染循环"的形态锁） */
+        && k > 0 && p > k && (p - k) < 4500
         && /if \(M\._surf \|\| M\.FOLLOW\)/.test(src);
     })());
 
-    check('§623②（v158.53 口径）鼠标直转机头 + vel 瞬时对齐零侧滑 + W/S 推进刹车 + A/D 横滚 banking + pos 沿 vel', (function () {
+    check('§623②（v158.56 口径）W/S/↑/↓/←/→ 全进速度通道；鼠标指示转机头；A/D 横滚；vel 瞬时对齐 head', (function () {
       var src = _m3d608;
       var tick = src.slice(src.indexOf('function _tickFlight'), src.indexOf('M.flyTick = _tickFlight'));
-      return /if \(r \|\| w\) fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
-        && /if \(l \|\| s\) fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
-        /* 规则变更：FLY_DECAY 整条退役 —— 太空中无外力速度恒定，不许靠衰减兜底 */
+      return /if \(w \|\| u \|\| r\) fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        && /if \(s \|\| dn \|\| l\) fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        /* 规则变更：无外力恒速，FLY_DECAY 不许回来 */
         && !/FLY_DECAY/.test(tick)
-        && /var _climb = u \? \(M\.FLY_CLIMB \|\| 24\) : \(dn \? -\(M\.FLY_CLIMB \|\| 24\) : 0\)/.test(src)
-        /* A/D 改为横滚 + 协调转弯；机头/速度不再由键盘直接转 */
+        /* 规则变更：↑↓ 电梯整条退役（旧的 _climb 半径改法不许复活） */
+        && !/_climb = u \? \(M\.FLY_CLIMB/.test(src)
+        && !/pos\.setLength\(_nr0\)/.test(src)
+        /* 鼠标绝对指示：aim 存在时机头限速朝它转，到位即停 */
+        && /if \(fly\.aim\) \{/.test(src)
+        && /var _ang = head\.angleTo\(_aim\);/.test(src)
+        && /head\.lerp\(_aim, _mx \/ Math\.max\(1e-6, _ang\)\)\.normalize\(\)/.test(src)
+        /* A/D 横滚；有 aim 时不做协调转弯（否则和指示抢机头） */
         && /_bank\.applyAxisAngle\(head, _rollDir \* \(M\.FLY_ROLL \|\| 1\.7\) \* dt\)/.test(src)
+        && /if \(!fly\.aim\) \{/.test(src)
         && /head\.applyAxisAngle\(radial, _rollDir \* \(M\.FLY_BANK_TURN \|\| 0\.75\) \* dt\)/.test(src)
-        /* 规则变更：速度瞬时对齐机头（不再有限追随 lerp），侧滑归零 */
-        && /vel\.copy\(head\);/.test(src)
-        && !/vel\.lerp\(head/.test(tick)
-        && /pos\.addScaledVector\(vel, fly\.v \* dt\)/.test(src)
+        /* 速度瞬时对齐机头（唯一提交出口）+ 位置沿机头推进 */
+        && /fly\.vel = \[head\.x, head\.y, head\.z\];/.test(src)
+        && /pos\.addScaledVector\(head, fly\.v \* dt\)/.test(src)
         && /M\._bankAngle = Math\.acos/.test(src)
         && /M\._flyNav = M\._flyNavState\(\);/.test(src)
-        /* v158.55（规则变更，重写不放宽）：鼠标两轴的旋转轴从"径向基"改成
-           "机体基"——旧 cross(radial,head) 在 head∥radial（正对/背对球心）时
-           退化翻转，探针实测连翻 31 次（老板「越过屏幕中线一下正面一下背面」）。
-           新：yaw 绕机体 up、pitch 绕 machine right=cross(head,up)，head 与 up
-           同步旋转，正对球心不退化。旧形态必须彻底消失。 */
-        && /var _K = \(M\.FLY_LOOK_K \|\| 0\.0042\);/.test(src)
-        && /var _fu = M\._fly\.up \? _flyVec\(M\._fly\.up\) : null;/.test(src)
-        && /_fu\.addScaledVector\(_fh, -_fu\.dot\(_fh\)\);/.test(src)
-        && /_qLook\.setFromAxisAngle\(_fu, -_dx \* _K\);/.test(src)
+        /* v158.55 的机体基转向仍然在岗：旧 radial 退化轴不许复活 */
         && /var _fright = new THREE\.Vector3\(\)\.crossVectors\(_fh, _fu\)\.normalize\(\);/.test(src)
         && /_qLook\.setFromAxisAngle\(_fright, -_dy \* _K\);/.test(src)
-        && /_fh\.applyQuaternion\(_qLook\); _fu\.applyQuaternion\(_qLook\);/.test(src)
-        && /M\._fly\.up = \[_fu\.x, _fu\.y, _fu\.z\]/.test(src)
-        && /M\._fly\.head = \[_fh\.x, _fh\.y, _fh\.z\]/.test(src)
-        /* 旧退化轴整条退役：不许 _fright 再用 radial、不许 applyAxisAngle 旧式 */
         && !/crossVectors\(_frad, _fh\)/.test(src)
         && !/_fh\.applyAxisAngle\(_frad, -_dx/.test(src)
-        && !/_fh\.applyAxisAngle\(_fright, -_dy/.test(src)
-        /* 位置反算写回旧相机状态机（地表交班/探针唯一接口），不许漏 */
+        /* 位置反算写回旧相机状态机（地表交班/探针唯一接口） */
         && /camO\.dist = _nr;/.test(src)
-        && /camO\.dir = \[_ndF\.x, _ndF\.y, _ndF\.z\]/.test(src)
-        && /camO\.yaw = Math\.atan2\(_ndF\.x, _ndF\.z\)/.test(src);
+        && /camO\.dir = \[_ndF\.x, _ndF\.y, _ndF\.z\]/.test(src);
     })());
 
-    check('§623③（v158.53 口径）飞行键通道隔离保留；双击右键改回正平飞；HUD 接导航单一出口且常驻', (function () {
-      return /var _flyK52 = null;/.test(_mn608)
-        && /_avCode === 'ArrowLeft'\) _flyK52 = 'left'/.test(_mn608)
-        && /_avCode === 'ArrowRight'\) _flyK52 = 'right'/.test(_mn608)
-        && /_avCode === 'ArrowUp'\) _flyK52 = 'up'/.test(_mn608)
-        && /_avCode === 'ArrowDown'\) _flyK52 = 'down'/.test(_mn608)
-        && /\^Key\[WASD\]\$/.test(_mn608)
-        /* 规则变更：AV_KEY_ALIAS 把方向键归一成 KeyW/A/S/D，keyup 必须读原始 e.code
-           （_c0）才清得到 left/right/up/down，否则按键粘住。 */
-        && /var _fc52 = _c0 === 'ArrowLeft'/.test(_mn608)
-        && /GAME\._flyKeys\[_fc52\] = 0/.test(_mn608)
-        && /GAME\._flyKeys = \{\}/.test(_mn608)
-        /* 规则变更：左键停惯性退役；滚轮改为「先消费目标再叠加 ↑↓」，不再被 tick 覆盖 */
-        && /var _zt = \(_zoomTarget != null && isFinite\(_zoomTarget\)\) \? _zoomTarget : \(pos\.length\(\) - R\)/.test(_m3d608)
-        && /_zoomTarget = _nr - R; _zoomLastT = 0/.test(_m3d608)
-        /* 规则变更：HUD 收 (v, nav) 且飞行态常驻（静止也看得见参照） */
-        && /ui\.renderFlyHud = function \(v, nav\)/.test(_um608)
-        && /GAME\.ui\.renderFlyHud\(_flying \? _fv0 : null, _nv\)/.test(_m3d608)
-        /* 双击右键：飞行态写 fly.up 归径向，不再写 lookYaw/lookPitch */
-        && /M\._fly\.up = \[_lr\.x, _lr\.y, _lr\.z\]/.test(_m3d608)
-        && /M\._bankAngle = 0;/.test(_m3d608)
-        && /M\._flyNavState = function \(\)/.test(_m3d608);
-    })());
-
-    check('§623④（v158.53 口径）数值面：加速 2~3s、倒飞 0.6×、拖 250px≈60°、banking 可观测、战舰机位、HUD 星球方位指示', (function () {
+    check('§623③（v158.56 口径）高空滚轮禁高度；相机吊尾端且 up 与机体分离；鼠标指示入口 + 准星；空格起降', (function () {
       var src = _m3d608;
-      var t = 120 / 48;                              /* FLY_MAX / FLY_ACCEL */
-      var _lookTurn = 250 * 0.0042 * 180 / Math.PI;  /* 鼠标拖 250px 的机头转角 */
-      /* 规则变更：不再锁速度追随率（侧滑已归零）；改锁鼠标灵敏度与横滚角率，
-         保证"拖得动、转得过来"——旧版右键拖 86° 机头 0°，探针②实测。 */
-      return t > 2 && t < 3
-        && 72 / 120 > 0.55 && 72 / 120 < 0.65
-        && _lookTurn > 50 && _lookTurn < 70
-        && 1.7 > 1.0                                 /* 横滚角率足以产生可见 banking */
+      return /if \(M\._fly && M\._fly\.active && !M\._surf\) \{ return; \}/.test(src)
+        /* 滚轮高度通道整条退役：tick 里不再消费 _zoomTarget */
+        && !/var _rWheel = R \+ Math\.max\(0\.6, _zt\)/.test(src)
+        /* 机位分离：位置吊 -head、up 用径向为骨掺机体 up（不再 cam.up = 机体 up） */
+        && /cam\.position\.copy\(_sp\)\.addScaledVector\(_hd, -\(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)
+        && /_camUp = _rad\.clone\(\)\.addScaledVector\(_mechUp/.test(src)
+        && /cam\.up\.copy\(_camUp\)/.test(src)
+        && !/cam\.up\.copy\(_upR\)/.test(src)
+        /* 屏幕落点闭式反解（不试参） */
+        && /var _theta = Math\.atan\(_ny \* Math\.tan\(_fovR \* 0\.5\)\)/.test(src)
+        && /applyAxisAngle\(_rightAx, _theta\)/.test(src)
+        && /screenY: _sy, theta: _theta/.test(src)
+        /* 起降程序期间禁用自动地表切换（否则起飞点 8.5m 会被判回地表） */
+        && /var _progFlight = !!\(M\._fly && M\._fly\.active &&/.test(src)
+        && /_tickProgram\(dt\)/.test(src)
+        && /M\.surfaceMode\(true\)/.test(src)
+        /* 鼠标指示入口 + 准星 + HUD 新文案 */
+        && /M\._flyAimAt = function \(px, py\)/.test(src)
+        && /ui\.renderFlyCross = function \(/.test(_um608)
+        && /鼠标 指示航向 · W\/S ↑↓ 加减速 · A\/D 横滚 · 空格 起降/.test(_um608)
+        && /e\.code === 'Space'/.test(_mn608)
+        && /flyToggle\(\)/.test(_mn608)
+        /* 键通道隔离保留 */
+        && /var _flyK52 = null;/.test(_mn608)
+        && /GAME\._flyKeys\[_fc52\] = 0/.test(_mn608)
+        /* 双击右键回正顺带清 aim（否则下一帧被拉走） */
+        && /M\._fly\.aim = null;/.test(src);
+    })());
+
+    check('§623④（v158.56 口径）数值面：屏幕 0.66 反解角、尾端机位、起降时长/爬升量、HUD 常驻方位', (function () {
+      var src = _m3d608;
+      var sy = 0.66, ny = (sy - 0.5) * 2;
+      var fov = 55 * Math.PI / 180;
+      var thDeg = Math.atan(ny * Math.tan(fov / 2)) * 180 / Math.PI;
+      var climb = 62 * 1.2;                       /* ∫FLY_TAKEOFF_V·smoothstep ≈ 62×1.2 */
+      return thDeg > 9 && thDeg < 15                /* 视线抬高角：战舰才落到下方 2/5 */
+        && ny > 0.3 && ny < 0.35
+        && climb > 40                                /* 起飞爬升下限：够越过 AGL_SURF 55m */
+        && 2.4 > 2 && 2.4 < 3                        /* 起飞时长 */
+        && 2.6 > 2 && 2.6 < 3.2                      /* 降落时长 */
         && /new THREE\.ConeGeometry\(1\.2, 4, 3\)/.test(src)
         && /new THREE\.SphereGeometry\(0\.5, 8, 6\)/.test(src)
         && /new THREE\.Line\(tg, new THREE\.LineBasicMaterial/.test(src)
-        && /cam\.position\.copy\(_sp\)\.addScaledVector\(_hd, -\(M\.FLY_CAM_BACK \|\| 24\)\)/.test(src)
-        && /cam\.up\.copy\(_upR\)/.test(src)
-        && /M\._flyCam = \{ pos: cam\.position\.toArray\(\), up: _upR\.toArray\(\) \}/.test(src)
-        /* HUD 新键位文案 + 星球方位指示全部直印，不许藏设置页 */
-        && /鼠标 看哪飞哪 · W\/S 推进刹车 · A\/D 横滚 · ↑↓ 升降 · 双击右键回正/.test(_um608)
+        /* HUD 三件：罗盘八方位 + 离地/球心 + 机头夹角/横滚，全部直印不许藏设置页 */
         && /🌍 星球/.test(_um608) && /离地/.test(_um608) && /球心/.test(_um608)
         && /机头→星球/.test(_um608) && /横滚/.test(_um608)
-        /* 导航单一出口八字段齐全 + 正上/下方退化处理（bearing 在极点无意义） */
         && /bearing: _pole \? 0 : bearing, elev: elev,/.test(src)
         && /dir8: _pole \? \(elev > 0 \? '正上方' : '正下方'\) : _names\[_idx\]/.test(src)
         && /alt: r - R, range: r/.test(src)
         && /toward: Math\.acos/.test(src)
-        && /bank: M\._bankAngle \|\| 0/.test(src);
+        && /phase: f\.phase \|\| 'cruise'/.test(src)
+        /* 准星必须走画布坐标换算（app 缩放时 clientX 不能直接用） */
+        && /ui\.toCanvasXY\(/.test(_um608)
+        && /getBoundingClientRect\(\)/.test(src);
     })());
 
-    check('§623⑤（v158.53 口径）行为下限由专用探针承担：真拖鼠标转机头、零侧滑、banking/回正/方位全带下限', (function () {
+    check('§623⑤（v158.56 口径）行为下限由专用探针承担：六条诉求逐条真调、判据全带下限', (function () {
       /* 规则变更：v158.51 行为面只在注释里"由探针承担"，没锁探针本身，
          导致探针写错对象（M._flyKeys）时 smoke 全绿而功能坏 —— 这里把探针
          存在性与关键下限判据也纳入门禁，不许悄悄摘掉。 */
-      var pr = _r608('.workbuddy/tools/probe/p_fly_v15853.js');
-      return /p\.mouse\.down\(\{ button: 'right' \}\)/.test(pr)   /* 真鼠标，不是静态读源码 */
-        && /headTurn > 30/.test(pr)                              /* 转头下限（旧版 0°） */
-        && /ang\(h1\.vel, h1\.head\) < 1/.test(pr)               /* 零侧滑上限（旧版 20.8°） */
-        && /w1\.v - w0\.v > 35/.test(pr)                         /* 推进下限 */
-        && /a1\.bank > 8 && headRoll > 8 && upRoll > 8/.test(pr) /* banking 三下限 */
-        && /u1\.alt - u0\.alt > 18/.test(pr)                     /* 升降下限 */
-        && /r0\.bank > 8 && r1\.bank < 1/.test(pr)               /* 双击回正 */
-        && /tDelta > 20/.test(pr)                                /* 方位随俯仰刷新 */
-        && (pr.match(/check\('/g) || []).length >= 10;           /* 十条全在册 */
+      var pr = _r608('.workbuddy/tools/probe/p_fly_v15856.js');
+      var sh = _r608('.workbuddy/tools/probe/p_fly_v15856_shot.js');
+      return /WheelEvent\('wheel'/.test(pr)                    /* ① 真滚轮 */
+        && /Math\.abs\(altB - altA\) < 0\.5/.test(pr)         /* ① 高度不变的判据 */
+        && /Math\.abs\(st2\.back - st2\.cfgBack\) < 3/.test(pr) /* ② 尾端机位 */
+        && /st3\.screenY > 0\.60 && st3\.screenY < 0\.72/.test(pr) /* ③ 屏幕下 2/5 */
+        && /st3\.ndcX\) < 0\.05/.test(pr)                      /* ③ 水平居中 */
+        && /aimTurn >= 15 && converged < 8/.test(pr)            /* ④ 指示→收敛 */
+        && /dW > 5 && dUp > 5 && dS < -5 && dDn < -5/.test(pr)  /* ⑤ 四键都调速 */
+        && /launchEnd\.v > 30/.test(pr)                         /* ⑥ 起飞速度下限 */
+        && /\(launchEnd\.alt - launchStart\.alt\) > 40/.test(pr) /* ⑥ 爬升下限 */
+        && /landEnd\.surf === true && landEnd\.active === false/.test(pr) /* ⑦ 交班地表 */
+        && /st8\.bank > 25 && st8\.camRadDeg < 25/.test(pr)    /* ⑧ 相机与滚转分离 */
+        && (pr.match(/ok\('/g) || []).length >= 11              /* 十一条全在册 */
+        && /v15856-A-cruise-aim\.png/.test(sh)
+        && /v15856-D-landing\.png/.test(sh);
     })());
   })();
 

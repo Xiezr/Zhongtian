@@ -6562,23 +6562,56 @@ import './gltf.js';
         鼠标即机头（看哪飞哪）；速度**瞬时**对齐机头（旧版有限追随产生 20.8°
         侧滑=推舵还在往原方向飘，探针实测）；A/D 改为横滚带 banking；
         W/S 推进刹车。旧 FLY_VEL_TURN/FLY_PITCH 退役（墓碑见下）。 */
-  M.FLY_LOOK_K = 0.0042;   /* 鼠标位移 → 机头转角（rad/px）：拖 250px ≈ 60° */
+  M.FLY_LOOK_K = 0.0042;   /* 右键拖动 → 机头转角（rad/px）：拖 250px ≈ 60° */
   M.FLY_ROLL = 1.7;        /* A/D 横滚角率（rad/s） */
   M.FLY_BANK_TURN = 0.75;  /* 横滚协调转弯：横滚同时绕径向转向的比例 */
-  M.FLY_CLIMB = 24;        /* ↑↓ 辅助升降速率（m/s）——直接改半径 */
   /* ⛔ v158.53 退役：FLY_VEL_TURN（速度有限追随 → 20.8° 侧滑）、
      FLY_PITCH（W/S 俯仰 → 改为推进）。去向：速度瞬时对齐见 _tickFlight ④；
-     俯仰改由鼠标完成（FLY_LOOK_K）。 */
+     俯仰改由鼠标完成（FLY_LOOK_K）。
+     ⛔ v158.56 退役：FLY_CLIMB（↑↓ 改海拔 = 电梯）。老板「Ws和上下为加减速」
+        —— ↑↓ 与 W/S 同义进速度通道，海拔只由飞行方向决定；高空滚轮也不再
+        调高度。去向：_tickFlight ① 速度通道 / wheel 飞行态直接 return。 */
+
+  /* ============================================================
+   * v158.56（老板：「在高空，不再由滚轮调整高度，飞行器和相机分离。
+   *   相机总是在飞行器的尾端或者人物的背部。飞行器应该在屏幕的下 2/5
+   *   我要在正中间。鼠标指示飞行的方向。Ws 和上下为加减速。
+   *   设置飞行器的起飞降落程序」）
+   * ------------------------------------------------------------
+   * ① 滚轮在飞行态**整条禁用**（高度不再有第二个入口）；
+   * ② **机位与机体姿态解耦**：位置永远吊在尾端（-head），姿态 up 以星球
+   *    径向为骨、机体 up 只掺一点 —— 于是滚转在画面里看得见，画面不跟着翻；
+   * ③ 战舰精确落在屏幕纵向 FLY_SCREEN_Y（下方 2/5）、水平正中：位置固定后
+   *    用「视线绕 right 轴抬 θ」闭式反解，θ = atan(ny·tan(fov/2))，
+   *    θ 的正负由 cross(Δ,up)=right 的右手定则确定，不靠试参；
+   * ④ 鼠标**绝对指示**航向：鼠标偏离屏幕中心的方向 → 目标方向 aim（相对
+   *    当前机体基算一次并锁定）。机头限速朝 aim 转，到位即停；鼠标回中
+   *    （死区 FLY_AIM_DEAD）则保持当前航向 —— 这就是「看哪飞哪」且不打转；
+   * ⑤ W/S/↑/↓/←/→ 全是速度（±FLY_ACCEL），A/D 只剩横滚；
+   * ⑥ 起飞/降落是**分阶段程序**（phase: takeoff/landing），期间接管位姿，
+   *    不被玩家输入打断，结束回 cruise / 交回地表层。
+   * ============================================================ */
+  M.FLY_AIM_MAX = 1.15;    /* 鼠标到屏幕边缘 → 航向最大偏转（rad ≈ 66°） */
+  M.FLY_AIM_PITCH = 0.85;  /* 鼠标上下到边缘 → 最大俯仰（rad ≈ 49°） */
+  M.FLY_AIM_DEAD = 0.10;   /* 回中死区（屏幕半宽比例）：回中=保持航向不转 */
+  M.FLY_AIM_RATE = 1.7;    /* 机头朝指示方向的最大角速度（rad/s） */
+  M.FLY_SCREEN_Y = 0.66;   /* 战舰在屏幕纵向位置：下方 2/5 区域、水平正中 */
   /* v158.52 实机截图取证：初版 BACK18/UP6/LOOK42 + 大锥(2.4,8) 占屏约 1/4、
      挡住大半视野（v15852-A/B 截图）；缩机 + 拉远后形体仍清晰、占屏约 1/12。 */
-  M.FLY_CAM_BACK = 24;     /* v158.52：第三人称机位在战舰后方（m） */
-  M.FLY_CAM_UP = 9;        /* 机位高于战舰（m，沿径向朝外） */
-  M.FLY_CAM_LOOK = 60;     /* 机位注视战舰前方（m） */
+  M.FLY_CAM_BACK = 26;     /* 机位沿机头反向吊在尾端（m） */
+  M.FLY_CAM_UP = 6;        /* 机位抬离机体的高度（m，沿相机 up） */
+  M.FLY_CAM_MIX = 0.3;     /* 相机 up 里掺多少机体 up：有姿态感又不翻画面 */
+  M.FLY_CAM_LOOK = 1200;   /* 视线远点（只定朝向，不参与机位） */
+  M.FLY_TAKEOFF_T = 2.4;   /* 起飞程序时长（s） */
+  M.FLY_LAND_T = 2.6;      /* 降落程序时长（s） */
+  M.FLY_TAKEOFF_V = 62;    /* 起飞结束时的速度（m/s，约半巡航） */
   M.FLY_TRAIL_MAX = 120;   /* 尾迹采样点数 */
   M.FLY_LEVEL_AFTER = 2.5; /* 无方向输入 N 秒后视角偏移缓慢回 0 */
   M.FLY_LEVEL_RATE = 0.5;
   M._fly = { v: 0, pos: null, head: null, vel: null, up: null, active: false,
-             climb: 0, trail: [], trailAt: 0 };
+             climb: 0, trail: [], trailAt: 0,
+             aim: null, phase: 'cruise', phaseT: 0,
+             launchHead: null, landR0: null, landHead: null };
   function _flyVec(a) { return new THREE.Vector3(a[0], a[1], a[2]); }
 
   /* ============================================================
@@ -6624,7 +6657,9 @@ import './gltf.js';
       vertical: elev > 20 ? '上方' : (elev < -20 ? '下方' : '平齐'),
       alt: r - R, range: r,
       toward: Math.acos(Math.max(-1, Math.min(1, front))) * 180 / Math.PI,
-      bank: M._bankAngle || 0
+      bank: M._bankAngle || 0,
+      /* v158.56：起飞/降落程序态 —— HUD 要能说清"现在是不是我在开" */
+      phase: f.phase || 'cruise'
     };
   };
 
@@ -6682,6 +6717,95 @@ import './gltf.js';
   }
   M.paintShip = _paintShip;
 
+  /* ============================================================
+   * v158.56：飞行状态的**唯一提交出口**。
+   * 正常巡航与起飞/降落程序都经这里写 fly.* + camO + 尾迹 + 战舰，
+   * 避免"程序一套、巡航一套"，也保证 HUD/探针读到的永远是同一份快照。
+   * ============================================================ */
+  function _commitFlight(fly, pos, head, bank) {
+    var radial = pos.clone().normalize();
+    fly.pos = [pos.x, pos.y, pos.z];
+    fly.head = [head.x, head.y, head.z];
+    fly.vel = [head.x, head.y, head.z];       /* 速度瞬时对齐机头（v158.53 口径） */
+    fly.up = [bank.x, bank.y, bank.z];
+    M._bankAngle = Math.acos(Math.max(-1, Math.min(1, bank.dot(radial)))) * 180 / Math.PI;
+    fly.active = true;
+    M._flyNav = M._flyNavState();
+    var _nr = pos.length();
+    camO.dist = _nr;
+    try { _zoomTarget = _nr - R; _zoomLastT = 0; } catch (eZ) { }
+    var _ndF = pos.clone().multiplyScalar(1 / Math.max(1e-6, _nr));
+    camO.dir = [_ndF.x, _ndF.y, _ndF.z];
+    camO.yaw = Math.atan2(_ndF.x, _ndF.z);
+    camO.pitch = Math.asin(Math.max(-1, Math.min(1, _ndF.y)));
+    camO.quat = null; camO._euler = null;
+    var _now = Date.now();
+    /* v158.56：采样门槛从 0.3 提到 3 m/s —— 起降末段低速时点距只有几厘米，
+       120 个点堆在几米内就是一条"针"（实机图抓到）。慢速不画尾迹。 */
+    if (Math.abs(fly.v) > 3 && _now - (fly.trailAt || 0) > 80) {
+      fly.trail.push([pos.x, pos.y, pos.z]);
+      if (fly.trail.length > (M.FLY_TRAIL_MAX || 120)) fly.trail.shift();
+      fly.trailAt = _now;
+    }
+    _ensureShip();
+    _paintShip();
+    try { M._lastAct = _now; } catch (eT) { }
+  }
+
+  /* ============================================================
+   * v158.56：起飞 / 降落程序（老板「设置飞行器的起飞降落程序」）。
+   * ------------------------------------------------------------
+   * 程序期间**接管位姿**，玩家输入不打断（"程序"就该是程序）：
+   *   takeoff 0→1：速度 0→FLY_TAKEOFF_V 平滑抬升，机头锁定起飞方向推进
+   *                （真爬升的弧线，不是电梯直上）；到点切 cruise。
+   *   landing 0→0.35：机头压向球心、速度归零；
+   *           0.35→1：沿径向插值降到地表眼高；到点交回地表层（surfaceMode）。
+   * 两者都经 _commitFlight，落点/朝向与巡航完全同构。
+   * ============================================================ */
+  function _tickProgram(dt) {
+    var fly = M._fly;
+    if (!fly || !fly.pos || !fly.head) return false;
+    var pos = _flyVec(fly.pos), head = _flyVec(fly.head);
+    var radial = pos.clone().normalize();
+    fly.phaseT = (fly.phaseT || 0) + dt;
+    var bank = fly.up ? _flyVec(fly.up).normalize() : radial.clone();
+    if (fly.phase === 'takeoff') {
+      var T = M.FLY_TAKEOFF_T || 2.4;
+      var k = Math.min(1, fly.phaseT / T);
+      var e = k * k * (3 - 2 * k);              /* smoothstep：起手柔和、收尾稳 */
+      fly.v = (M.FLY_TAKEOFF_V || 62) * e;
+      var lh = fly.launchHead ? _flyVec(fly.launchHead).normalize() : head.clone();
+      head.copy(lh);
+      pos.addScaledVector(head, fly.v * dt);
+      bank.lerp(radial, Math.min(1, 2.2 * dt)).normalize();
+      bank.addScaledVector(head, -bank.dot(head)).normalize();
+      if (k >= 1) { fly.phase = 'cruise'; fly.phaseT = 0; }
+    } else if (fly.phase === 'landing') {
+      var T2 = M.FLY_LAND_T || 2.6;
+      var k2 = Math.min(1, fly.phaseT / T2);
+      var _down = radial.clone().negate();
+      head.lerp(_down, Math.min(1, 3.0 * dt)).normalize();
+      fly.v = Math.max(0, (fly.v || 0) * (1 - Math.min(1, 2.6 * dt)));
+      var _r0 = (fly.landR0 != null) ? fly.landR0 : pos.length();
+      var _r1 = R + (M.SURF_EYE || 1.7) * 1.5;
+      var _e2 = (k2 < 0.35) ? 0 : ((k2 - 0.35) / 0.65);
+      _e2 = _e2 * _e2 * (3 - 2 * _e2);
+      pos.setLength(Math.max(_r1, _r0 + (_r1 - _r0) * _e2));
+      bank.lerp(radial, Math.min(1, 2.6 * dt)).normalize();
+      bank.addScaledVector(head, -bank.dot(head)).normalize();
+      if (k2 >= 1) {
+        fly.phase = 'dock'; fly.phaseT = 0; fly.v = 0;
+        _commitFlight(fly, pos, head, bank);        /* 先提交落点，再交班 */
+        fly.active = false;
+        try { M.surfaceMode(true); } catch (eLS) { }
+        _paintShip();
+        return true;
+      }
+    }
+    _commitFlight(fly, pos, head, bank);
+    return true;
+  }
+
   function _tickFlight(dt) {
     var fly = M._fly || (M._fly = { v: 0, pos: null, head: null, vel: null, active: false,
                                     climb: 0, trail: [], trailAt: 0 });
@@ -6690,6 +6814,12 @@ import './gltf.js';
     if (M._surf || M.FOLLOW) {
       if (fly.v) fly.v = 0;
       if (fly.active) fly.active = false;
+      if (fly.aim) fly.aim = null;                       /* v158.56：鼠标指示随飞行态作废 */
+      if (fly.phase !== 'dock') { fly.phase = 'dock'; fly.phaseT = 0; }
+      if (M._flyCrossOn) {
+        M._flyCrossOn = false;
+        try { if (GAME.ui && GAME.ui.renderFlyCross) GAME.ui.renderFlyCross(0, 0, false); } catch (eC0) { }
+      }
       _paintShip();
       return false;
     }
@@ -6722,41 +6852,47 @@ import './gltf.js';
       fly.vel = [_hv.x, _hv.y, _hv.z];
       fly.up = [_rv.x, _rv.y, _rv.z];   /* v158.53：机体"上"初始 = 径向背向星球 */
     }
-    var pos = _flyVec(fly.pos), head = _flyVec(fly.head), vel = _flyVec(fly.vel);
-    var radial = pos.clone().normalize();
-    /* v158.52 · 滚轮与升降共存：滚轮写的是 _zoomTarget（目标海拔），
-       旧版这里无条件把 _zoomTarget 覆盖成当前半径 → 飞行态滚轮彻底失效、
-       无法滚回地表（探针⑨抓出）。正解：先消费滚轮目标（差 > 1cm 才动），
-       再让 ↑↓ 在其上叠加，最后统一写回锚点。 */
-    var _zt = (_zoomTarget != null && isFinite(_zoomTarget)) ? _zoomTarget : (pos.length() - R);
-    var _rWheel = R + Math.max(0.6, _zt);
-    if (Math.abs(_rWheel - pos.length()) > 0.01) {
-      pos.setLength(_rWheel);
-      radial = pos.clone().normalize();
+    /* v158.56：起飞/降落程序期间由程序接管位姿，玩家输入不打断。 */
+    if (fly.phase === 'takeoff' || fly.phase === 'landing') {
+      return _tickProgram(dt);
     }
-    /* ① 速度标量：W/→ 推进、S/← 刹车（无输入恒速，牛顿第一定律） */
-    if (r || w) fly.v += (M.FLY_ACCEL || 48) * dt;
-    if (l || s) fly.v -= (M.FLY_ACCEL || 48) * dt;
+    var pos = _flyVec(fly.pos), head = _flyVec(fly.head);
+    var radial = pos.clone().normalize();
+    /* ⛔ v158.56（老板「在高空，不再由滚轮调整高度」）：飞行态不再消费
+       _zoomTarget —— 高度只由飞行方向决定，滚轮入口在 wheel 里直接 return。
+       旧段「先消费滚轮目标、再叠加 ↑↓ 改半径」整条退役。 */
+    /* ① 速度标量：W/S、↑/↓、←/→ 全进同一条速度通道（老板「Ws和上下为加减速」）。
+       无输入恒速（牛顿第一定律）；↑↓ 不再是电梯（FLY_CLIMB 退役）。 */
+    if (w || u || r) fly.v += (M.FLY_ACCEL || 48) * dt;
+    if (s || dn || l) fly.v -= (M.FLY_ACCEL || 48) * dt;
     var _vmax = M.FLY_MAX || 120, _vmin = -(M.FLY_BACK_MAX || 72);
     fly.v = Math.max(_vmin, Math.min(_vmax, fly.v));
-    if (!r && !l && !w && !s && Math.abs(fly.v) < 0.01) fly.v = 0;
-    /* ② ↑↓ 辅助升降：直接改球心距离（海拔）—— 不再是"抬头"，抬头归鼠标 */
-    var _climb = u ? (M.FLY_CLIMB || 24) : (dn ? -(M.FLY_CLIMB || 24) : 0);
-    if (_climb) {
-      var _nr0 = pos.length() + _climb * dt;
-      _nr0 = Math.max(R + (M.SURF_EYE || 1.7) + 2, Math.min(M.ZOOM_MAX || R * 50, _nr0));
-      pos.setLength(_nr0);
-      radial = pos.clone().normalize();
+    if (!r && !l && !w && !s && !u && !dn && Math.abs(fly.v) < 0.01) fly.v = 0;
+    /* ② ⛔ v158.56 退役：↑↓ 改海拔（"电梯"语义）。去向：速度通道见 ①。 */
+    fly.climb = 0;
+    /* ③ 鼠标**绝对指示**航向（老板「鼠标指示飞行的方向」）。
+       aim 由鼠标偏离屏幕中心的方向算一次并锁定（见 M._flyAimAt）：
+       机头以 FLY_AIM_RATE 限速朝它转，到位即停 —— 鼠标不动就保持航向，
+       不会像"每帧重算"那样一直打转。鼠标回中死区 → aim=null，保持当前。 */
+    if (fly.aim) {
+      var _aim = _flyVec(fly.aim).normalize();
+      var _ang = head.angleTo(_aim);
+      var _mx = (M.FLY_AIM_RATE || 1.7) * dt;
+      if (_ang <= _mx) head.copy(_aim);
+      else head.lerp(_aim, _mx / Math.max(1e-6, _ang)).normalize();
+      head.normalize();
     }
-    fly.climb = _climb;
-    /* ③ A/D 横滚 + 协调转弯（无人深空 A/D = roll）：
-       绕机头横滚改变机体 up → 画面 banking；同时绕径向把机头带过去，
-       于是"按 A 就往左去"而不是原地侧滑。W/S 俯仰已退役 → 鼠标控制。 */
+    /* ④ A/D 横滚（无人深空 A/D = roll）：
+       绕机头横滚改变机体 up → 飞行器在画面里真的翻滚；没有鼠标指示时才做
+       协调转弯（否则会和 aim 抢机头，变成"想直飞却自己往一边偏"）。
+       W/S 俯仰已退役 → 左右上下拖/鼠标位置控制。 */
     var _bank = fly.up ? _flyVec(fly.up).normalize() : radial.clone();
     if (a || d) {
       var _rollDir = a ? -1 : 1;
       _bank.applyAxisAngle(head, _rollDir * (M.FLY_ROLL || 1.7) * dt).normalize();
-      head.applyAxisAngle(radial, _rollDir * (M.FLY_BANK_TURN || 0.75) * dt).normalize();
+      if (!fly.aim) {
+        head.applyAxisAngle(radial, _rollDir * (M.FLY_BANK_TURN || 0.75) * dt).normalize();
+      }
       /* 机头转后重新正交化 up，防与 head 不垂直导致画面翻滚 */
       _bank.addScaledVector(head, -_bank.dot(head)).normalize();
     } else {
@@ -6764,43 +6900,14 @@ import './gltf.js';
       _bank.lerp(radial, Math.min(1, 0.8 * dt)).normalize();
     }
     head.normalize();
-    /* ④ 速度瞬时对齐机头（v158.53 规则变更）：
+    /* ⑤ 速度瞬时对齐机头（v158.53 规则变更）：
        旧"有限追随"实测 0.5s 侧滑 20.8° —— 推了舵还往原方向飘，老板原话
        "不能按自己意愿想去哪就去"。现在 vel = head，看哪飞哪；转向的弧线
-       由机头自己在转产生，不再靠速度滞后 —— 轨迹仍是弧，但不再脱节。 */
-    vel.copy(head);
-    /* ⑤ 位置沿速度矢量推进（自由 3D，不再锁球面切向） */
-    pos.addScaledVector(vel, fly.v * dt);
-    fly.pos = [pos.x, pos.y, pos.z];
-    fly.head = [head.x, head.y, head.z];
-    fly.vel = [vel.x, vel.y, vel.z];
-    fly.up = [_bank.x, _bank.y, _bank.z];
-    M._bankAngle = Math.acos(Math.max(-1, Math.min(1, _bank.dot(radial)))) * 180 / Math.PI;
-    fly.active = true;
-    /* v158.53：当帧导航快照（HUD + 探针共读，绝不各算一套） */
-    M._flyNav = M._flyNavState();
-    /* 与既有相机状态机对账：每帧由自由位置反算 camO 的位置量 */
-    var _nr = pos.length();
-    camO.dist = _nr;
-    /* 同步滚轮阻尼锚点：否则 placeCamera 的 _zoomDamp 会把半径拉回旧值 */
-    try { _zoomTarget = _nr - R; _zoomLastT = 0; } catch (eZ) { }
-    var _ndF = pos.clone().multiplyScalar(1 / Math.max(1e-6, _nr));
-    camO.dir = [_ndF.x, _ndF.y, _ndF.z];
-    camO.yaw = Math.atan2(_ndF.x, _ndF.z);
-    camO.pitch = Math.asin(Math.max(-1, Math.min(1, _ndF.y)));
-    camO.quat = null; camO._euler = null;
-    /* v158.53：右键视角偏移已不再参与飞行机位（机头 = 视线，二者合一），
-       旧的 lookPitch 回正整条退役；机体 banking 回正在上方 ③ 的 else 分支逐帧完成。 */
-    /* 尾迹采样：每 0.08 秒一点，只记真在动的时候 */
-    var _now = Date.now();
-    if (Math.abs(fly.v) > 0.3 && _now - (fly.trailAt || 0) > 80) {
-      fly.trail.push([pos.x, pos.y, pos.z]);
-      if (fly.trail.length > (M.FLY_TRAIL_MAX || 120)) fly.trail.shift();
-      fly.trailAt = _now;
-    }
-    _ensureShip();
-    _paintShip();
-    try { M._lastAct = _now; } catch (eT) { }
+       由机头自己在转产生，不再靠速度滞后 —— 轨迹仍是弧，但不再脱节。
+       ⑥ 位置沿速度矢量推进 + 状态/相机对账 + 尾迹 + 战舰：全部收进
+       _commitFlight（起飞降落程序共用同一条出口，绝不各写一套）。 */
+    pos.addScaledVector(head, fly.v * dt);
+    _commitFlight(fly, pos, head, _bank);
     return !!(l || r || u || dn || w || s || a || d || fly.v);
   }
   M.flyTick = _tickFlight;
@@ -6816,11 +6923,128 @@ import './gltf.js';
       alt: f.pos ? (Math.hypot(f.pos[0], f.pos[1], f.pos[2]) - R) : null,
       max: M.FLY_MAX, back: M.FLY_BACK_MAX, accel: M.FLY_ACCEL,
       turn: M.FLY_TURN, lookK: M.FLY_LOOK_K, roll: M.FLY_ROLL,
-      bankTurn: M.FLY_BANK_TURN, climbRate: M.FLY_CLIMB,
+      bankTurn: M.FLY_BANK_TURN,
+      /* v158.56：climbRate（↑↓ 电梯）随 FLY_CLIMB 退役；改为只读新口径 */
+      aimMax: M.FLY_AIM_MAX, aimRate: M.FLY_AIM_RATE, screenY: M.FLY_SCREEN_Y,
+      phase: f.phase || 'cruise', phaseT: f.phaseT || 0,
+      aim: f.aim ? f.aim.slice() : null,
+      camBack: M.FLY_CAM_BACK, camUp: M.FLY_CAM_UP, camMix: M.FLY_CAM_MIX,
       bank: M._bankAngle || 0, nav: M._flyNavState ? M._flyNavState() : null,
       yaw: camO.yaw, pitch: camO.pitch, dir: camO.dir ? camO.dir.slice() : null,
-      lookYaw: camO.lookYaw, lookPitch: camO.lookPitch };
+      lookYaw: camO.lookYaw, lookPitch: camO.lookPitch,
+      camPos: M._flyCam ? M._flyCam.pos.slice() : null };
   };
+  /* ============================================================
+   * v158.56：鼠标**指示飞行方向**（唯一入口：mousemove / 探针都走它）
+   * ------------------------------------------------------------
+   * 屏幕坐标 → 相对屏幕中心的偏离方向 → 相对**当前机体基**的 yaw/pitch →
+   * 世界方向 aim。算一次写进 fly.aim 并锁定，机头限速朝它转（到位即停）；
+   * 鼠标回到中心死区 → aim=null，保持当前航向，不会一直打转。
+   * 这是「指示」而不是「相对拖动」：鼠标停在哪，飞船就朝那个方向飞。
+   * ============================================================ */
+  M._flyAimAt = function (px, py) {
+    var f = M._fly;
+    if (!f) return null;
+    if (!f.active || M._surf || !f.pos || !f.head) { f.aim = null; return null; }
+    /* ⚠️ canvas 是 M.bindControls(canvas) 的**形参**，模块作用域没有它 ——
+       直接引用会抛 ReferenceError 并被外层 try/catch 吞掉（探针④实测 aim 恒 null）。
+       统一从 M._cvEl 取（bindControls 里赋值），兜底按 id 查。
+       ⚠️ 归一化必须用**画布 rect**（同 clientX 坐标系）：画布被 app-scale 缩放时
+       clientWidth 与 clientX 不同量纲，直接相除会把"靠边"算成"接近中心"
+       （实测 nx 从 0.41 掉到 -0.06 → 落进死区 → aim 恒 null）。 */
+    var _cv = M._cvEl || (typeof document !== 'undefined' ? document.getElementById('mapCanvas') : null);
+    var _rc = null;
+    try { _rc = (_cv && _cv.getBoundingClientRect) ? _cv.getBoundingClientRect() : null; } catch (eRc) { _rc = null; }
+    var w = (_rc && _rc.width) || window.innerWidth || 1;
+    var h = (_rc && _rc.height) || window.innerHeight || 1;
+    var ox = (_rc && _rc.left) || 0, oy = (_rc && _rc.top) || 0;
+    var nx = ((px - ox) / Math.max(1, w) - 0.5) * 2;
+    var ny = ((py - oy) / Math.max(1, h) - 0.5) * 2;
+    var mag = Math.hypot(nx, ny);
+    var dead = (M.FLY_AIM_DEAD == null ? 0.10 : M.FLY_AIM_DEAD);
+    if (mag <= dead) { f.aim = null; return null; }        /* 回中 = 保持航向 */
+    /* 死区外重新标定到 0..1：刚出死区是小角度，靠边才是满偏 */
+    var k = Math.min(1, (mag - dead) / Math.max(1e-6, 1 - dead)) / mag;
+    var yaw = nx * k * (M.FLY_AIM_MAX == null ? 1.15 : M.FLY_AIM_MAX);
+    var pit = -ny * k * (M.FLY_AIM_PITCH == null ? 0.85 : M.FLY_AIM_PITCH);
+    var hd = _flyVec(f.head).normalize();
+    var up = f.up ? _flyVec(f.up).normalize() : _flyVec(f.pos).normalize();
+    up.addScaledVector(hd, -up.dot(hd));
+    if (up.lengthSq() < 1e-8) up.crossVectors(new THREE.Vector3(0, 1, 0), hd);
+    if (up.lengthSq() < 1e-8) up.set(1, 0, 0);
+    up.normalize();
+    var right = new THREE.Vector3().crossVectors(hd, up).normalize();
+    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    var q = new THREE.Quaternion();
+    var aim = hd.clone();
+    /* 鼠标右 → 机头右转（绕 up 负向）；鼠标上 → 抬头（绕 right 正向）。
+       方向由 right = cross(head, up) 的右手定则确定，探针逐项验过符号。 */
+    if (yaw) { q.setFromAxisAngle(up, -yaw); aim.applyQuaternion(q); }
+    if (pit) { q.setFromAxisAngle(right, pit); aim.applyQuaternion(q); }
+    aim.normalize();
+    f.aim = [aim.x, aim.y, aim.z];
+    return f.aim;
+  };
+
+  /* ============================================================
+   * v158.56：起飞 / 降落（唯一出入口；空格键与探针共用同一函数）
+   * ------------------------------------------------------------
+   * 起飞点取「当前相机方向对应的地表上方」，机头沿径向向外拉起 35° ——
+   * 于是起飞能看到星球在脚下展开，不是黑屏直上。程序由 _tickProgram 跑。
+   * ============================================================ */
+  M.flyLaunch = function () {
+    var f = M._fly;
+    if (!f || !cam || !cam.quaternion) return false;
+    if (f.active && !M._surf) return false;               /* 已经在飞，不重复起飞 */
+    var _dir = (camO.dir && camO.dir.length === 3) ? camO.dir.slice() : [0, 1, 0];
+    var _rad = new THREE.Vector3(_dir[0], _dir[1], _dir[2]);
+    if (_rad.lengthSq() < 1e-8) _rad.set(0, 1, 0);
+    _rad.normalize();
+    var _alt0 = (M.SURF_EYE || 1.7) * 1.5 + 6;
+    /* 先切出地表：_surf 守卫会直接把飞行通道关掉，必须在起跳前切 */
+    if (M._surf) { try { M.surfaceMode(false); } catch (eL0) { } }
+    var _p = _rad.clone().multiplyScalar(R + _alt0);
+    var _tang = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    _tang.addScaledVector(_rad, -_tang.dot(_rad));
+    if (_tang.lengthSq() < 1e-6) _tang.crossVectors(new THREE.Vector3(0, 1, 0), _rad);
+    if (_tang.lengthSq() < 1e-6) _tang.set(1, 0, 0);
+    _tang.normalize();
+    var _a35 = 35 * Math.PI / 180;
+    var _h = _rad.clone().multiplyScalar(Math.cos(_a35))
+      .addScaledVector(_tang, Math.sin(_a35)).normalize();
+    f.pos = [_p.x, _p.y, _p.z];
+    f.head = [_h.x, _h.y, _h.z];
+    f.vel = [_h.x, _h.y, _h.z];
+    f.up = [_rad.x, _rad.y, _rad.z];
+    f.launchHead = [_h.x, _h.y, _h.z];
+    f.v = 0; f.active = true; f.aim = null;
+    f.phase = 'takeoff'; f.phaseT = 0;
+    f.trail.length = 0; f.trailAt = 0;
+    f.landR0 = null;
+    try { _zoomTarget = _p.length() - R; _zoomLastT = 0; } catch (eL1) { }
+    try { _ensureShip(); _paintShip(); } catch (eL2) { }
+    try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🚀 起飞程序启动'); } catch (eL3) { }
+    return true;
+  };
+  M.flyLand = function () {
+    var f = M._fly;
+    if (!f || !f.active || M._surf) return false;
+    if (f.phase === 'takeoff' || f.phase === 'landing') return false;
+    f.phase = 'landing'; f.phaseT = 0; f.aim = null;
+    f.landR0 = f.pos ? Math.hypot(f.pos[0], f.pos[1], f.pos[2]) : (camO.dist || R * 2);
+    /* v158.56：降落前清尾迹 —— 减速到 0 时旧采样点会堆成一条竖直"针"
+       （实机图 v15856-D 抓到），落地过程不该拖着这根线。 */
+    if (f.trail) { f.trail.length = 0; f.trailAt = 0; }
+    try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🛬 降落程序启动'); } catch (eL4) { }
+    return true;
+  };
+  M.flyToggle = function () {
+    var f = M._fly;
+    if (!f) return false;
+    if (f.active && !M._surf) return M.flyLand();
+    return M.flyLaunch();
+  };
+
   /* ============================================================
    * v158.44（老板「人太大又太小了。我建议，人的占屏比例应该相对固定，
    *   则在高空时，人物会比例放大。在地面时，人甚至应该小于树才对」）
@@ -7103,7 +7327,20 @@ import './gltf.js';
     /* v157.31：判据从 agl 改成 **半径**（`_rAlt` = d − R）。
        agl 里含地形高，走过一片山就会自己跨阈值 → "没滚轮，模式却变了"。
        半径只受滚轮影响，这是原地形判据想达到、但没达到的东西。 */
-    var _surfNow = M._surf ? (_rAlt < _aglOut) : (_rAlt < _aglIn);
+    /* ============================================================
+     * v158.56：**起飞/降落程序期间禁用自动地表切换**。
+     * ------------------------------------------------------------
+     * 起飞点离地只有 ~8.5m（< 55m 阈值），若不豁免，placeCamera 下一帧
+     * 就把它判回地表 → 战舰收起、程序被 _tickFlight 的 _surf 守卫打断
+     * （探针⑥实测 phase takeoff→dock、Δalt=0）。降落同理：程序降到
+     * 55m 以下时会被提前判进地表，半空换相机。
+     * 现在由程序独占这段过渡，落地那一刻由 _tickProgram 显式
+     * surfaceMode(true) 交班 —— 进出地表只剩一个出口。
+     * ============================================================ */
+    var _progFlight = !!(M._fly && M._fly.active &&
+      (M._fly.phase === 'takeoff' || M._fly.phase === 'landing'));
+    var _surfNow = _progFlight ? false
+      : (M._surf ? (_rAlt < _aglOut) : (_rAlt < _aglIn));
     var _enterSurfNow = false;
     if (_surfNow !== M._surf) {
       /* v157.50：**出地表那一刻记交班**（进地表的接手在下方地表分支里做）。 */
@@ -7394,18 +7631,53 @@ import './gltf.js';
           `_surfDir` / `_prevF` 分支），那是**模式切换**、不是滚轮转向。 */
     var _lpEff = camO.lookPitch;
     if (M._fly && M._fly.active && !M._surf && M._fly.pos && M._fly.head && cam.lookAt) {
-      /* v158.53（无人深空范式）：**机头 = 视线**，没有第二套 lookYaw/lookPitch。
-         机位在战舰正后方（沿机体 up 抬高，随横滚一起 banking），注视机头前方。
-         于是鼠标转机头 = 转画面；按 A/D 横滚 = 画面倾斜。星球方位由 HUD 指示。 */
+      /* ============================================================
+       * v158.56（老板「飞行器和相机分离。相机总是在飞行器的尾端或者人物的
+       *   背部。飞行器应该在屏幕的下 2/5 我要在正中间」）
+       * ------------------------------------------------------------
+       * 旧版（v158.53）相机 up = 机体 up，滚转时**整个画面跟着翻** ——
+       * 玩家看到的是"世界在转"，不是"飞行器在滚"。这就是"没分离"。
+       * 现在：
+       *   ① 位置永远吊在尾端（沿 -head 后退 BACK，再沿相机 up 抬 UP）；
+       *   ② 相机 up = 星球径向为骨 + 机体 up 只掺 CAM_MIX —— 滚转在画面里
+       *      看得见（机体真的翻），画面本身只轻微倾斜，不会天旋地转；
+       *   ③ 战舰屏幕纵向精确落在 FLY_SCREEN_Y（下方 2/5）、水平正中：
+       *      先定机位，再让视线绕 right 轴抬 θ，θ = atan(ny·tan(fov/2))。
+       *      right = cross(Δ, camUp) 由右手定则确定，水平分量恒 0 →
+       *      自动居中，不靠试参数。θ 的推导：视线抬高 θ，物体会落到
+       *      画面下方 tanθ/tan(fov/2) 的归一化位置。
+       * ============================================================ */
       var _sp = _flyVec(M._fly.pos);
       var _hd = _flyVec(M._fly.head).normalize();
-      var _upR = M._fly.up ? _flyVec(M._fly.up).normalize() : _sp.clone().normalize();
-      cam.position.copy(_sp).addScaledVector(_hd, -(M.FLY_CAM_BACK || 24))
-        .addScaledVector(_upR, (M.FLY_CAM_UP || 9));
-      cam.up.copy(_upR);
-      var _tg = _sp.clone().addScaledVector(_hd, (M.FLY_CAM_LOOK || 60));
+      var _rad = _sp.clone().normalize();
+      var _mechUp = M._fly.up ? _flyVec(M._fly.up).normalize() : _rad.clone();
+      var _camUp = _rad.clone().addScaledVector(_mechUp, (M.FLY_CAM_MIX == null ? 0.3 : M.FLY_CAM_MIX));
+      if (_camUp.lengthSq() < 1e-8) _camUp.copy(_rad);
+      _camUp.normalize();
+      /* 姿态分离的兜底：径向与机体 up 反向（倒飞）时也别让 up 退化 */
+      if (_camUp.dot(_rad) < 0) _camUp.copy(_rad);
+      cam.position.copy(_sp).addScaledVector(_hd, -(M.FLY_CAM_BACK || 26))
+        .addScaledVector(_camUp, (M.FLY_CAM_UP || 6));
+      cam.up.copy(_camUp);
+      /* 从相机指向战舰的方向 Δ，再绕 right 抬 θ → 战舰落到 FLY_SCREEN_Y */
+      var _delta = _sp.clone().sub(cam.position);
+      var _dlen = _delta.length();
+      var _dn0 = (_dlen > 1e-6) ? _delta.clone().multiplyScalar(1 / _dlen) : _hd.clone();
+      var _rightAx = new THREE.Vector3().crossVectors(_dn0, _camUp);
+      if (_rightAx.lengthSq() < 1e-8) {
+        _rightAx.crossVectors(_dn0, new THREE.Vector3(0, 1, 0));
+        if (_rightAx.lengthSq() < 1e-8) _rightAx.set(1, 0, 0);
+      }
+      _rightAx.normalize();
+      var _fovR = (cam.fov || 55) * Math.PI / 180;
+      var _sy = (M.FLY_SCREEN_Y == null ? 0.66 : M.FLY_SCREEN_Y);
+      var _ny = (_sy - 0.5) * 2;
+      var _theta = Math.atan(_ny * Math.tan(_fovR * 0.5));
+      var _lookDir = _dn0.clone().applyAxisAngle(_rightAx, _theta).normalize();
+      var _tg = cam.position.clone().addScaledVector(_lookDir, (M.FLY_CAM_LOOK || 1200));
       cam.lookAt(_tg);
-      M._flyCam = { pos: cam.position.toArray(), up: _upR.toArray() };
+      M._flyCam = { pos: cam.position.toArray(), up: _camUp.toArray(),
+                    look: _lookDir.toArray(), screenY: _sy, theta: _theta };
     } else {
       cam.quaternion.copy(camO.quat);
       if (camO.lookYaw || _lpEff) {
@@ -8170,6 +8442,9 @@ import './gltf.js';
   M.bindControls = function (canvas) {
     if (!canvas || canvas._m3dBound) return;
     canvas._m3dBound = true;
+    /* v158.56：把画布元素暴露到模块作用域 —— _flyAimAt 在模块层，
+       拿不到本函数的形参 canvas（引用会抛 ReferenceError）。 */
+    M._cvEl = canvas;
     var drag = 0, lookDrag = 0, lx = 0, ly = 0, moved = false;
     var lx0 = 0, ly0 = 0;        /* v156.59 arcball：上一帧的**画布内**坐标 */
     function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
@@ -8527,6 +8802,27 @@ import './gltf.js';
       if (GAME.ui && GAME.ui.tipHide) GAME.ui.tipHide();
     });
     window.addEventListener('mousemove', function (e) {
+      /* v158.56（老板「鼠标指示飞行的方向」）：飞行态在画布上移动鼠标即
+         更新目标航向（唯一入口 _flyAimAt）。
+         ⚠️ 判定用**画布 rect 命中**而不是 `e.target === canvas`：地图上有
+         透明 UI 层时会命中覆盖元素，target 判等直接失效（截图探针实测
+         准星元素从未创建）。按钮/链接/输入框上不抢，避免点 UI 时飞船乱转。 */
+      try {
+        if (M._fly && M._fly.active && !M._surf) {
+          var _tg56 = (e.target && e.target.tagName) || '';
+          var _rc56 = null;
+          try { _rc56 = canvas.getBoundingClientRect(); } catch (eRC) { _rc56 = null; }
+          var _in56 = !_rc56 || (e.clientX >= _rc56.left && e.clientX <= _rc56.right
+            && e.clientY >= _rc56.top && e.clientY <= _rc56.bottom);
+          if (_in56 && _tg56 !== 'BUTTON' && _tg56 !== 'A' && _tg56 !== 'INPUT'
+              && _tg56 !== 'TEXTAREA' && _tg56 !== 'SELECT') {
+            M._flyAimAt(e.clientX, e.clientY);
+            if (GAME.ui && GAME.ui.renderFlyCross) {
+              GAME.ui.renderFlyCross(e.clientX, e.clientY, !!M._fly.aim);
+            }
+          }
+        }
+      } catch (eAim) { }
       /* ============================================================
        * v158.21（老板「视野外不能点击。不能点击我怎么左键进行拖动」）
        * ------------------------------------------------------------
@@ -8655,6 +8951,9 @@ import './gltf.js';
             _fh.applyQuaternion(_qLook); _fu.applyQuaternion(_qLook);
           }
           _fh.normalize(); _fu.normalize();
+          /* v158.56：手动转头优先 —— 清掉鼠标指示，否则下一帧 aim 会把机头
+             拉回鼠标指的旧方向（玩家会觉得"拖了没用"）。鼠标再动会重设 aim。 */
+          M._fly.aim = null;
           M._fly.head = [_fh.x, _fh.y, _fh.z];
           M._fly.up = [_fu.x, _fu.y, _fu.z];
           if (Math.abs(_dx) + Math.abs(_dy) > 3) moved = true;
@@ -9112,6 +9411,7 @@ import './gltf.js';
             if (!M._surf && M._fly && M._fly.active && M._fly.pos && M._fly.head) {
               var _lr = _flyVec(M._fly.pos).normalize();
               M._fly.up = [_lr.x, _lr.y, _lr.z];
+              M._fly.aim = null;      /* v158.56：回正平飞同时清鼠标指示，否则下一帧又被拉走 */
               M._bankAngle = 0;
             } else {
               camO.lookYaw = 0; camO.lookPitch = 0;
@@ -9156,6 +9456,10 @@ import './gltf.js';
     });
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
+      /* v158.56（老板「在高空，不再由滚轮调整高度」）：飞行态滚轮整条禁用。
+         高度只由飞行方向决定；进出高空改走起飞/降落程序（空格）。
+         地表态（走路）滚轮仍按 REGION 逻辑调相机距离，不受影响。 */
+      if (M._fly && M._fly.active && !M._surf) { return; }
       /* v157b：滚轮只改**球心距离**，轨道/地表由 placeCamera 按离地高度自动派生
          —— 不需要"升空"特判，也不需要按钮（老板：「不需要特别按钮」）。 */
       /* ============================================================

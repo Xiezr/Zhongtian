@@ -4165,6 +4165,25 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
       if (_tn207 === 'INPUT' || _tn207 === 'TEXTAREA' || _tn207 === 'SELECT') return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (ui.modalVisible && ui.modalVisible()) return;
+      /* ============================================================
+       * v158.56（老板「设置飞行器的起飞降落程序」）：**空格 = 起飞 / 降落**。
+       * 地表（走路态）按 = 启动起飞程序；高空飞行按 = 启动降落程序。
+       * 程序期间由 map3d._tickProgram 接管位姿，玩家输入不打断。
+       * 弹窗/输入框已在上面 return；按钮/链接聚焦时不吃空格（保留原生激活）。
+       * ============================================================ */
+      if ((e.code === 'Space' || e.key === ' ') && !e.repeat) {
+        var _Mft56 = GAME.map3d;
+        var _tnSp = (e.target && e.target.tagName) || '';
+        if (_Mft56 && _Mft56.flyToggle && _tnSp !== 'BUTTON' && _tnSp !== 'A'
+            && _tnSp !== 'INPUT' && _tnSp !== 'TEXTAREA') {
+          var _inFlight = !!(_Mft56._fly && _Mft56._fly.active && !_Mft56._surf);
+          if (_inFlight || _Mft56._surf) {
+            _Mft56.flyToggle();
+            e.preventDefault();
+            return;
+          }
+        }
+      }
       /* v158.0（P0 大世界）：WASD 只在街区态生效（战略视角走「点地图 = 小人走过去」）。
          键位判定用 e.code（布局无关），状态放 GAME._keys（不入档、不污染 state）。
          ⛔ v158.20（老板「去掉人物模式」）：原来这里还有 Tab 进出跟随态 —— 已整条退役。 */
@@ -4259,7 +4278,9 @@ import './agenda.js';   /* v157.70：行动台（5 个轻量决策玩法 · 自�
         /* v158.52：←→ 加减速、↑↓ 升降（替代 Q/E）；W/S 俯仰、A/D 转向。
            v158.53（无人深空范式）：键通道不变，语义重排 —— W/S 改推进/刹车、
            A/D 改横滚（协调转弯带 banking），俯仰交给鼠标（右键拖 = 转机头）。
-           方向键在地表仍走走路通道（上面分支已 return），高空单独映射。 */
+           方向键在地表仍走走路通道（上面分支已 return），高空单独映射。
+           v158.56（老板「Ws 和上下为加减速」）：↑↓ 从"升降"并入速度通道，
+           与 W/S/←→ 同义；A/D 只剩横滚；航向由鼠标指示（map3d._flyAimAt）。 */
         var _flyK52 = null;
         if (_avCode === 'ArrowLeft') _flyK52 = 'left';
         else if (_avCode === 'ArrowRight') _flyK52 = 'right';

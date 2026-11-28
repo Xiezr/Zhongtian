@@ -1363,10 +1363,42 @@ import './ui.js';
         + '</div></div>';
     }
     el.innerHTML = '<div><span style="opacity:.9;">🚀 空天战舰 · </span>'
-      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '推进' : '倒飞') + '</div>'
+      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '推进' : '倒飞')
+      + (nav && nav.phase === 'takeoff' ? ' · <span style="color:#ffd479;">起飞中</span>'
+        : (nav && nav.phase === 'landing' ? ' · <span style="color:#ffd479;">降落中</span>' : ''))
+      + '</div>'
       + _navHtml
       + '<div style="opacity:.6;font-size:12px;margin-top:4px;">'
-      + '鼠标 看哪飞哪 · W/S 推进刹车 · A/D 横滚 · ↑↓ 升降 · 双击右键回正</div>';
+      + '鼠标 指示航向 · W/S ↑↓ 加减速 · A/D 横滚 · 空格 起降</div>';
+    el.style.display = 'block';
+    return el;
+  };
+
+  /* ============================================================
+   * v158.56（老板「鼠标指示飞行的方向」）：飞行准星。
+   * 鼠标位置就是"我在指哪"，飞行器朝它转过去；回中死区时准星变暗，
+   * 表示"保持当前航向"。挂在 layerRoot（画布坐标系）——
+   * clientX/Y 必须经 ui.toCanvasXY 换算，否则 app 缩放时会错位。
+   * ============================================================ */
+  ui.renderFlyCross = function (clientX, clientY, on) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('fly-cross');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fly-cross';
+      el.style.cssText = 'position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;'
+        + 'z-index:1903;pointer-events:none;display:none;transition:opacity .12s;';
+      el.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24">'
+        + '<circle cx="12" cy="12" r="8" fill="none" stroke="rgba(127,232,255,.78)" stroke-width="1.4"/>'
+        + '<circle cx="12" cy="12" r="2" fill="#7fe8ff"/>'
+        + '</svg>';
+      root.appendChild(el);
+    }
+    if (!on || (ui.modalVisible && ui.modalVisible())) { el.style.display = 'none'; return el; }
+    var p = (ui.toCanvasXY ? ui.toCanvasXY(clientX, clientY) : { x: clientX, y: clientY });
+    el.style.left = Math.round(p.x) + 'px';
+    el.style.top = Math.round(p.y) + 'px';
     el.style.display = 'block';
     return el;
   };
