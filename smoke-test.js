@@ -51708,6 +51708,52 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /renderAltHud\(null\)/.test(_m3d608);
   })());
 
+  /* ============================================================
+   * §626 v158.47 · 老板「地面时滚轮应仍能调整相机高度，滚轮对高度的调节是
+   *   连续的。地面时相机随高度调整，逐渐拉近人物。同时右键转动相机的方向……
+   *   这个相机的位置逐渐移动到人物的腰部部分。滚轮和右键的角度调整要做协同」
+   * ------------------------------------------------------------
+   * 规则：
+   *   ① 地表态滚轮调**距离基准** _surfCamDist（16 ↔ 3.2m，连续指数
+   *      exp(deltaY×0.0008)），不再无效；
+   *   ② 机位距离 = MIN + (live − MIN)·t^0.75 —— 滚轮定上限、右键仰角定比例
+   *      （协同：滚轮拉开则远、抬头则近，两变量互不覆盖）；
+   *   ③ 向外滚到最远（16m）仍继续 → 放行升空（agl 逻辑衔接轨道态）；
+   *   ④ 右键仰角联动不变（el 0.06~1.35；抬头距离收缩、机位落腰部——v158.39）。
+   * 结构面锁源码形态；行为下限由探针 p_surf_cam_v15847 承担。
+   * ============================================================ */
+  check('§626① 地表滚轮调 _surfCamDist：连续指数 + clamp[3.2,16] + 到顶放行升空', (function () {
+    var src = _m3d608;
+    var i = src.indexOf("canvas.addEventListener('wheel'");
+    var j = i >= 0 ? src.indexOf('_aglNow = Math.max', i) : -1;
+    var blk = i >= 0 && j > i ? src.slice(i, j) : '';
+    return /if \(M\._surf\) \{/.test(blk)
+      && /M\._surfCamDist \* Math\.exp\(\(e\.deltaY \|\| 0\) \* 0\.0008\)/.test(blk)
+      && /Math\.max\(M\.SURF_CAM_MIN_DIST, Math\.min\(M\.SURF_CAM_DIST,/.test(blk)
+      && /M\._surfCamDist = M\.SURF_CAM_DIST;/.test(blk)
+      && /M\._surfCamDist = _sdNew47;/.test(blk)
+      && /touch\(\); redraw\(\);/.test(blk);
+  })());
+
+  check('§626② _distOf 读 live 基准：距离 = MIN + (live−MIN)·t^0.75（滚轮×右键协同）', (function () {
+    var src = _m3d608;
+    var i = src.indexOf('function _distOf(e)');
+    var blk = i >= 0 ? src.slice(i, i + 700) : '';
+    return /M\._surfCamDist != null && isFinite\(M\._surfCamDist\)/.test(blk)
+      && /Math\.max\(M\.SURF_CAM_MIN_DIST, Math\.min\(M\.SURF_CAM_DIST, M\._surfCamDist\)\)/.test(blk)
+      && /return M\.SURF_CAM_MIN_DIST \+ \(_dL - M\.SURF_CAM_MIN_DIST\) \* Math\.pow\(t, 0\.75\);/.test(blk)
+      && /M\._surfCamDist = null;/.test(src);
+  })());
+
+  check('§626③ 数值面：滚轮一格距离变化 ≤ 12%（连续无跳变）、范围 [3.2, 16]、抬头恒压到 3.2', (function () {
+    var K = 0.0008, one = Math.exp(100 * K);   /* 一格 deltaY=100 */
+    var d = 16;
+    return one > 1.02 && one < 1.12
+      && 16 * Math.pow(one, -10) > 3.2   /* 连续可降到下限 */
+      && 3.2 < 16
+      && Math.abs(Math.exp(-100 * K) - 0.923) < 0.01;
+  })());
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));

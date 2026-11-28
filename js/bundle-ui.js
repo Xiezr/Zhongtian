@@ -9093,6 +9093,24 @@
       /* v157b：滚轮只改**球心距离**，轨道/地表由 placeCamera 按离地高度自动派生
          —— 不需要"升空"特判，也不需要按钮（老板：「不需要特别按钮」）。 */
       /* ============================================================
+       * v158.47（老板「地面时滚轮应仍能调整相机高度，滚轮对高度的调节是连续的。
+       *        地面时相机随高度调整，逐渐拉近人物」）：地表态滚轮**调距离基准**
+       *   _surfCamDist（16 ↔ 3.2m 连续指数），与右键仰角 distOf(el) 协同 ——
+       *   机位距离 = MIN + (live − MIN)·t^0.75，滚轮定上限、右键定比例。
+       *   向外滚到最远（16m）仍继续 → 落到下方 agl 逻辑升空，衔接轨道态。
+       * ============================================================ */
+      if (M._surf) {
+        if (M._surfCamDist == null || !isFinite(M._surfCamDist)) M._surfCamDist = M.SURF_CAM_DIST;
+        var _sdNew47 = Math.max(M.SURF_CAM_MIN_DIST, Math.min(M.SURF_CAM_DIST,
+          M._surfCamDist * Math.exp((e.deltaY || 0) * 0.0008)));
+        if (!((e.deltaY || 0) > 0 && _sdNew47 >= M.SURF_CAM_DIST - 0.001)) {
+          M._surfCamDist = _sdNew47;
+          touch(); redraw();
+          return;
+        }
+        M._surfCamDist = M.SURF_CAM_DIST;   /* 到顶，放行升空 */
+      }
+      /* ============================================================
        * v157k（老板：「控制高度的滚轮单格高度差太高了，希望高度平滑连续下降，
        *        远处快，近处慢」）
        * ------------------------------------------------------------
@@ -9512,6 +9530,8 @@
      角色约 40 像素、视野约 3.7 格（底栏写的就是「视野 4 格」），
      这才是"能看见自己在走"的距离。 */
   M.SURF_CAM_DIST = 16;        /* 高仰角默认距离（米）——5.25 米一格，约看 3.7 格 */
+  M._surfCamDist = null;       /* v158.47：地表相机距离基准（滚轮连续调，16 ↔ 3.2m）；
+                                  运行时态不入档，懒初始化为 SURF_CAM_DIST */
   /* v158.39（老板「向上看时……相机与人的距离缩短，最终在眼睛与地面之间」）：
      旧版距离恒 16m：右键上拖只把仰角从 1.0 压到 0.42，相机仍在 2.8m 高空、离人 16m，
      观感是"镜头越仰越远"。现在距离随仰角连续收缩，最低到 3.2m；
@@ -9570,10 +9590,15 @@
         .addScaledVector(e2, Math.cos(e) * Math.sin(ay));
     }
     function _distOf(e) {
+      /* v158.47：距离上限改读滚轮控制的 live 基准 _surfCamDist（默认 16m）——
+         滚轮连续调"相机高度/距离"，右键仰角在 [MIN, live] 内缩放，两者协同。 */
+      var _dL = (M._surfCamDist != null && isFinite(M._surfCamDist))
+        ? Math.max(M.SURF_CAM_MIN_DIST, Math.min(M.SURF_CAM_DIST, M._surfCamDist))
+        : M.SURF_CAM_DIST;
       var s0 = Math.sin(elMin), s1 = Math.sin(elMax);
       var t = (Math.sin(e) - s0) / Math.max(1e-6, s1 - s0);
       t = Math.max(0, Math.min(1, t));
-      return M.SURF_CAM_MIN_DIST + (M.SURF_CAM_DIST - M.SURF_CAM_MIN_DIST) * Math.pow(t, 0.75);
+      return M.SURF_CAM_MIN_DIST + (_dL - M.SURF_CAM_MIN_DIST) * Math.pow(t, 0.75);
     }
     var dirCam = _dcamOf(el);
     var camDist = _distOf(el);
