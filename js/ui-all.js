@@ -17060,18 +17060,25 @@ import './ui.js';
    * 一行速度 + 键位（占屏最小；静止即隐）。由 map3d 渲染循环按 sig 去重驱动
    * （速度取整变化才写一次 DOM）。诉求 5「必要时对操作方式加以说明」。
    * ============================================================ */
-  ui.renderFlyHud = function (v) {
+  /* v158.53（老板点名「星球方位指示」）：HUD 从一行速度升级为**常驻参照仪表**。
+     nav 由 map3d 的 M._flyNavState() 单一出口提供（-bearing=星球在左、
+     elev=星球在机体上/下方），这里只做呈现，绝不另算一套方位。
+     罗盘里 ▲=机头（恒朝上，因为画面跟着机头转）、●=星球实时方位。 */
+  ui.renderFlyHud = function (v, nav) {
     var root = (ui.layerRoot && ui.layerRoot()) || null;
     if (!root || !root.appendChild) return null;
     var el = document.getElementById('fly-hud');
     if (!el) {
       el = document.createElement('div');
       el.id = 'fly-hud';
-      el.style.cssText = 'position:absolute;left:50%;bottom:120px;transform:translateX(-50%);'
+      /* v158.53：HUD 从底部居中移到右侧中部 —— 多行罗盘会盖住第三人称
+         战舰（实机图 v15853-A 抓出：青色三角被 HUD 压在下缘）。右侧空白
+         不挡中央机体，也不与顶部工具条/底部状态条冲突。 */
+      el.style.cssText = 'position:absolute;right:24px;top:50%;transform:translateY(-50%);'
         + 'z-index:1902;pointer-events:none;display:none;white-space:nowrap;'
         + 'background:rgba(12,18,26,.86);color:#8fd8ff;'
         + 'border:1px solid rgba(90,160,220,.45);border-radius:8px;'
-        + 'padding:5px 12px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
+        + 'padding:6px 12px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
       root.appendChild(el);
     }
     if (v == null || (ui.modalVisible && ui.modalVisible())) {
@@ -17079,9 +17086,39 @@ import './ui.js';
       return el;
     }
     var _sp = Math.round(Math.abs(v));
-    el.innerHTML = '<span style="opacity:.9;">🚀 空天战舰 · </span>'
-      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
-      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">←→ 加减速 · ↑↓ 升降 · W/S 俯仰 · A/D 转向</span>';
+    var _navHtml = '';
+    if (nav) {
+      /* 极点退化时 bearing 被数据源归 0（front/side 同时趋 0 无意义），
+         罗盘不能照 0° 画在正上方——那会与"正下方"文案矛盾（实机图抓出）。
+         正下方 → 180°（罗盘下缘），正上方 → 0°（罗盘上缘）。 */
+      var _poleDown = nav.dir8 === '正下方', _poleUp = nav.dir8 === '正上方';
+      var _a = (_poleDown ? 180 : nav.bearing) * Math.PI / 180;
+      var _cx = 28 + Math.sin(_a) * 19, _cy = 28 - Math.cos(_a) * 19;
+      /* 正上/正下方已由 dir8 直说，不再叠 ↑/↓（否则"正下方 ↓"重复） */
+      var _um = (_poleUp || _poleDown) ? ''
+        : (nav.elev > 20 ? ' ↑' : (nav.elev < -20 ? ' ↓' : ''));
+      _navHtml = '<div style="display:flex;align-items:center;gap:10px;margin-top:5px;">'
+        + '<svg width="52" height="52" viewBox="0 0 56 56" style="flex:none;">'
+        + '<circle cx="28" cy="28" r="26" fill="rgba(8,16,24,.85)" '
+        + 'stroke="rgba(120,190,240,.5)" stroke-width="1"/>'
+        + '<path d="M28 15 L23.5 30 L28 26 L32.5 30 Z" fill="#7fe8ff"/>'
+        + '<circle cx="' + _cx.toFixed(1) + '" cy="' + _cy.toFixed(1) + '" r="5" '
+        + 'fill="#ffb648" stroke="#fff0c8" stroke-width="1.2"/>'
+        + '</svg>'
+        + '<div style="line-height:1.6;">'
+        + '<div style="color:#ffcf7a;">🌍 星球 ' + U.escape(nav.dir8 + _um)
+        + ' · 离地 ' + U.escape(String(Math.round(nav.alt)))
+        + ' m · 球心 ' + U.escape(String(Math.round(nav.range))) + ' m</div>'
+        + '<div style="opacity:.7;font-size:12px;">机头→星球 '
+        + U.escape(String(Math.round(nav.toward)))
+        + '° · 横滚 ' + U.escape(String(Math.round(nav.bank))) + '°</div>'
+        + '</div></div>';
+    }
+    el.innerHTML = '<div><span style="opacity:.9;">🚀 空天战舰 · </span>'
+      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '推进' : '倒飞') + '</div>'
+      + _navHtml
+      + '<div style="opacity:.6;font-size:12px;margin-top:4px;">'
+      + '鼠标 看哪飞哪 · W/S 推进刹车 · A/D 横滚 · ↑↓ 升降 · 双击右键回正</div>';
     el.style.display = 'block';
     return el;
   };

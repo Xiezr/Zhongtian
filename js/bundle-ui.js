@@ -6798,13 +6798,17 @@
    * ------------------------------------------------------------
    * **飞行 = 太空中的惯性战舰**（不再是"绕球滚动的相机"）：
    *   · 位置 `fly.pos` 是自由 3D 点（不再锁 camO.dist 球面），沿**速度矢量**
-   *     `fly.vel` 推进；机头 `fly.head` 由 W/S 俯仰、A/D 转向操纵；
+   *     `fly.vel` 推进；v158.52 机头由 W/S 俯仰、A/D 转向操纵；
    *   · 速度标量 `fly.v` 在无外力时**恒定**（牛顿第一定律）——只有 ←→（加减速）
    *     或左键（刹车）才改它；松键不再指数衰减；
-   *   · 转向时机头先转，**速度矢量以有限角率追随**（FLY_VEL_TURN）——
-   *     于是轨迹是一条弧线，飞船"漂移"着拐弯，而不是把星球转过来；
+   *   · v158.52 转向时机头先转、速度以有限角率追随（FLY_VEL_TURN）；
    *   · ↑↓ 直接改球心距离（海拔），松手保持当前高度；
    *   · 第三人称机位 + 三角锥战舰 mesh + 尾迹线，让运动看得见。
+   *   ⚠️ v158.53 整条重做（老板「可操纵性差、上不是上、下不是下、
+   *     完全没有坐标原点、玩家不知道自己在哪里」）：鼠标即机头（看哪飞哪）、
+   *     vel 瞬时对齐 head（有限追随的 20.8° 侧滑整条退役）、W/S 改推进刹车、
+   *     A/D 改横滚 + 协调转弯 + banking、HUD 常驻「星球方位指示」。
+   *     上面 VEL_TURN/PITCH 只作演进溯源，墓碑见常量区，不得复活。
    * camO.dir/dist/yaw/pitch 仍是 placeCamera 与地表交班的唯一位置来源，
    * 每帧由 fly.pos 反算写回（这是与既有相机状态机的唯一接口）。
    * ============================================================ */
@@ -6812,26 +6816,76 @@
   M.FLY_BACK_MAX = 72;     /* 倒飞上限 = 0.6×FLY_MAX */
   M.FLY_ACCEL = 48;        /* 加速度（m/s²）：约 2.5 秒到顶 */
   M.FLY_TURN = 1.1;        /* 机头转向率（rad/s） */
-  M.FLY_VEL_TURN = 2.4;    /* v158.52：速度矢量追随机头的角率（rad/s）——
-                              有限角率 = 转向留弧线（惯性），不是瞬移朝向。
-                              必须 > FLY_TURN/(0.25+0.75·v/vmax) 才收敛：
-                              0.65 时有效追随仅 0.49 rad/s < 机头 1.1，
-                              夹角发散到 140°（探针⑥抓出，机头与航向脱节）；
-                              2.4 时有效 1.8 > 1.1，稳态侧滑角约 35°，
-                              松手后 1.5s 归位 —— 有漂移感但不倒着飞。 */
-  M.FLY_CLIMB = 24;        /* v158.52：↑↓ 升降速率（m/s）——直接改半径 */
+  /* v158.53（老板「角度转向始终有硬伤、可操纵性差、上不上上、下不是下、
+        完全不知道自己在哪里、不能按意愿想去哪就去」）—— 按无人深空范式重做：
+        鼠标即机头（看哪飞哪）；速度**瞬时**对齐机头（旧版有限追随产生 20.8°
+        侧滑=推舵还在往原方向飘，探针实测）；A/D 改为横滚带 banking；
+        W/S 推进刹车。旧 FLY_VEL_TURN/FLY_PITCH 退役（墓碑见下）。 */
+  M.FLY_LOOK_K = 0.0042;   /* 鼠标位移 → 机头转角（rad/px）：拖 250px ≈ 60° */
+  M.FLY_ROLL = 1.7;        /* A/D 横滚角率（rad/s） */
+  M.FLY_BANK_TURN = 0.75;  /* 横滚协调转弯：横滚同时绕径向转向的比例 */
+  M.FLY_CLIMB = 24;        /* ↑↓ 辅助升降速率（m/s）——直接改半径 */
+  /* ⛔ v158.53 退役：FLY_VEL_TURN（速度有限追随 → 20.8° 侧滑）、
+     FLY_PITCH（W/S 俯仰 → 改为推进）。去向：速度瞬时对齐见 _tickFlight ④；
+     俯仰改由鼠标完成（FLY_LOOK_K）。 */
   /* v158.52 实机截图取证：初版 BACK18/UP6/LOOK42 + 大锥(2.4,8) 占屏约 1/4、
      挡住大半视野（v15852-A/B 截图）；缩机 + 拉远后形体仍清晰、占屏约 1/12。 */
   M.FLY_CAM_BACK = 24;     /* v158.52：第三人称机位在战舰后方（m） */
   M.FLY_CAM_UP = 9;        /* 机位高于战舰（m，沿径向朝外） */
   M.FLY_CAM_LOOK = 60;     /* 机位注视战舰前方（m） */
   M.FLY_TRAIL_MAX = 120;   /* 尾迹采样点数 */
-  M.FLY_PITCH = 0.9;       /* W/S 机头俯仰率（rad/s） */
-  M.FLY_LEVEL_AFTER = 2.5; /* 无方向输入 N 秒后右键视角偏移缓慢回 0 */
+  M.FLY_LEVEL_AFTER = 2.5; /* 无方向输入 N 秒后视角偏移缓慢回 0 */
   M.FLY_LEVEL_RATE = 0.5;
-  M._fly = { v: 0, pos: null, head: null, vel: null, active: false,
+  M._fly = { v: 0, pos: null, head: null, vel: null, up: null, active: false,
              climb: 0, trail: [], trailAt: 0 };
   function _flyVec(a) { return new THREE.Vector3(a[0], a[1], a[2]); }
+
+  /* ============================================================
+   * v158.53（老板点名「星球方位指示」）—— 飞行导航的**唯一只读数据源**。
+   * ------------------------------------------------------------
+   * 老板反馈「完全没有一个坐标原点、没有一个可参考性……玩家完全不知道
+   * 自己在哪里」。根因不是参数，是缺参照：HUD 只有速度，星球在机头前方
+   * 还是背后、机体是正飞还是倒扣，屏幕上一概看不出来。这里把
+   * 「战机 → 球心」矢量投影到机体正交基（head / right / up），给出：
+   *   bearing  星球相对机头的方位角：0=正前，正=右，负=左（-180..180）
+   *   elev     星球在机体 up 方向的仰角：正=星球在机体上方
+   *   dir8     八方位中文（前/右前/右/右后/后/左后/左/左前）
+   *   vertical 上方/平齐/下方
+   *   alt      离地海拔（球心距 − R），range 球心距
+   *   toward   机头与「指向球心」的夹角（0=直冲星球，180=背向星球）
+   *   bank     机体横滚角（_bankAngle 快照）
+   * 只算不改状态；HUD 与探针共用同一出口，避免"显示的和测的不是一回事"。
+   * ============================================================ */
+  M._flyNavState = function () {
+    var f = M._fly;
+    if (!f || !f.active || !f.pos || !f.head) return null;
+    var p = _flyVec(f.pos), r = p.length();
+    var rad = p.clone().multiplyScalar(1 / Math.max(1e-6, r));
+    var toP = rad.clone().negate();                       /* 战机 → 球心 */
+    var hd = _flyVec(f.head).normalize();
+    var up = f.up ? _flyVec(f.up).normalize() : rad.clone();
+    var right = new THREE.Vector3().crossVectors(hd, up);
+    if (right.lengthSq() < 1e-8) right = new THREE.Vector3().crossVectors(hd, rad);
+    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    right.normalize();
+    var front = toP.dot(hd), side = toP.dot(right), top = toP.dot(up);
+    var bearing = Math.atan2(side, front) * 180 / Math.PI;
+    var elev = Math.asin(Math.max(-1, Math.min(1, top))) * 180 / Math.PI;
+    var _names = ['前', '右前', '右', '右后', '后', '左后', '左', '左前'];
+    var _idx = ((Math.round(bearing / 45) % 8) + 8) % 8;
+    /* 星球在机体**正上/正下方**时，front/side 同时趋 0，bearing 是浮点噪声
+       （实测基线 elev=-90° bearing 却在 0~18° 乱跳）。此时八方位无意义，
+       直接报"正下方/正上方"——这正是玩家最需要的参照：脚底就是星球。 */
+    var _pole = Math.abs(elev) > 80;
+    return {
+      bearing: _pole ? 0 : bearing, elev: elev,
+      dir8: _pole ? (elev > 0 ? '正上方' : '正下方') : _names[_idx],
+      vertical: elev > 20 ? '上方' : (elev < -20 ? '下方' : '平齐'),
+      alt: r - R, range: r,
+      toward: Math.acos(Math.max(-1, Math.min(1, front))) * 180 / Math.PI,
+      bank: M._bankAngle || 0
+    };
+  };
 
   /* ---- 三角锥战舰 + 尾迹（唯一形体；地表态隐藏） ---- */
   function _ensureShip() {
@@ -6925,6 +6979,7 @@
       _hv.normalize();
       fly.head = [_hv.x, _hv.y, _hv.z];
       fly.vel = [_hv.x, _hv.y, _hv.z];
+      fly.up = [_rv.x, _rv.y, _rv.z];   /* v158.53：机体"上"初始 = 径向背向星球 */
     }
     var pos = _flyVec(fly.pos), head = _flyVec(fly.head), vel = _flyVec(fly.vel);
     var radial = pos.clone().normalize();
@@ -6938,13 +6993,13 @@
       pos.setLength(_rWheel);
       radial = pos.clone().normalize();
     }
-    /* ① 速度标量：←→ 是唯一的"发动机力"，无输入恒速（牛顿第一定律） */
-    if (r) fly.v += (M.FLY_ACCEL || 48) * dt;
-    if (l) fly.v -= (M.FLY_ACCEL || 48) * dt;
+    /* ① 速度标量：W/→ 推进、S/← 刹车（无输入恒速，牛顿第一定律） */
+    if (r || w) fly.v += (M.FLY_ACCEL || 48) * dt;
+    if (l || s) fly.v -= (M.FLY_ACCEL || 48) * dt;
     var _vmax = M.FLY_MAX || 120, _vmin = -(M.FLY_BACK_MAX || 72);
     fly.v = Math.max(_vmin, Math.min(_vmax, fly.v));
-    if (!r && !l && Math.abs(fly.v) < 0.01) fly.v = 0;
-    /* ② ↑↓ 升降：直接改球心距离（海拔），松手保持 */
+    if (!r && !l && !w && !s && Math.abs(fly.v) < 0.01) fly.v = 0;
+    /* ② ↑↓ 辅助升降：直接改球心距离（海拔）—— 不再是"抬头"，抬头归鼠标 */
     var _climb = u ? (M.FLY_CLIMB || 24) : (dn ? -(M.FLY_CLIMB || 24) : 0);
     if (_climb) {
       var _nr0 = pos.length() + _climb * dt;
@@ -6953,25 +7008,36 @@
       radial = pos.clone().normalize();
     }
     fly.climb = _climb;
-    /* ③ 机头：W/S 俯仰（绕 right）、A/D 转向（绕径向 up） */
-    var right = new THREE.Vector3().crossVectors(radial, head);
-    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
-    right.normalize();
-    if (a) head.applyAxisAngle(radial, -(M.FLY_TURN || 1.1) * dt);
-    if (d) head.applyAxisAngle(radial, (M.FLY_TURN || 1.1) * dt);
-    if (w) head.applyAxisAngle(right, (M.FLY_PITCH || 0.9) * dt);
-    if (s) head.applyAxisAngle(right, -(M.FLY_PITCH || 0.9) * dt);
+    /* ③ A/D 横滚 + 协调转弯（无人深空 A/D = roll）：
+       绕机头横滚改变机体 up → 画面 banking；同时绕径向把机头带过去，
+       于是"按 A 就往左去"而不是原地侧滑。W/S 俯仰已退役 → 鼠标控制。 */
+    var _bank = fly.up ? _flyVec(fly.up).normalize() : radial.clone();
+    if (a || d) {
+      var _rollDir = a ? -1 : 1;
+      _bank.applyAxisAngle(head, _rollDir * (M.FLY_ROLL || 1.7) * dt).normalize();
+      head.applyAxisAngle(radial, _rollDir * (M.FLY_BANK_TURN || 0.75) * dt).normalize();
+      /* 机头转后重新正交化 up，防与 head 不垂直导致画面翻滚 */
+      _bank.addScaledVector(head, -_bank.dot(head)).normalize();
+    } else {
+      /* 松手缓慢回正：机体 up 朝径向靠拢（脚底星球），转回平飞 */
+      _bank.lerp(radial, Math.min(1, 0.8 * dt)).normalize();
+    }
     head.normalize();
-    /* ④ 速度矢量以有限角率追随机头 —— 转向留下弧线轨迹（惯性），
-          而不是旧版"视线切向瞬移、星球像被转过来" */
-    var _vt = (M.FLY_VEL_TURN || 2.4) * (0.25 + 0.75 * Math.min(1, Math.abs(fly.v) / _vmax));
-    vel.lerp(head, Math.min(1, _vt * dt)).normalize();
+    /* ④ 速度瞬时对齐机头（v158.53 规则变更）：
+       旧"有限追随"实测 0.5s 侧滑 20.8° —— 推了舵还往原方向飘，老板原话
+       "不能按自己意愿想去哪就去"。现在 vel = head，看哪飞哪；转向的弧线
+       由机头自己在转产生，不再靠速度滞后 —— 轨迹仍是弧，但不再脱节。 */
+    vel.copy(head);
     /* ⑤ 位置沿速度矢量推进（自由 3D，不再锁球面切向） */
     pos.addScaledVector(vel, fly.v * dt);
     fly.pos = [pos.x, pos.y, pos.z];
     fly.head = [head.x, head.y, head.z];
     fly.vel = [vel.x, vel.y, vel.z];
+    fly.up = [_bank.x, _bank.y, _bank.z];
+    M._bankAngle = Math.acos(Math.max(-1, Math.min(1, _bank.dot(radial)))) * 180 / Math.PI;
     fly.active = true;
+    /* v158.53：当帧导航快照（HUD + 探针共读，绝不各算一套） */
+    M._flyNav = M._flyNavState();
     /* 与既有相机状态机对账：每帧由自由位置反算 camO 的位置量 */
     var _nr = pos.length();
     camO.dist = _nr;
@@ -6982,16 +7048,8 @@
     camO.yaw = Math.atan2(_ndF.x, _ndF.z);
     camO.pitch = Math.asin(Math.max(-1, Math.min(1, _ndF.y)));
     camO.quat = null; camO._euler = null;
-    /* 右键视角偏移缓慢回正（v158.51 保留；第三人称 up 恒径向，天然脚底星球） */
-    var _idle = !(w || s || a || d || !!M._rmbLook);
-    if (_idle) {
-      M._flyIdleT = (M._flyIdleT || 0) + dt;
-      if (M._flyIdleT > (M.FLY_LEVEL_AFTER || 2.5)) {
-        var _lp = camO.lookPitch || 0;
-        camO.lookPitch = Math.abs(_lp) > 0.01
-          ? _lp - Math.sign(_lp) * Math.min(Math.abs(_lp), (M.FLY_LEVEL_RATE || 0.5) * dt) : 0;
-      }
-    } else M._flyIdleT = 0;
+    /* v158.53：右键视角偏移已不再参与飞行机位（机头 = 视线，二者合一），
+       旧的 lookPitch 回正整条退役；机体 banking 回正在上方 ③ 的 else 分支逐帧完成。 */
     /* 尾迹采样：每 0.08 秒一点，只记真在动的时候 */
     var _now = Date.now();
     if (Math.abs(fly.v) > 0.3 && _now - (fly.trailAt || 0) > 80) {
@@ -7006,14 +7064,19 @@
   }
   M.flyTick = _tickFlight;
   /* 探针出口（只读纯函数）：飞行状态快照 —— 给 smoke 断言/探针用。 */
+  /* v158.53：探针出口扩为「机体 up + 横滚角 + 导航快照」，velTurn 整条退役。
+     仍保留 lookYaw/lookPitch 只读字段（地表态环视仍需，飞行态恒 0）。 */
   M.flyProbe = function () {
     var f = M._fly || {};
     return { v: f.v || 0, pos: f.pos ? f.pos.slice() : null,
       head: f.head ? f.head.slice() : null, vel: f.vel ? f.vel.slice() : null,
+      up: f.up ? f.up.slice() : null,
       active: !!f.active, climb: f.climb || 0, trail: (f.trail || []).length,
       alt: f.pos ? (Math.hypot(f.pos[0], f.pos[1], f.pos[2]) - R) : null,
       max: M.FLY_MAX, back: M.FLY_BACK_MAX, accel: M.FLY_ACCEL,
-      turn: M.FLY_TURN, velTurn: M.FLY_VEL_TURN, climbRate: M.FLY_CLIMB,
+      turn: M.FLY_TURN, lookK: M.FLY_LOOK_K, roll: M.FLY_ROLL,
+      bankTurn: M.FLY_BANK_TURN, climbRate: M.FLY_CLIMB,
+      bank: M._bankAngle || 0, nav: M._flyNavState ? M._flyNavState() : null,
       yaw: camO.yaw, pitch: camO.pitch, dir: camO.dir ? camO.dir.slice() : null,
       lookYaw: camO.lookYaw, lookPitch: camO.lookPitch };
   };
@@ -7590,22 +7653,16 @@
           `_surfDir` / `_prevF` 分支），那是**模式切换**、不是滚轮转向。 */
     var _lpEff = camO.lookPitch;
     if (M._fly && M._fly.active && !M._surf && M._fly.pos && M._fly.head && cam.lookAt) {
-      /* v158.52：第三人称战舰机位 —— 覆盖轨道"看球心"姿态。
-         机位在战舰后方 + 径向抬高；up 恒径向 = 脚底永远朝星球；
-         注视战舰前方（机头方向），所以"前进就是画面往前"，不是转星球。
-         右键 lookYaw/lookPitch 作为相对机头的转头偏移保留。 */
+      /* v158.53（无人深空范式）：**机头 = 视线**，没有第二套 lookYaw/lookPitch。
+         机位在战舰正后方（沿机体 up 抬高，随横滚一起 banking），注视机头前方。
+         于是鼠标转机头 = 转画面；按 A/D 横滚 = 画面倾斜。星球方位由 HUD 指示。 */
       var _sp = _flyVec(M._fly.pos);
       var _hd = _flyVec(M._fly.head).normalize();
-      var _upR = _sp.clone().normalize();
+      var _upR = M._fly.up ? _flyVec(M._fly.up).normalize() : _sp.clone().normalize();
       cam.position.copy(_sp).addScaledVector(_hd, -(M.FLY_CAM_BACK || 24))
         .addScaledVector(_upR, (M.FLY_CAM_UP || 9));
       cam.up.copy(_upR);
       var _tg = _sp.clone().addScaledVector(_hd, (M.FLY_CAM_LOOK || 60));
-      if (camO.lookYaw || _lpEff) {
-        var _fq = new THREE.Quaternion().setFromEuler(new THREE.Euler(
-          Math.max(-1.55, Math.min(1.55, _lpEff)), camO.lookYaw, 0, 'YXZ'));
-        _tg.sub(_sp).applyQuaternion(_fq).add(_sp);
-      }
       cam.lookAt(_tg);
       M._flyCam = { pos: cam.position.toArray(), up: _upR.toArray() };
     } else {
@@ -7676,17 +7733,9 @@
     try { _tickEdgePan(_epDt); } catch (eEP1) { if (!M._epErr1) { M._epErr1 = String(eEP1 && eEP1.message); } }
     /* v158.43：高空 WASD 飞行（纯相机惯性飞行）—— 也在 placeCamera 之前跑，当帧生效 */
     try { _tickFlight(_epDt); } catch (eFL1) { if (!M._flErr1) { M._flErr1 = String(eFL1 && eFL1.message); } }
-    /* v158.43：飞行 HUD —— sig 去重（速度取整变化才写 DOM），高空且有速度才显示 */
-    try {
-      if (GAME.ui && GAME.ui.renderFlyHud) {
-        var _fv0 = (M._fly && M._fly.v) || 0;
-        var _sigF = (!M._surf && Math.abs(_fv0) > 0.3) ? Math.round(Math.abs(_fv0)) : 0;
-        if (_sigF !== (M._flyHudSig || 0)) {
-          M._flyHudSig = _sigF;
-          GAME.ui.renderFlyHud(_sigF ? _fv0 : null);
-        }
-      }
-    } catch (eFH) { }
+    /* v158.53：飞行 HUD 已移到 placeCamera **之后**（纯 UI 呈现，不需要在
+       相机前跑；也保住 §616②「edgePan → placeCamera 当帧距离 <2000」的结构判据，
+       不放宽断言）。_flyNav 由上方 _tickFlight 写，位置无关。 */
     /* v158.46：相机高度 HUD —— 海拔口径（老板拍板：dist−R，不含地形）；
        sig 去重（取整变化才写 DOM）。v158.46c（老板「不要占据用户的心智」）：
        **高度变化时显示，静止 3 秒自动淡出** —— 实时在需要时给，静止不占屏 */
@@ -7710,6 +7759,27 @@
     placeCamera();
     /* v158.44：人物屏占比固定缩放 —— 在 placeCamera 之后用本帧机位算距离 */
     try { _figScaleTick(); } catch (eFS1) { if (!M._fsErr1) { M._fsErr1 = String(eFS1 && eFS1.message); } }
+    /* v158.43 → v158.53（规则变更）：飞行 HUD 从"有速度才闪一下"改为
+       飞行态**常驻仪表** —— 星球方位/横滚/海拔是参照系，静止时同样要看得见
+       （老板：「完全没有一个坐标原点……玩家完全不知道自己在哪里」）。
+       sig 去重要含方位/海拔/横滚，否则转头了速度没变 HUD 就不刷新。
+       位置在 _figScaleTick 之后：纯 UI 呈现不抢相机当帧，同时守住
+       §616②（edgePan→placeCamera <2000）与 §624②（placeCamera→figScale <600）。 */
+    try {
+      if (GAME.ui && GAME.ui.renderFlyHud) {
+        var _flying = !!(M._fly && M._fly.active && !M._surf && M._fly.pos && M._fly.head);
+        var _fv0 = (M._fly && M._fly.v) || 0;
+        var _nv = M._flyNav || null;
+        var _sigF = _flying
+          ? [Math.round(Math.abs(_fv0)), Math.round(_nv ? _nv.bearing : 0),
+             Math.round(_nv ? _nv.alt : 0), Math.round(_nv ? _nv.bank : 0)].join(':')
+          : 'off';
+        if (_sigF !== (M._flyHudSig || '')) {
+          M._flyHudSig = _sigF;
+          GAME.ui.renderFlyHud(_flying ? _fv0 : null, _nv);
+        }
+      }
+    } catch (eFH) { }
     /* v158.0（P0）：跟随态在 placeCamera **之后**覆盖相机，且只写 camO.dir
        （让地表 patch 跟着人走），绝不碰 quat/dist/lookPitch —— 退出跟随零跳变。 */
     if ((M.FOLLOW || M._surf) && M.PLAYER_AVATAR) {
@@ -8435,9 +8505,10 @@
           lookDrag = 2;
           /* 不 return —— 继续落下去初始化为"抓球拖拽"（与左键同一条路） */
         } else {
-          /* v158.43：高空右键 = 转头（朝向变、位置不变）。_rmbLook 专标记
-             区分中键 lookDrag（双击回正只认右键）。提前 return：不再初始化
-             _panBasis 抓球 —— 高空位置移动归 WASD 飞行。 */
+          /* v158.53（无人深空）：高空右键 = **转机头**（看哪飞哪）。
+             旧 v158.43 的"转头偏移 lookYaw/lookPitch"整条退役 —— 它让视线
+             与航向解耦（实测右键转 86°、机头 0°，玩家彻底迷失）。
+             _rmbLook 保留为"正在拖机头"标记；中键 lookDrag 也走同一分支。 */
           M._rmbLook = true;
           M._rmbDownAt = Date.now(); M._rmbMoved = false;
           moved = false;
@@ -8791,6 +8862,28 @@
       }
       if (lookDrag) {
         var _dx = e.clientX - lx, _dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+        /* ============================================================
+         * v158.53（无人深空范式）：高空右键拖 = **直接转机头**。
+         * 旧版这里写 camO.lookYaw/lookPitch（视线偏移），而航向 fly.head
+         * 由键盘另管 —— 实测右键转 86°、机头转 0°，即"看这边、飞那边"，
+         * 老板原话"鼠标右键完全不知道自己在哪里"。正解：左右拖绕径向
+         * 偏航机头、上下拖绕机体 right 俯仰机头，眼到机到。
+         * 地表/非飞行态仍走下方旧 lookYaw/lookPitch 分支（那是环视/转头）。
+         * ============================================================ */
+        if (!M._surf && M._fly && M._fly.active && M._fly.head
+            && (lookDrag === 1) && (!M.FOLLOW)) {
+          var _fh = _flyVec(M._fly.head).normalize();
+          var _fp = _flyVec(M._fly.pos), _frad = _fp.clone().normalize();
+          var _fright = new THREE.Vector3().crossVectors(_frad, _fh);
+          if (_fright.lengthSq() < 1e-8) _fright.set(1, 0, 0);
+          _fright.normalize();
+          if (_dx) _fh.applyAxisAngle(_frad, -_dx * (M.FLY_LOOK_K || 0.0042));
+          if (_dy) _fh.applyAxisAngle(_fright, -_dy * (M.FLY_LOOK_K || 0.0042));
+          _fh.normalize();
+          M._fly.head = [_fh.x, _fh.y, _fh.z];
+          if (Math.abs(_dx) + Math.abs(_dy) > 3) moved = true;
+          touch(); redraw(); return;
+        }
         /* 两个轴同一规则：**画面内容跟手**（见下方 v157g 注释）。
            右拖 = 内容右移（yaw 减）；下拖 = 内容下移（lookPitch 增）。 */
         /* ============================================================
@@ -9229,7 +9322,10 @@
            所以这里除了**中键转头**（松手即结束），还多一路 **右键转头**：
            `_rmbLook` 标记只在 mousedown 高空右键分支置位，中键不置 ——
            双击回正只认右键（与 v156.47「双击右键 = 视线回正」的能力一致）。
-           地表右键走 _rmbOrbit 分支，不经过这里。 */
+           地表右键走 _rmbOrbit 分支，不经过这里。
+           v158.53（规则变更）：飞行态机头=视线，双击右键不再写 lookYaw/lookPitch，
+           改为**回正到平飞**（机体 up 归径向、机头朝向不变）——保留"双击 = 回正"
+           的能力，但语义对齐无人深空的 level out。地表态仍用旧视线回正。 */
         var _wasRmbLook = !!M._rmbLook;
         M._rmbLook = false;
         lookDrag = 0;
@@ -9237,7 +9333,13 @@
           var _nowLk = Date.now();
           if (_nowLk - (M._lastRmbLookUp || 0) < 320) {
             M._lastRmbLookUp = 0;
-            camO.lookYaw = 0; camO.lookPitch = 0;
+            if (!M._surf && M._fly && M._fly.active && M._fly.pos && M._fly.head) {
+              var _lr = _flyVec(M._fly.pos).normalize();
+              M._fly.up = [_lr.x, _lr.y, _lr.z];
+              M._bankAngle = 0;
+            } else {
+              camO.lookYaw = 0; camO.lookPitch = 0;
+            }
             touch(); redraw();
           } else {
             M._lastRmbLookUp = _nowLk;
@@ -33520,18 +33622,25 @@ ui.openDuel = function (fid, moveId) {
    * 一行速度 + 键位（占屏最小；静止即隐）。由 map3d 渲染循环按 sig 去重驱动
    * （速度取整变化才写一次 DOM）。诉求 5「必要时对操作方式加以说明」。
    * ============================================================ */
-  ui.renderFlyHud = function (v) {
+  /* v158.53（老板点名「星球方位指示」）：HUD 从一行速度升级为**常驻参照仪表**。
+     nav 由 map3d 的 M._flyNavState() 单一出口提供（-bearing=星球在左、
+     elev=星球在机体上/下方），这里只做呈现，绝不另算一套方位。
+     罗盘里 ▲=机头（恒朝上，因为画面跟着机头转）、●=星球实时方位。 */
+  ui.renderFlyHud = function (v, nav) {
     var root = (ui.layerRoot && ui.layerRoot()) || null;
     if (!root || !root.appendChild) return null;
     var el = document.getElementById('fly-hud');
     if (!el) {
       el = document.createElement('div');
       el.id = 'fly-hud';
-      el.style.cssText = 'position:absolute;left:50%;bottom:120px;transform:translateX(-50%);'
+      /* v158.53：HUD 从底部居中移到右侧中部 —— 多行罗盘会盖住第三人称
+         战舰（实机图 v15853-A 抓出：青色三角被 HUD 压在下缘）。右侧空白
+         不挡中央机体，也不与顶部工具条/底部状态条冲突。 */
+      el.style.cssText = 'position:absolute;right:24px;top:50%;transform:translateY(-50%);'
         + 'z-index:1902;pointer-events:none;display:none;white-space:nowrap;'
         + 'background:rgba(12,18,26,.86);color:#8fd8ff;'
         + 'border:1px solid rgba(90,160,220,.45);border-radius:8px;'
-        + 'padding:5px 12px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
+        + 'padding:6px 12px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.45);';
       root.appendChild(el);
     }
     if (v == null || (ui.modalVisible && ui.modalVisible())) {
@@ -33539,9 +33648,39 @@ ui.openDuel = function (fid, moveId) {
       return el;
     }
     var _sp = Math.round(Math.abs(v));
-    el.innerHTML = '<span style="opacity:.9;">🚀 空天战舰 · </span>'
-      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '前进' : '倒飞')
-      + '<span style="opacity:.6;font-weight:600;margin-left:8px;">←→ 加减速 · ↑↓ 升降 · W/S 俯仰 · A/D 转向</span>';
+    var _navHtml = '';
+    if (nav) {
+      /* 极点退化时 bearing 被数据源归 0（front/side 同时趋 0 无意义），
+         罗盘不能照 0° 画在正上方——那会与"正下方"文案矛盾（实机图抓出）。
+         正下方 → 180°（罗盘下缘），正上方 → 0°（罗盘上缘）。 */
+      var _poleDown = nav.dir8 === '正下方', _poleUp = nav.dir8 === '正上方';
+      var _a = (_poleDown ? 180 : nav.bearing) * Math.PI / 180;
+      var _cx = 28 + Math.sin(_a) * 19, _cy = 28 - Math.cos(_a) * 19;
+      /* 正上/正下方已由 dir8 直说，不再叠 ↑/↓（否则"正下方 ↓"重复） */
+      var _um = (_poleUp || _poleDown) ? ''
+        : (nav.elev > 20 ? ' ↑' : (nav.elev < -20 ? ' ↓' : ''));
+      _navHtml = '<div style="display:flex;align-items:center;gap:10px;margin-top:5px;">'
+        + '<svg width="52" height="52" viewBox="0 0 56 56" style="flex:none;">'
+        + '<circle cx="28" cy="28" r="26" fill="rgba(8,16,24,.85)" '
+        + 'stroke="rgba(120,190,240,.5)" stroke-width="1"/>'
+        + '<path d="M28 15 L23.5 30 L28 26 L32.5 30 Z" fill="#7fe8ff"/>'
+        + '<circle cx="' + _cx.toFixed(1) + '" cy="' + _cy.toFixed(1) + '" r="5" '
+        + 'fill="#ffb648" stroke="#fff0c8" stroke-width="1.2"/>'
+        + '</svg>'
+        + '<div style="line-height:1.6;">'
+        + '<div style="color:#ffcf7a;">🌍 星球 ' + U.escape(nav.dir8 + _um)
+        + ' · 离地 ' + U.escape(String(Math.round(nav.alt)))
+        + ' m · 球心 ' + U.escape(String(Math.round(nav.range))) + ' m</div>'
+        + '<div style="opacity:.7;font-size:12px;">机头→星球 '
+        + U.escape(String(Math.round(nav.toward)))
+        + '° · 横滚 ' + U.escape(String(Math.round(nav.bank))) + '°</div>'
+        + '</div></div>';
+    }
+    el.innerHTML = '<div><span style="opacity:.9;">🚀 空天战舰 · </span>'
+      + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '推进' : '倒飞') + '</div>'
+      + _navHtml
+      + '<div style="opacity:.6;font-size:12px;margin-top:4px;">'
+      + '鼠标 看哪飞哪 · W/S 推进刹车 · A/D 横滚 · ↑↓ 升降 · 双击右键回正</div>';
     el.style.display = 'block';
     return el;
   };
@@ -44154,6 +44293,8 @@ ui.openDuel = function (fid, moveId) {
            v158.51（老板「QE 加减速，WSAD 只负责方向」）：Q/E 同入通道 ——
            E 加速 / Q 减速；W/S 机头俯仰、A/D 转向。 */
         /* v158.52：←→ 加减速、↑↓ 升降（替代 Q/E）；W/S 俯仰、A/D 转向。
+           v158.53（无人深空范式）：键通道不变，语义重排 —— W/S 改推进/刹车、
+           A/D 改横滚（协调转弯带 banking），俯仰交给鼠标（右键拖 = 转机头）。
            方向键在地表仍走走路通道（上面分支已 return），高空单独映射。 */
         var _flyK52 = null;
         if (_avCode === 'ArrowLeft') _flyK52 = 'left';
