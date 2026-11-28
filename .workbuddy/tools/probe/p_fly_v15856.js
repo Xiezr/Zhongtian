@@ -52,7 +52,8 @@ const ang = (a, b) => {
     ['_flyAimAt 出口', /M\._flyAimAt = function /.test(src)],
     ['_commitFlight 唯一提交', /function _commitFlight\(/.test(src)],
     ['_tickProgram 程序', /function _tickProgram\(/.test(src)],
-    ['机位吊尾端 BACK26', /addScaledVector\(_hd, -\(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)],
+    /* v158.58 起机位沿滞后尾向 _tailV（不再直接沿 −head） */
+    ['机位吊尾端 BACK26', /addScaledVector\(_tailV, \(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)],
     ['HUD 新键位文案', um.indexOf('加减速') >= 0 && um.indexOf('空格 起降') >= 0],
     ['空格接 flyToggle', mj.indexOf('flyToggle()') >= 0]
   ];
@@ -229,9 +230,11 @@ const ang = (a, b) => {
     return { phase: M._fly.phase, surf: !!M._surf, active: !!M._fly.active,
       alt: M.flyProbe().alt };
   });
-  ok('⑦降落程序：飞行中按降落 → phase landing→dock、交回地表层（_surf=true、active=false）',
+  /* v158.59 规则变更：落地不再自动切地表（老板「着陆后出来才是人」），
+     停在 'landed'、飞行器仍在；人要在下机后才出现。这里判 landed + 仍 active + 未切地表。 */
+  ok('⑦降落程序：飞行中按降落 → phase landing→landed、停在地面且未切地表（等玩家下机）',
     landStart.ok === true && landStart.phase === 'landing'
-      && landEnd.phase === 'dock' && landEnd.surf === true && landEnd.active === false,
+      && landEnd.phase === 'landed' && landEnd.surf === false && landEnd.active === true,
     'phase ' + landStart.phase + '→' + landEnd.phase + ' surf=' + landEnd.surf
       + ' active=' + landEnd.active + ' alt=' + (landEnd.alt == null ? 'null' : landEnd.alt.toFixed(1)));
 

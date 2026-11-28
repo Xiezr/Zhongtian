@@ -51734,7 +51734,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /applyAxisAngle\(_rightAx, _theta\)/.test(src)
         && /screenY: _sy, theta: _theta/.test(src)
         /* 起降程序期间禁用自动地表切换（否则起飞点 8.5m 会被判回地表） */
-        && /var _progFlight = !!\(M\._fly && M\._fly\.active &&/.test(src)
+        /* v158.59：程序豁免扩成「只要在飞行器上就永不派生地表切换」 */
+        && /var _onShip = !!\(M\._fly && M\._fly\.active\);/.test(src)
         && /_tickProgram\(dt\)/.test(src)
         && /M\.surfaceMode\(true\)/.test(src)
         /* 鼠标指示入口 + 准星 + HUD 新文案 */
@@ -51798,7 +51799,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /dW > 5 && dUp > 5 && dS < -5 && dDn < -5/.test(pr)  /* ⑤ 四键都调速 */
         && /launchEnd\.v > 30/.test(pr)                         /* ⑥ 起飞速度下限 */
         && /\(launchEnd\.alt - launchStart\.alt\) > 40/.test(pr) /* ⑥ 爬升下限 */
-        && /landEnd\.surf === true && landEnd\.active === false/.test(pr) /* ⑦ 交班地表 */
+        && /landEnd\.phase === 'landed' && landEnd\.surf === false/.test(pr)  /* v158.59 停稳未切地表 */
         && /st8\.bank > 25 && st8\.camRadDeg < 25/.test(pr)    /* ⑧ 相机与滚转分离 */
         && (pr.match(/ok\('/g) || []).length >= 11              /* 十一条全在册 */
         && /v15856-A-cruise-aim\.png/.test(sh)
@@ -51888,6 +51889,45 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
             && /catchDeg < 6/.test(pr)             /* 松手追上 */
             && /aimBefore === true && aimAfter === false/.test(pr)
             && /v15858-B-turning\.png/.test(sh);
+        })();
+    })());
+
+    /* ============================================================
+     * §623⑨ v158.59（老板「地面不要切换成人。做一个飞行器着陆，然后出来之后
+     *   才是人。我要画面不跳变，还是 60-40 这一段。不允许有高空和地面之分，
+     *   这是一个连续的空间」）
+     * ------------------------------------------------------------
+     * 规则变更：进地表从「按半径派生（<55m 进 / <62m 出）」改为
+     *   **只有下机这一个入口**。飞行全程 _surf 恒 false → 60-40 段不再有
+     *   模式切换；落地只把飞行器停在原地（phase=landed），人不下机不出现。
+     * ============================================================ */
+    check('§623⑨（v158.59 口径）飞行态永不切地表；landed 停稳；下机才是进地表唯一入口', (function () {
+      var src = _m3d608;
+      /* ⚠️ 注释不能夹在 return 与表达式之间 —— JS 会自动插分号（ASI），
+         变成 `return;` 让整个 check 返回 undefined（实测这条红了 3 次才定位）。 */
+      return /var _onShip = !!\(M\._fly && M\._fly\.active\);/.test(src)
+        && /var _surfNow = _onShip \? false/.test(src)
+        /* 落地只停稳，不再 surfaceMode */
+        && /fly\.phase = 'landed'; fly\.phaseT = 0; fly\.v = 0;/.test(src)
+        && /if \(fly\.phase === 'landed'\) \{/.test(src)
+        /* 下机 = 唯一入口，且落玩家位姿 */
+        && /M\.flyExit = function \(\)/.test(src)
+        && /M\.setPlayerPose\(\{ dir: \[_dpX\.x, _dpX\.y, _dpX\.z\]/.test(src)
+        && /if \(f\.phase === 'landed'\) return M\.flyExit\(\);/.test(src)
+        /* 预览 alpha 连续（飞行态低空允许到全实，不再硬顶 0.45） */
+        && /var _onShip59 = !!\(M\._fly && M\._fly\.active\);/.test(src)
+        && /\(65 - _aglP\) \/ 17/.test(src)
+        /* HUD 要能说清"已着陆、空格下机" */
+        && /已着陆 · 空格下机/.test(_um608)
+        /* 探针下限：60-40 段 surf 恒 false + 落地态 + 下机 */
+        && (function () {
+          var pr = _r608('.workbuddy/tools/probe/p_fly_v15859.js');
+          var sh = _r608('.workbuddy/tools/probe/p_fly_v15859_shot.js');
+          return /seg\.length >= 20 && !anySurf && maxStep < 6/.test(pr)
+            && /landed\.phase === 'landed' && landed\.surf === false/.test(pr)
+            && /ex === true && beforeExit\.surf === false && afterExit\.surf === true/.test(pr)
+            && /afterUp\.phase === 'takeoff' && afterUp\.surf === false/.test(pr)
+            && /v15859-C-landed\.png/.test(sh);
         })();
     })());
   })();
@@ -52027,11 +52067,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   check('§627① 轨道态 65m 下提前构建地表层 + 预览 alpha 渐入封顶 0.45', (function () {
     var src = _m3d608;
     var i = src.indexOf('function _tickSurfFade');
-    var blk = i >= 0 ? src.slice(i, i + 6400) : '';
+    var blk = i >= 0 ? src.slice(i, i + 8000) : '';
     return /_aglP < 65/.test(blk)
       && /if \(_needP48\) rebuildSurf\(camO\.dir \|\| \[0, 1, 0\]\)/.test(blk)
       && /Math\.cos\(\(5\.25 \/ R\) \* 3\)/.test(blk)
-      && /t = Math\.min\(0\.45, t\);/.test(blk)
+      /* v158.59 规则变更：alpha 从硬顶 0.45 改为连续加深（飞行态低空可到全实） */
+      && /var _onShip59 = !!\(M\._fly && M\._fly\.active\);/.test(blk)
+      && /\(65 - _aglP\) \/ 17/.test(blk)
+      && !/t = Math\.min\(0\.45, t\);/.test(blk)
       && /FAR48 = 70/.test(blk)
       && /M\._surfScat = scat;/.test(src);
   })());
@@ -52039,7 +52082,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   check('§627② 分档缩略：aglE>48 只显树（trunk/crown 保留，草/石/芦苇隐）+ 销毁 ≥75m 滞回', (function () {
     var src = _m3d608;
     var i = src.indexOf('function _tickSurfFade');
-    var blk = i >= 0 ? src.slice(i, i + 6400) : '';
+    var blk = i >= 0 ? src.slice(i, i + 8000) : '';
     return /_wantSmall48 = aglE <= 48/.test(blk)
       && /_k48 === 'trunk' \|\| _k48 === 'crown'/.test(blk)
       && /_im48\.visible = _wantSmall48/.test(blk)

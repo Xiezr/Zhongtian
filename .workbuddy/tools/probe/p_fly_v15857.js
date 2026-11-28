@@ -178,8 +178,10 @@ const RAD = (d) => d * Math.PI / 180;
     if (!started) return -1;
     const t0 = Date.now();
     for (let i = 0; i < 120; i++) {
+      /* v158.59：落地态改为 'landed'（停在跑道上、人还没下来），
+         旧判据等 'dock' 永远等不到。两个都算落地完成。 */
       const st = await p.evaluate(() => GAME.map3d._fly.phase);
-      if (st === 'dock') return Date.now() - t0;
+      if (st === 'landed' || st === 'dock') return Date.now() - t0;
       await p.waitForTimeout(100);
     }
     return -1;

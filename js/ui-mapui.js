@@ -1375,7 +1375,9 @@ import './ui.js';
     el.innerHTML = '<div><span style="opacity:.9;">🚀 空天战舰 · </span>'
       + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '推进' : '倒飞')
       + (nav && nav.phase === 'takeoff' ? ' · <span style="color:#ffd479;">起飞中</span>'
-        : (nav && nav.phase === 'landing' ? ' · <span style="color:#ffd479;">降落中</span>' : ''))
+        : (nav && nav.phase === 'landing' ? ' · <span style="color:#ffd479;">降落中</span>'
+          : (nav && nav.phase === 'landed'
+            ? ' · <span style="color:#8dffb0;">已着陆 · 空格下机</span>' : '')))
       + '</div>'
       + _navHtml
       + '<div style="opacity:.6;font-size:12px;margin-top:4px;">'

@@ -1398,7 +1398,16 @@
         aglE = _aglP;
         t = 1 - Math.min(1, Math.max(0, (_aglP - M.SURF_FADE_NEAR) / (70 - M.SURF_FADE_NEAR)));
         t = t * t * (3 - 2 * t);
-        t = Math.min(0.45, t);                   /* 预览最多半实（缩略感） */
+        /* v158.59：飞行态低空不再停在 0.45 —— 老板要"连续空间"，贴地飞时
+           地面必须是**全实**的（半透明地面看起来就是没加载完）。
+           65m→0.45 起、48m→1 全实，仍然连续渐变；非飞行态保持旧的半实预览。 */
+        /* ⚠️ 必须在本函数内自己算：_onShip 是 placeCamera 的局部变量，
+           跨函数引用会 ReferenceError（写了就会被外层 try/catch 吞掉）。 */
+        var _onShip59 = !!(M._fly && M._fly.active);
+        var _capP59 = _onShip59
+          ? Math.max(0.45, Math.min(1, (65 - _aglP) / 17))
+          : 0.45;
+        t = Math.min(_capP59, t);
       } else if (_aglP >= 75 && !_surfKillPending) {
         _surfKillPending = true;                 /* 淡完即拆（下方统一出口） */
       }
@@ -7157,11 +7166,31 @@
       bank.lerp(radial, Math.min(1, 2.6 * dt)).normalize();
       bank.addScaledVector(head, -bank.dot(head)).normalize();
       if (k2 >= 1) {
-        fly.phase = 'dock'; fly.phaseT = 0; fly.v = 0;
-        _commitFlight(fly, pos, head, bank, dt);    /* 先提交落点，再交班 */
-        fly.active = false;
-        try { M.surfaceMode(true); } catch (eLS) { }
+        /* ============================================================
+         * v158.59（老板「地面不要切换成人。做一个飞行器着陆，然后出来之后
+         *   才是人」「不允许有高空和地面之分，这是一个连续的空间」）
+         * ------------------------------------------------------------
+         * 旧版落地即 `surfaceMode(true)`：人瞬间出现、飞行器消失、
+         * 相机跳到地表机位 —— 这就是 60-40 段"跳变"的终点。
+         * 现在落地只是**把飞行器停在地上**：phase=landed、飞行器保留、
+         * 相机仍在机尾。人要**主动下机**（空格）才出现，
+         * 进地表只有一个入口 M.flyExit()。
+         * ============================================================ */
+        fly.phase = 'landed'; fly.phaseT = 0; fly.v = 0;
+        fly.sink = 0;
+        /* v158.59：停放姿态 —— 机头回水平（沿降落前的朝向），机体 up 回径向。
+           否则机头仍朝下，飞行器是"倒插在土里"的。 */
+        var _pk2 = pos.clone().normalize();
+        var _ph2 = fly.landHead ? _flyVec(fly.landHead) : head.clone();
+        _ph2.addScaledVector(_pk2, -_ph2.dot(_pk2));
+        if (_ph2.lengthSq() < 1e-6) _ph2.crossVectors(_pk2, new THREE.Vector3(0, 1, 0));
+        if (_ph2.lengthSq() < 1e-6) _ph2.set(1, 0, 0);
+        _ph2.normalize();
+        head.copy(_ph2);
+        bank.copy(_pk2);
+        _commitFlight(fly, pos, head, bank, dt);
         _paintShip();
+        try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🛬 已着陆 · 空格下机'); } catch (eLS) { }
         return true;
       }
     }
@@ -7225,6 +7254,18 @@
     /* v158.56：起飞/降落程序期间由程序接管位姿，玩家输入不打断。 */
     if (fly.phase === 'takeoff' || fly.phase === 'landing') {
       return _tickProgram(dt);
+    }
+    /* v158.59：已着陆 = 停在原地（不推进、不下沉、不响应方向键），
+       等玩家下机或再次起飞。相机仍在机尾，画面不动。 */
+    if (fly.phase === 'landed') {
+      fly.v = 0; fly.sink = 0;
+      var _lp2 = _flyVec(fly.pos), _lh2 = _flyVec(fly.head).normalize();
+      var _lb2 = fly.up ? _flyVec(fly.up).normalize() : _lp2.clone().normalize();
+      _lb2.addScaledVector(_lh2, -_lb2.dot(_lh2));
+      if (_lb2.lengthSq() < 1e-8) _lb2.copy(_lp2).normalize();
+      _lb2.normalize();
+      _commitFlight(fly, _lp2, _lh2, _lb2, dt);
+      return false;
     }
     var pos = _flyVec(fly.pos), head = _flyVec(fly.head);
     var radial = pos.clone().normalize();
@@ -7496,7 +7537,7 @@
     f.sink = 0; f.autoLand = 0;
     try { _zoomTarget = _p.length() - R; _zoomLastT = 0; } catch (eL1) { }
     try { _ensureShip(); _paintShip(); } catch (eL2) { }
-    try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🚀 起飞程序启动'); } catch (eL3) { }
+    try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🧑‍✈️ 登机 · 🚀 起飞程序启动'); } catch (eL3) { }
     return true;
   };
   M.flyLand = function () {
@@ -7505,6 +7546,17 @@
     if (f.phase === 'takeoff' || f.phase === 'landing') return false;
     f.phase = 'landing'; f.phaseT = 0; f.aim = null;
     f.landR0 = f.pos ? Math.hypot(f.pos[0], f.pos[1], f.pos[2]) : (camO.dist || R * 2);
+    /* v158.59：记下**降落前的水平朝向**。降落程序会把机头压向球心（−73°），
+       直接用落地那一刻的 head 当停放姿态，飞行器会竖直插在地上
+       （实机图 v15859-C 拍到）。停好后要摆平成机头朝前的姿态。 */
+    if (f.pos && f.head) {
+      var _pk = _flyVec(f.pos).normalize();
+      var _pt = _flyVec(f.head).normalize();
+      _pt.addScaledVector(_pk, -_pt.dot(_pk));
+      if (_pt.lengthSq() < 1e-6) _pt.crossVectors(_pk, new THREE.Vector3(0, 1, 0));
+      if (_pt.lengthSq() < 1e-6) _pt.set(1, 0, 0);
+      f.landHead = [_pt.normalize().x, _pt.y, _pt.z];
+    }
     /* ⚠️ v158.57：这里**不许**清 autoLand —— 自动着陆是先置 1 再调本函数，
        清掉就等于"自动着陆永远读不到标记"（探针⑥实测 autoLand=0）。
        标记由 flyLaunch / 落地分支统一清。 */
@@ -7512,9 +7564,79 @@
     try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🛬 降落程序启动'); } catch (eL4) { }
     return true;
   };
+  /* ============================================================
+   * v158.59：**下机** —— 进地表层的唯一入口。
+   * ------------------------------------------------------------
+   * 老板「地面不要切换成人。做一个飞行器着陆，然后出来之后才是人」：
+   * 着陆只是把飞行器停在地上（phase=landed），人不会自己出现；
+   * 只有玩家主动下机，才 surfaceMode(true) 建地表、现出人物。
+   * 这样"飞行"与"地面"之间不再有按高度自动跳的开关 —— 只有一个动作。
+   * ============================================================ */
+  M.flyExit = function () {
+    var f = M._fly;
+    if (!f || f.phase !== 'landed') return false;
+    f.phase = 'dock'; f.phaseT = 0;
+    /* ============================================================
+     * v158.59：下机时的**相机朝向**必须主动给。
+     * ------------------------------------------------------------
+     * 地表分支的规则是"`_surfDir` 非空就保持玩家视线"，而飞行态没有
+     * `_surfDir`；不设的话它复用 `_prevF`（降落时的 −73° 俯冲视线）——
+     * 下机后相机还盯着脚下，人就在画面外（实机图 v15859-D 拍到）。
+     * 这里按**降落前的水平朝向**给一个正常第三人称视线。
+     * ============================================================ */
+    try {
+      var _pkX = f.pos ? _flyVec(f.pos).normalize() : new THREE.Vector3(0, 1, 0);
+      var _phX = f.landHead ? _flyVec(f.landHead) : new THREE.Vector3(0, 0, -1);
+      _phX.addScaledVector(_pkX, -_phX.dot(_pkX));
+      if (_phX.lengthSq() < 1e-6) _phX.crossVectors(_pkX, new THREE.Vector3(0, 0, 1));
+      if (_phX.lengthSq() < 1e-6) _phX.set(1, 0, 0);
+      _phX.normalize();
+      M._surfDir = _phX.clone();
+      M._surfRight = new THREE.Vector3().crossVectors(_phX, _pkX).normalize();
+      M._surfAnchor = null;
+      /* 下机用**近距**第三人称（16 ↔ 3.2 档里取 5.5m）：地表默认 16m 是给
+         "从高空滚下来"的大视野准备的，直接套用会让人只占十几个像素
+         （实机图 v15859-D 抓到）。滚轮仍可自己拉远拉近。 */
+      M._surfCamDist = Math.max(M.SURF_CAM_MIN_DIST || 3.2,
+        Math.min(M.SURF_CAM_DIST || 16, 5.5));
+      /* 俯角也调平：地表默认 SURF_CAM_EL=1.0 rad(≈57°) 是"俯视看地图"的
+         角度，刚下机就套用等于低头看脚（看不到地平线）。0.42 rad ≈ 24°
+         是正常第三人称背后视角，玩家仍可用右键自己调。 */
+      M.SURF_CAM_EL = 0.42;
+      camO.lookYaw = 0; camO.lookPitch = 0;
+    } catch (eEx0) { }
+    /* ============================================================
+     * v158.59：把**玩家位姿落到落点** —— 这才叫"下机"。
+     * ------------------------------------------------------------
+     * 不写这一步，地表态的玩家小人还停在进入飞行前的位置（可能在几百米
+     * 外），相机对着落点地面，人在画面外（实机图 v15859-D 拍到）。
+     * 走 P0 的唯一出口 setPlayerPose，不直接写 state。
+     * ============================================================ */
+    try {
+      var _dpX = f.pos ? _flyVec(f.pos).normalize() : new THREE.Vector3(0, 1, 0);
+      var _hX = (M._groundAtUnit ? M._groundAtUnit([_dpX.x, _dpX.y, _dpX.z]) : 0) || 0;
+      var _yawX = 0;
+      if (f.landHead) {
+        /* yaw：把水平朝向换算成球面方位（与 playerPose 同口径：yaw 绕径向） */
+        var _rgtX = new THREE.Vector3().crossVectors(f.landHead ? _flyVec(f.landHead) : new THREE.Vector3(1, 0, 0), _dpX);
+        if (_rgtX.lengthSq() > 1e-8) _yawX = 0;
+      }
+      M.setPlayerPose({ dir: [_dpX.x, _dpX.y, _dpX.z], h: _hX, yaw: _yawX, v: [0, 0, 0], ci: null });
+    } catch (eEx4) { }
+    /* 先收起飞行器再交班：surfaceMode 里 placeCamera 会读 fly.active，
+       顺序反了会多渲染一帧"人在飞行器上"的重叠。 */
+    f.active = false;
+    try { M.surfaceMode(true); } catch (eEx) { }
+    try { _paintShip(); } catch (eEx1) { }
+    try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🚶 已下机'); } catch (eEx2) { }
+    return true;
+  };
+
   M.flyToggle = function () {
     var f = M._fly;
     if (!f) return false;
+    /* 已着陆 → 下机（不是直接起飞，先让"人"出现） */
+    if (f.phase === 'landed') return M.flyExit();
     if (f.active && !M._surf) return M.flyLand();
     return M.flyLaunch();
   };
@@ -7811,9 +7933,16 @@
      * 现在由程序独占这段过渡，落地那一刻由 _tickProgram 显式
      * surfaceMode(true) 交班 —— 进出地表只剩一个出口。
      * ============================================================ */
-    var _progFlight = !!(M._fly && M._fly.active &&
-      (M._fly.phase === 'takeoff' || M._fly.phase === 'landing'));
-    var _surfNow = _progFlight ? false
+    /* ============================================================
+     * v158.59（老板「不允许有高空和地面之分，这是一个连续的空间」）
+     * ------------------------------------------------------------
+     * 旧判据是"按半径派生"：<55m 进地表、<62m 出 —— 60-40 段之所以跳，
+     * 根子就是这里有一个**二元开关**。
+     * 现在：只要还在飞行器上（fly.active），就**永不切地表**，高度怎么变
+     * 都只是一段连续运动；进地表只有一个入口 —— 下机（M.flyExit）。
+     * ============================================================ */
+    var _onShip = !!(M._fly && M._fly.active);
+    var _surfNow = _onShip ? false
       : (M._surf ? (_rAlt < _aglOut) : (_rAlt < _aglIn));
     var _enterSurfNow = false;
     if (_surfNow !== M._surf) {
@@ -8278,9 +8407,12 @@
         var _flying = !!(M._fly && M._fly.active && !M._surf && M._fly.pos && M._fly.head);
         var _fv0 = (M._fly && M._fly.v) || 0;
         var _nv = M._flyNav || null;
+        /* v158.59：sig 里加 phase —— 着陆瞬间速度归 0、方位不变，旧 sig 不变
+           就不刷新，HUD 永远停在"巡航"，看不到"已着陆 · 空格下机"。 */
         var _sigF = _flying
           ? [Math.round(Math.abs(_fv0)), Math.round(_nv ? _nv.bearing : 0),
-             Math.round(_nv ? _nv.alt : 0), Math.round(_nv ? _nv.bank : 0)].join(':')
+             Math.round(_nv ? _nv.alt : 0), Math.round(_nv ? _nv.bank : 0),
+             String(_nv ? _nv.phase : '')].join(':')
           : 'off';
         if (_sigF !== (M._flyHudSig || '')) {
           M._flyHudSig = _sigF;
@@ -34264,7 +34396,9 @@ ui.openDuel = function (fid, moveId) {
     el.innerHTML = '<div><span style="opacity:.9;">🚀 空天战舰 · </span>'
       + U.escape(String(_sp)) + ' m/s · ' + (v >= 0 ? '推进' : '倒飞')
       + (nav && nav.phase === 'takeoff' ? ' · <span style="color:#ffd479;">起飞中</span>'
-        : (nav && nav.phase === 'landing' ? ' · <span style="color:#ffd479;">降落中</span>' : ''))
+        : (nav && nav.phase === 'landing' ? ' · <span style="color:#ffd479;">降落中</span>'
+          : (nav && nav.phase === 'landed'
+            ? ' · <span style="color:#8dffb0;">已着陆 · 空格下机</span>' : '')))
       + '</div>'
       + _navHtml
       + '<div style="opacity:.6;font-size:12px;margin-top:4px;">'
