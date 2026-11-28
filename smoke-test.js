@@ -51635,7 +51635,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /M\.FLY_ACCEL = 48;/.test(src)
         && /M\.FLY_LOOK_K = 0\.0042;/.test(src)
         && /M\.FLY_ROLL = 1\.7;/.test(src)
-        && /M\.FLY_BANK_TURN = 0\.75;/.test(src)
+        /* v158.58 规则变更：FLY_BANK_TURN（横滚顺便带一点转向）退役 ——
+           A/D 改为直接偏航（FLY_YAW_RATE），相机尾向单独滞后跟随（FLY_CAM_TURN）。
+           反向断言禁止旧常量复活。 */
+        && /M\.FLY_YAW_RATE = 1\.5;/.test(src)
+        && /M\.FLY_CAM_TURN = 4\.0;/.test(src)
+        && !/M\.FLY_BANK_TURN\s*=/.test(src)
         /* v158.56 新增：鼠标绝对指示 / 屏幕落点 / 机位分离 / 起降程序 ---------- */
         && /M\.FLY_AIM_MAX = 1\.15;/.test(src)
         && /M\.FLY_AIM_PITCH = 0\.85;/.test(src)
@@ -51661,7 +51666,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /M\.flyLand = function \(/.test(src)
         && /M\.flyToggle = function \(/.test(src)
         && /M\._flyAimAt = function \(/.test(src)
-        && /function _commitFlight\(fly, pos, head, bank\)/.test(src)
+        /* v158.58：_commitFlight 增 dt 参数（相机尾向一阶跟随要 dt） */
+        && /function _commitFlight\(fly, pos, head, bank, dt\)/.test(src)
         && /function _tickProgram\(dt\)/.test(src)
         && /M\._flyNavState = function \(\)/.test(src)
         && /M\.flyTick = _tickFlight;/.test(src)
@@ -51688,9 +51694,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /var _ang = head\.angleTo\(_aim\);/.test(src)
         && /head\.lerp\(_aim, _mx \/ Math\.max\(1e-6, _ang\)\)\.normalize\(\)/.test(src)
         /* A/D 横滚；有 aim 时不做协调转弯（否则和指示抢机头） */
-        && /_bank\.applyAxisAngle\(head, _rollDir \* \(M\.FLY_ROLL \|\| 1\.7\) \* dt\)/.test(src)
-        && /if \(!fly\.aim\) \{/.test(src)
-        && /head\.applyAxisAngle\(radial, _rollDir \* \(M\.FLY_BANK_TURN \|\| 0\.75\) \* dt\)/.test(src)
+        /* v158.58：横滚方向跟着偏航方向（-_yawDir），左转左倾 */
+        && /_bank\.applyAxisAngle\(head, -_yawDir \* \(M\.FLY_ROLL \|\| 1\.7\) \* dt\)/.test(src)
+        /* v158.58 规则变更：A/D 不再"只在没有鼠标指示时才转向"（旧门控），
+           改为**无条件偏航** —— 这里反向断言旧门控不许复活 */
+        && !/if \(!fly\.aim\) \{/.test(src)
+        /* v158.58：A/D = 真偏航（A 左 D 右），不再走 FLY_BANK_TURN 的"协调转弯" */
+        && /var _yawDir = a \? 1 : -1;/.test(src)
+        && /head\.applyAxisAngle\(radial, _yawDir \* \(M\.FLY_YAW_RATE \|\| 1\.5\) \* dt\)/.test(src)
+        && !/head\.applyAxisAngle\(radial, _rollDir/.test(src)
         /* 速度瞬时对齐机头（唯一提交出口）+ 位置沿机头推进 */
         && /fly\.vel = \[head\.x, head\.y, head\.z\];/.test(src)
         && /pos\.addScaledVector\(head, fly\.v \* dt\)/.test(src)
@@ -51712,7 +51724,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         /* 滚轮高度通道整条退役：tick 里不再消费 _zoomTarget */
         && !/var _rWheel = R \+ Math\.max\(0\.6, _zt\)/.test(src)
         /* 机位分离：位置吊 -head、up 用径向为骨掺机体 up（不再 cam.up = 机体 up） */
-        && /cam\.position\.copy\(_sp\)\.addScaledVector\(_hd, -\(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)
+        /* v158.58：机位沿滞后尾向 _tailV（不再直接沿 −head） */
+        && /cam\.position\.copy\(_sp\)\.addScaledVector\(_tailV, \(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)
         && /_camUp = _rad\.clone\(\)\.addScaledVector\(_mechUp/.test(src)
         && /cam\.up\.copy\(_camUp\)/.test(src)
         && !/cam\.up\.copy\(_upR\)/.test(src)
@@ -51840,6 +51853,42 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /tHigh >= 4000 && tLow > 0 && tLow <= 3500 && tHigh > tLow/.test(pr) /* 时长随高度 */
         && (pr.match(/ok\('/g) || []).length >= 8
         && /v15857-A-level-flight\.png/.test(sh);
+    })());
+
+    /* ============================================================
+     * §623⑧ v158.58（老板「AD 不再改变相机朝向，而是改变飞行器方向」）
+     * ------------------------------------------------------------
+     * 旧版 A/D = 横滚 + 协调转弯（0.75 rad/s），机位 = shipPos − head×26，
+     *   head 一转相机立刻绕过去 → 画面跟着转，"看着像世界在转"。
+     * 新口径：A/D 直接偏航（1.5 rad/s，A 左 D 右，旧符号是反的已修正）；
+     *   相机尾向 camTail 按一阶跟随（4.0/s，τ≈0.25s）滞后，于是转向瞬间
+     *   飞行器机头相对相机视向偏出 ~20°（看得见），松手后收敛。
+     * ============================================================ */
+    check('§623⑧（v158.58 口径）A/D 真偏航改飞行器方向；相机尾向滞后跟随不抢朝向', (function () {
+      var src = _m3d608;
+      return /var _yawDir = a \? 1 : -1;/.test(src)
+        && /head\.applyAxisAngle\(radial, _yawDir \* \(M\.FLY_YAW_RATE \|\| 1\.5\) \* dt\)/.test(src)
+        /* A/D 接管方向时清鼠标指示，否则 aim 下一帧把机头拉回 */
+        && /fly\.aim = null; fly\.aimPitch = null;/.test(src)
+        /* 相机尾向单独存 + 一阶跟随（不是限速：限速只要快过偏航就永远追上） */
+        && /var _kC = \(M\.FLY_CAM_TURN \|\| 4\.0\) \* _dtC;/.test(src)
+        && /_ct\.lerp\(_want, _kC\);/.test(src)
+        /* 机位沿滞后尾向，不再直接沿 −head */
+        && /addScaledVector\(_tailV, \(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)
+        && !/addScaledVector\(_hd, -\(M\.FLY_CAM_BACK \|\| 26\)\)/.test(src)
+        /* 尾向投影到切平面（否则相机钻地下） */
+        && /_want\.addScaledVector\(radial, -_want\.dot\(radial\)\);/.test(src)
+        /* 探针在册 + 关键下限 */
+        && (function () {
+          var pr = _r608('.workbuddy/tools/probe/p_fly_v15858.js');
+          var sh = _r608('.workbuddy/tools/probe/p_fly_v15858_shot.js');
+          return /aSide < -0\.3/.test(pr)          /* A 左转（right 分量为负） */
+            && /dSide > 0\.3/.test(pr)             /* D 右转 */
+            && /lagDeg >= 8/.test(pr)              /* 相机滞后下限 */
+            && /catchDeg < 6/.test(pr)             /* 松手追上 */
+            && /aimBefore === true && aimAfter === false/.test(pr)
+            && /v15858-B-turning\.png/.test(sh);
+        })();
     })());
   })();
 

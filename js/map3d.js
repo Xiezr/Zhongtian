@@ -6564,7 +6564,27 @@ import './gltf.js';
         W/S 推进刹车。旧 FLY_VEL_TURN/FLY_PITCH 退役（墓碑见下）。 */
   M.FLY_LOOK_K = 0.0042;   /* 右键拖动 → 机头转角（rad/px）：拖 250px ≈ 60° */
   M.FLY_ROLL = 1.7;        /* A/D 横滚角率（rad/s） */
-  M.FLY_BANK_TURN = 0.75;  /* 横滚协调转弯：横滚同时绕径向转向的比例 */
+  /* ============================================================
+   * v158.58（老板：「AD 不再改变相机朝向，而是改变飞行器方向」）
+   * ------------------------------------------------------------
+   * 旧版 A/D 是"横滚 + 一点点协调转弯"（FLY_BANK_TURN 0.75 rad/s ≈43°/s），
+   * 方向变化又慢又不直观；而相机朝向是从飞行器位置反算的，一转向画面立刻
+   * 跟着转，玩家看到的是"世界在转"，不是"飞行器在转"。
+   * 现在三件事分开：
+   *   · A/D = **改变飞行器方向**（绕当地天顶偏航，FLY_YAW_RATE ≈86°/s），
+   *     同时做视觉横滚（左转左倾），但方向与姿态分别记录；
+   *   · **相机尾向滞后跟随**（FLY_CAM_TURN 2.2 rad/s < 偏航率）——
+   *     A/D 急转时相机跟得慢，飞行器先偏出去，转向才"看得见"；
+   *   · 相机朝向仍由「相机→飞行器」方向闭式反解（screenY=0.66 不变）。
+   * ⛔ FLY_BANK_TURN 退役：它的"横滚顺便带一点转向"语义已被 FLY_YAW_RATE
+   *    完整取代，留着只会让人以为转向还有个隐藏比例。
+   * ============================================================ */
+  M.FLY_YAW_RATE = 1.5;    /* A/D 偏航角速度（rad/s ≈86°/s）：转 90° 约 1 秒 */
+  /* ⚠️ 必须是**一阶跟随（时间常数）**而不是限速：限速只要快过偏航率就永远
+     追得上，测不出滞后（首轮 FLY_CAM_TURN=2.2 rad/s 实测残差 0.0°）。
+     4.0/s ≈ 时间常数 0.25s：急转时稳态落后 ≈ 偏航率/4.0 ≈ 21°（看得见），
+     松手 1.5s（6 个时间常数）后收敛到 0.3% 以内。 */
+  M.FLY_CAM_TURN = 4.0;    /* 相机尾向跟随速率（1/s） */
   /* ⛔ v158.53 退役：FLY_VEL_TURN（速度有限追随 → 20.8° 侧滑）、
      FLY_PITCH（W/S 俯仰 → 改为推进）。去向：速度瞬时对齐见 _tickFlight ④；
      俯仰改由鼠标完成（FLY_LOOK_K）。
@@ -6640,7 +6660,7 @@ import './gltf.js';
              climb: 0,
              aim: null, aimPitch: null, phase: 'cruise', phaseT: 0,
              launchHead: null, landR0: null, landHead: null,
-             pitch: 0, sink: 0, holdR: null, autoLand: 0 };
+             pitch: 0, sink: 0, holdR: null, autoLand: 0, camTail: null };
   function _flyVec(a) { return new THREE.Vector3(a[0], a[1], a[2]); }
 
   /* ============================================================
@@ -6743,8 +6763,33 @@ import './gltf.js';
    * 正常巡航与起飞/降落程序都经这里写 fly.* + camO + 尾迹 + 战舰，
    * 避免"程序一套、巡航一套"，也保证 HUD/探针读到的永远是同一份快照。
    * ============================================================ */
-  function _commitFlight(fly, pos, head, bank) {
+  function _commitFlight(fly, pos, head, bank, dt) {
     var radial = pos.clone().normalize();
+    /* ============================================================
+     * v158.58：**相机尾向滞后跟随**（老板「AD 不再改变相机朝向」）。
+     * ------------------------------------------------------------
+     * 旧版相机位置 = shipPos − head×BACK，head 一转相机的世界位置立刻
+     * 绕过去 → 画面跟着转，"看着像星球在转"。现在尾向单独存一份
+     * `fly.camTail`，按 FLY_CAM_TURN(2.2 rad/s) 朝 −head 追：
+     * 偏航率 1.5 < 跟随 2.2 时仍会追上（不会永久落后），但急转瞬间相机
+     * 明显慢半拍，于是**飞行器在画面里先偏出去**，转向看得见。
+     * 尾向恒投影在切平面内 —— 否则 A/D 会把它带出地表平面，相机钻地下。
+     * ============================================================ */
+    var _dtC = Math.max(0.001, Math.min(0.12, dt || 0.016));
+    var _want = head.clone().negate();
+    _want.addScaledVector(radial, -_want.dot(radial));
+    if (_want.lengthSq() < 1e-8) _want.copy(radial).negate();
+    _want.normalize();
+    if (!fly.camTail) fly.camTail = [_want.x, _want.y, _want.z];
+    var _ct = _flyVec(fly.camTail);
+    if (_ct.lengthSq() < 1e-8) _ct.copy(_want);
+    _ct.normalize();
+    var _kC = (M.FLY_CAM_TURN || 4.0) * _dtC;
+    if (_kC > 1) _kC = 1;
+    _ct.lerp(_want, _kC);
+    if (_ct.lengthSq() < 1e-8) _ct.copy(_want);
+    _ct.normalize();
+    fly.camTail = [_ct.x, _ct.y, _ct.z];
     fly.pos = [pos.x, pos.y, pos.z];
     fly.head = [head.x, head.y, head.z];
     fly.vel = [head.x, head.y, head.z];       /* 速度瞬时对齐机头（v158.53 口径） */
@@ -6819,7 +6864,7 @@ import './gltf.js';
       bank.addScaledVector(head, -bank.dot(head)).normalize();
       if (k2 >= 1) {
         fly.phase = 'dock'; fly.phaseT = 0; fly.v = 0;
-        _commitFlight(fly, pos, head, bank);        /* 先提交落点，再交班 */
+        _commitFlight(fly, pos, head, bank, dt);    /* 先提交落点，再交班 */
         fly.active = false;
         try { M.surfaceMode(true); } catch (eLS) { }
         _paintShip();
@@ -6831,7 +6876,7 @@ import './gltf.js';
     fly.holdR = pos.length();
     fly.pitch = Math.asin(Math.max(-1, Math.min(1, head.dot(radial))));
     fly.sink = 0;
-    _commitFlight(fly, pos, head, bank);
+    _commitFlight(fly, pos, head, bank, dt);
     return true;
   }
 
@@ -6913,19 +6958,26 @@ import './gltf.js';
       else head.lerp(_aim, _mx / Math.max(1e-6, _ang)).normalize();
       head.normalize();
     }
-    /* ④ A/D 横滚（无人深空 A/D = roll）：
-       绕机头横滚改变机体 up → 飞行器在画面里真的翻滚；没有鼠标指示时才做
-       协调转弯（否则会和 aim 抢机头，变成"想直飞却自己往一边偏"）。
-       W/S 俯仰已退役 → 左右上下拖/鼠标位置控制。 */
+    /* ============================================================
+     * ④ A/D = **改变飞行器方向**（v158.58，老板「AD 不再改变相机朝向，
+     *    而是改变飞行器方向」）。
+     *  · 偏航：绕当地天顶按 FLY_YAW_RATE(1.5 rad/s) 转机头 —— A 左、D 右。
+     *    旧版 `_rollDir = a ? -1 : 1` 配 `applyAxisAngle(radial, …)` 实际是
+     *    **A 右转**（Rodrigues：绕 +径向正角才向左），方向是反的，一并修正。
+     *  · 横滚：同时做视觉倾斜（左转左倾），但它是姿态、不参与方向；
+     *    松手回正到径向。
+     *  · 清 aim：A/D 动了方向就接管，否则鼠标指示下一帧会把机头拉回去。
+     * 相机不在这里转 —— 相机尾向在 _commitFlight 里按 FLY_CAM_TURN 滞后跟随。
+     * ============================================================ */
     var _bank = fly.up ? _flyVec(fly.up).normalize() : radial.clone();
     if (a || d) {
-      var _rollDir = a ? -1 : 1;
-      _bank.applyAxisAngle(head, _rollDir * (M.FLY_ROLL || 1.7) * dt).normalize();
-      if (!fly.aim) {
-        head.applyAxisAngle(radial, _rollDir * (M.FLY_BANK_TURN || 0.75) * dt).normalize();
-      }
+      var _yawDir = a ? 1 : -1;                 /* A = 左转（绕天顶正角）、D = 右转 */
+      head.applyAxisAngle(radial, _yawDir * (M.FLY_YAW_RATE || 1.5) * dt).normalize();
+      _bank.applyAxisAngle(head, -_yawDir * (M.FLY_ROLL || 1.7) * dt).normalize();
       /* 机头转后重新正交化 up，防与 head 不垂直导致画面翻滚 */
       _bank.addScaledVector(head, -_bank.dot(head)).normalize();
+      /* A/D 接管方向：清掉鼠标指示，否则下一帧 aim 会把机头拉回旧方向 */
+      fly.aim = null; fly.aimPitch = null;
     } else {
       /* 松手缓慢回正：机体 up 朝径向靠拢（脚底星球），转回平飞 */
       _bank.lerp(radial, Math.min(1, 0.8 * dt)).normalize();
@@ -7005,7 +7057,7 @@ import './gltf.js';
       }
       M.flyLand();
     }
-    _commitFlight(fly, pos, head, _bank);
+    _commitFlight(fly, pos, head, _bank, dt);
     return !!(l || r || u || dn || w || s || a || d || fly.v);
   }
   M.flyTick = _tickFlight;
@@ -7021,7 +7073,8 @@ import './gltf.js';
       alt: f.pos ? (Math.hypot(f.pos[0], f.pos[1], f.pos[2]) - R) : null,
       max: M.FLY_MAX, back: M.FLY_BACK_MAX, accel: M.FLY_ACCEL,
       turn: M.FLY_TURN, lookK: M.FLY_LOOK_K, roll: M.FLY_ROLL,
-      bankTurn: M.FLY_BANK_TURN,
+      yawRate: M.FLY_YAW_RATE, camTurn: M.FLY_CAM_TURN,
+      camTail: f.camTail ? f.camTail.slice() : null,
       /* v158.56：climbRate（↑↓ 电梯）随 FLY_CLIMB 退役；改为只读新口径 */
       aimMax: M.FLY_AIM_MAX, aimRate: M.FLY_AIM_RATE, screenY: M.FLY_SCREEN_Y,
       phase: f.phase || 'cruise', phaseT: f.phaseT || 0,
@@ -7144,6 +7197,7 @@ import './gltf.js';
     /* v158.57：高度/俯仰状态从起飞点重置 —— 否则 holdR 还是上一轮的值，
        起飞后第一帧就会被 setLength 拽到旧高度。 */
     f.holdR = _p.length();
+    f.camTail = [-_h.x, -_h.y, -_h.z];   /* v158.58：起飞相机就位在机尾 */
     f.pitch = Math.asin(Math.max(-1, Math.min(1, _h.dot(_rad))));
     f.sink = 0; f.autoLand = 0;
     try { _zoomTarget = _p.length() - R; _zoomLastT = 0; } catch (eL1) { }
@@ -7782,7 +7836,14 @@ import './gltf.js';
       _camUp.normalize();
       /* 姿态分离的兜底：径向与机体 up 反向（倒飞）时也别让 up 退化 */
       if (_camUp.dot(_rad) < 0) _camUp.copy(_rad);
-      cam.position.copy(_sp).addScaledVector(_hd, -(M.FLY_CAM_BACK || 26))
+      /* v158.58：机位沿**滞后尾向** camTail（不是 −head）——
+         A/D 转向时相机慢半拍，飞行器才会在画面里偏出去。 */
+      var _tailV = M._fly.camTail ? _flyVec(M._fly.camTail) : _hd.clone().negate();
+      if (_tailV.lengthSq() < 1e-8) _tailV.copy(_hd).negate();
+      _tailV.addScaledVector(_rad, -_tailV.dot(_rad));
+      if (_tailV.lengthSq() < 1e-8) _tailV.copy(_hd).negate();
+      _tailV.normalize();
+      cam.position.copy(_sp).addScaledVector(_tailV, (M.FLY_CAM_BACK || 26))
         .addScaledVector(_camUp, (M.FLY_CAM_UP || 6));
       /* 从相机指向战舰的方向 Δ，再绕 right 抬 θ → 战舰落到 FLY_SCREEN_Y */
       var _delta = _sp.clone().sub(cam.position);
@@ -7816,7 +7877,8 @@ import './gltf.js';
       var _tg = cam.position.clone().addScaledVector(_lookDir, (M.FLY_CAM_LOOK || 1200));
       cam.lookAt(_tg);
       M._flyCam = { pos: cam.position.toArray(), up: _camUp.toArray(),
-                    look: _lookDir.toArray(), screenY: _sy, theta: _theta };
+                    tail: _tailV.toArray(), look: _lookDir.toArray(),
+                    screenY: _sy, theta: _theta };
     } else {
       cam.quaternion.copy(camO.quat);
       if (camO.lookYaw || _lpEff) {
