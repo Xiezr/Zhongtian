@@ -51107,7 +51107,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return /M\.SURF_CAM_LAG = 0\.26/.test(_m3d608)
       && !/M\.SURF_CAM_LAG_STOP = 0\.07/.test(_m3d608)          /* 反向证据：停下归位不许复活 */
       && /_cd0 = camO\.dir \|\| d/.test(blk)                     /* 初始锚点 = 相机指向点 */
-      && /new THREE\.Vector3\(_cd0\[0\] \* R2/.test(blk)
+      /* v158.50：锚点贴真实地面高（_cdGh/_R2a），不用玩家位姿 h（站着不动 h=0 会埋地） */
+      && /var _cdGh = M\._groundAtUnit\(_cd0\) \|\| 0/.test(blk)
+      && /new THREE\.Vector3\(_cd0\[0\] \* _R2a/.test(blk)
       && /else if \(_moving\) \{/.test(blk)                      /* 只有移动才跟 */
       && /M\._surfCamAnchor\.lerp\(P/.test(blk)
       && /_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk) /* 贴回球壳，不许往地里沉 */

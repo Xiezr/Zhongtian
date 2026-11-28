@@ -9309,7 +9309,10 @@ import './gltf.js';
     var pp = M.playerPose();
     if (!pp || !pp.dir) return false;
     var d = pp.dir;
-    var R2 = M.R + (isFinite(pp.h) ? pp.h : 0) + 0.05;
+    /* v158.50：位姿 h 在玩家**站着不动**时是 0（只有走路 stepAvatar 才更新），
+       直接用会把锚点/玩家点埋进地里 —— 一律以真实地面高兜底。 */
+    var _ppH = (isFinite(pp.h) && pp.h > 0) ? pp.h : (M._groundAtUnit(d) || 0);
+    var R2 = M.R + _ppH + 0.05;
     var P = new THREE.Vector3(d[0] * R2, d[1] * R2, d[2] * R2);
     /* ---- 镜头锚点（v158.49 口径：落点=指向处）----
        v158.49（老板「从哪里变动高度就落到哪个位置」）：锚点初始 = **相机指向点**
@@ -9320,9 +9323,12 @@ import './gltf.js';
     var _dt = Math.max(0.001, Math.min(0.05, M._lastAvDt || 0.016));
     var _moving = !!(M._lastAvOut && M._lastAvOut.moved);
     if (!M._surfCamAnchor || !isFinite(M._surfCamAnchor.x)) {
-      /* 初始锚点 = 相机指向点（camO.dir × R2）—— 落哪看哪 */
+      /* 初始锚点 = 相机指向点（camO.dir），贴到**真实地面高**上（v158.50：
+         不用玩家位姿 h —— 站着不动时 h=0 会把锚点埋进地里） */
       var _cd0 = camO.dir || d;
-      M._surfCamAnchor = new THREE.Vector3(_cd0[0] * R2, _cd0[1] * R2, _cd0[2] * R2);
+      var _cdGh = M._groundAtUnit(_cd0) || 0;
+      var _R2a = M.R + _cdGh + 0.05;
+      M._surfCamAnchor = new THREE.Vector3(_cd0[0] * _R2a, _cd0[1] * _R2a, _cd0[2] * _R2a);
     } else if (_moving) {
       var _tau = Math.max(0.02, M.SURF_CAM_LAG);
       var _k = 1 - Math.exp(-_dt / _tau);
@@ -9383,6 +9389,50 @@ import './gltf.js';
     var _cFloor = M._groundAtUnit([_cdir.x, _cdir.y, _cdir.z]);
     var _floorR = M.R + Math.max(_pFloor, _cFloor) + M.SURF_CAM_GROUND_GAP;
     if (_pr0 < _floorR) pos.multiplyScalar(_floorR / _pr0);
+
+    /* ============================================================
+     * v158.50（老板「相机转移到山坡侧向或者后向时，会穿模」）：
+     * **视线遮挡检测** —— 只探测**机位附近**（机位本身 + 侧向 ±0.8m + 视线 55% 处），
+     * 任一探测点落进坡体（离地 < 0.05m）就先沿视线二分收缩；
+     * **缩到底还穿**（锚点紧贴坡缘）→ 沿锚点径向抬升（0.5m 一档，最多 6m）——
+     * 贴坡停住、不抬仰角（v158.39 已否掉抬仰角）、不钻坡。 */
+    if (M.SURF_CAM_OCCLUSION !== false) {
+      var _dCam50 = pos.clone().sub(A);
+      var _dL50 = _dCam50.length() || 1;
+      var _dDir50 = _dCam50.clone().multiplyScalar(1 / _dL50);
+      var _side50 = new THREE.Vector3().crossVectors(_dDir50, up);
+      if (_side50.lengthSq() < 1e-9) _side50 = new THREE.Vector3(1, 0, 0);
+      _side50.normalize();
+      function _ok50(dist, lift) {
+        var base = A.clone().addScaledVector(_dDir50, dist).addScaledVector(up, lift);
+        /* ⚠️ 只探测机位本身 + 侧向 ±0.8m —— 视线路径上的点（锚点附近）
+           贴坡是正常姿态，不参与判穿（否则会误抬 6m）。 */
+        var qs = [base,
+          base.clone().addScaledVector(_side50, 0.8),
+          base.clone().addScaledVector(_side50, -0.8)];
+        for (var i = 0; i < qs.length; i++) {
+          var q = qs[i], qL = q.length() || 1;
+          var gh = M._groundAtUnit([q.x / qL, q.y / qL, q.z / qL]);
+          /* 判穿 = 离地 < 0.05m（真穿进坡体才缩；贴坡 0.1m+ 是正常贴地姿态） */
+          if (qL < M.R + gh + 0.05) return false;
+        }
+        return true;
+      }
+      var _try50 = _dL50, _lift50 = 0;
+      if (!_ok50(_try50, 0)) {
+        _try50 = _dL50 * 0.55;
+        if (!_ok50(_try50, 0)) _try50 = _dL50 * 0.3;
+        if (!_ok50(_try50, 0)) {
+          for (_lift50 = 0.5; _lift50 <= 6.01; _lift50 += 0.5) {
+            if (_ok50(_try50, _lift50)) break;
+          }
+        }
+      }
+      if (_try50 < _dL50 - 0.05 || _lift50 > 0) {
+        pos = A.clone().addScaledVector(_dDir50, Math.max(0.5, _try50))
+          .addScaledVector(up, _lift50);
+      }
+    }
 
     /* ============================================================
      * v158.35（老板「操作上达到星露谷的标准了吗」）
