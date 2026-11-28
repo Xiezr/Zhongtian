@@ -68,8 +68,8 @@ const check = (name, ok, extra) => {
   const sW = await snap();
   await p.keyboard.up('KeyW');
   console.log('按住 W 1.5s: ' + JSON.stringify(sW));
-  check('② W 加速 1.5s：速度爬升 20~45 m/s（有下限、不超上限）',
-    sW.v > 20 && sW.v <= 45.01, 'v=' + sW.v);
+  check('② W 加速 1.5s：速度爬升 60~120 m/s（有下限、不超上限 · v158.45 提速口径）',
+    sW.v > 60 && sW.v <= 120.01, 'v=' + sW.v);
   check('③ 飞行中 HUD 显示速度', sW.hud, 'hud=' + sW.hud);
 
   /* B. 惯性衰减：松键 1s 仍滑行，5s 后滑停 */
@@ -88,8 +88,8 @@ const check = (name, ok, extra) => {
   const sS = await snap();
   await p.keyboard.up('KeyS');
   console.log('按住 S 1.5s: ' + JSON.stringify(sS));
-  check('⑥ S 减速到倒飞：v < 0 且 |v| ≤ 27（倒飞上限）',
-    sS.v < -5 && sS.v >= -27.01, 'v=' + sS.v);
+  check('⑥ S 减速到倒飞：v < 0 且 |v| ≤ 72（倒飞上限 · v158.45）',
+    sS.v < -5 && sS.v >= -72.01, 'v=' + sS.v);
   await p.waitForTimeout(4500);   /* 等它滑停，避免污染下一段 */
 
   /* D. 转向（手动 tick，同步可控，headless 低帧率下不依赖 rAF）：
@@ -98,7 +98,7 @@ const check = (name, ok, extra) => {
   const sTurn = await p.evaluate(() => {
     const M = GAME.map3d;
     const run = (key) => {
-      M._fly.v = 20;
+      M._fly.v = 40;   /* v158.45 提速后满速 120，预置 1/3 满速验转向缩放 */
       GAME._flyKeys = {}; GAME._flyKeys[key] = 1;
       const p0 = M.flyProbe();
       let n = 0;

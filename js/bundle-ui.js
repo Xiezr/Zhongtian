@@ -6736,12 +6736,14 @@
    * ⚠️ 只写状态、不 touch/redraw：本函数与 _tickEdgePan 同处模块作用域，
    *    touch 是事件闭包局部函数；绘制由渲染循环当帧负责。
    * ============================================================ */
-  M.FLY_MAX = 45;          /* 前飞上限（m/s，≈ 每 20 秒绕 R=300 一圈） */
-  M.FLY_BACK_MAX = 27;     /* 倒飞上限 = 0.6×FLY_MAX */
-  M.FLY_ACCEL = 18;        /* 加速度（m/s²）：约 2.5 秒到顶 */
-  M.FLY_TURN = 0.9;        /* 满速转向率（rad/s）；随速度缩放，静止不能原地转 */
-  M.FLY_DECAY = 1.2;       /* 松键惯性衰减率（1/s）：满速滑行约 4~5 秒滑停
-                              （p_fly_v15843 实测 0.35 时 5s 后仍余 17% 速度，拖沓） */
+  M.FLY_MAX = 120;         /* 前飞上限（m/s）。v158.45 提速：45→120（老板「相机移动
+                             速度太低了」）—— 轨道 dist≈870 时角速 0.138 rad/s，
+                             绕球一圈约 45 秒（旧 45 m/s 要 2 分钟） */
+  M.FLY_BACK_MAX = 72;     /* 倒飞上限 = 0.6×FLY_MAX */
+  M.FLY_ACCEL = 48;        /* 加速度（m/s²）：约 2.5 秒到顶 */
+  M.FLY_TURN = 1.1;        /* 满速转向率（rad/s）；随速度缩放，静止不能原地转 */
+  M.FLY_DECAY = 1.35;      /* 松键惯性衰减率（1/s）：满速滑行约 4~5 秒滑停
+                             （p_fly_v15843 实测 0.35 时 5s 后仍余 17% 速度，拖沓） */
   M._fly = { v: 0 };       /* 运行时态（不入档）：标量速度，倒飞为负 */
   function _tickFlight(dt) {
     var fly = M._fly || (M._fly = { v: 0 });
@@ -6753,13 +6755,13 @@
        （与 _tickEdgePan 同口径）。 */
     dt = Math.max(0.001, Math.min(0.12, dt || 0.016));
     if (w || s) {
-      if (w) fly.v += (M.FLY_ACCEL || 18) * dt;
-      if (s) fly.v -= (M.FLY_ACCEL || 18) * dt;
+      if (w) fly.v += (M.FLY_ACCEL || 48) * dt;
+      if (s) fly.v -= (M.FLY_ACCEL || 48) * dt;
     } else {
-      fly.v *= Math.exp(-(M.FLY_DECAY || 1.2) * dt);
+      fly.v *= Math.exp(-(M.FLY_DECAY || 1.35) * dt);
       if (Math.abs(fly.v) < 0.3) fly.v = 0;
     }
-    var _vmax = M.FLY_MAX || 45, _vmin = -(M.FLY_BACK_MAX || 27);
+    var _vmax = M.FLY_MAX || 120, _vmin = -(M.FLY_BACK_MAX || 72);
     if (fly.v > _vmax) fly.v = _vmax;
     if (fly.v < _vmin) fly.v = _vmin;
     if (a || d) {
@@ -6768,7 +6770,7 @@
          改转 **lookYaw（视线偏移）**：placeCamera 把它独立左乘在位置姿态上，
          与位置完全解耦 —— A/D 画面转（机头转）、位置不动、推进反算不碰它。
          A 左转 = lookYaw 减（与右键右拖内容右移同一契约）；D 右转 = lookYaw 增。 */
-      var _tv = (M.FLY_TURN || 0.9) * Math.max(0.25, Math.min(1, Math.abs(fly.v) / _vmax));
+      var _tv = (M.FLY_TURN || 1.1) * Math.max(0.25, Math.min(1, Math.abs(fly.v) / _vmax));
       if (a) camO.lookYaw -= _tv * dt; else camO.lookYaw += _tv * dt;
       camO.lookYaw = ((camO.lookYaw + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
     }

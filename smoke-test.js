@@ -51572,11 +51572,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var blk = i >= 0 ? src.slice(i, i + 2600) : '';
       var k = src.indexOf('_tickFlight(_epDt)');
       var p = src.indexOf('placeCamera();', k);
-      return /M\.FLY_MAX = 45;/.test(src)
-        && /M\.FLY_BACK_MAX = 27;/.test(src)
-        && /M\.FLY_ACCEL = 18;/.test(src)
-        && /M\.FLY_TURN = 0\.9;/.test(src)
-        && /M\.FLY_DECAY = 1\.2;/.test(src)
+      /* v158.45（老板「相机移动速度太低了」）提速：45→120、27→72、18→48、
+         0.9→1.1、1.2→1.35 —— 数值随规则变更，结构判据不变。 */
+      return /M\.FLY_MAX = 120;/.test(src)
+        && /M\.FLY_BACK_MAX = 72;/.test(src)
+        && /M\.FLY_ACCEL = 48;/.test(src)
+        && /M\.FLY_TURN = 1\.1;/.test(src)
+        && /M\.FLY_DECAY = 1\.35;/.test(src)
         && /M\._fly = \{ v: 0 \};/.test(src)
         && /M\.flyTick = _tickFlight;/.test(src)
         && /M\.flyProbe = function \(\)/.test(src)
@@ -51586,9 +51588,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     check('§623② W/S 加减速有上限、A/D 转 lookYaw（机头）、松键指数衰减、dir 推进 + 第 5 处 pitch 反算', (function () {
       var src = _m3d608;
-      return /fly\.v \+= \(M\.FLY_ACCEL \|\| 18\) \* dt/.test(src)
-        && /fly\.v -= \(M\.FLY_ACCEL \|\| 18\) \* dt/.test(src)
-        && /fly\.v \*= Math\.exp\(-\(M\.FLY_DECAY \|\| 1\.2\) \* dt\)/.test(src)
+      return /fly\.v \+= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        && /fly\.v -= \(M\.FLY_ACCEL \|\| 48\) \* dt/.test(src)
+        && /fly\.v \*= Math\.exp\(-\(M\.FLY_DECAY \|\| 1\.35\) \* dt\)/.test(src)
         && /if \(fly\.v > _vmax\) fly\.v = _vmax/.test(src)
         && /if \(fly\.v < _vmin\) fly\.v = _vmin/.test(src)
         && /if \(a\) camO\.lookYaw -= _tv \* dt; else camO\.lookYaw \+= _tv \* dt/.test(src)
@@ -51605,12 +51607,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /renderFlyHud/.test(_m3d608);
     })());
 
-    check('§623④ 数值面：加速时间 2~3s、倒飞 = 0.6×前飞、静止转向率 = 满速的 0.25、满速滑停 3.5~6s', (function () {
+    check('§623④（v158.45 提速口径）数值面：加速时间 2~3s、倒飞 = 0.6×前飞、静止转向率 = 满速的 0.25、满速滑停 3.5~6s', (function () {
       var src = _m3d608;
-      var t = 45 / 18;                    /* FLY_MAX / FLY_ACCEL */
-      var stopT = Math.log(45 / 0.3) / 1.2;   /* 满速指数衰减到 0.3 m/s 的时长 */
+      var t = 120 / 48;                    /* FLY_MAX / FLY_ACCEL */
+      var stopT = Math.log(120 / 0.3) / 1.35;   /* 满速指数衰减到 0.3 m/s 的时长 */
       return t > 2 && t < 3
-        && 27 / 45 > 0.55 && 27 / 45 < 0.65
+        && 72 / 120 > 0.55 && 72 / 120 < 0.65
         && stopT > 3.5 && stopT < 6
         && /Math\.max\(0\.25, Math\.min\(1, Math\.abs\(fly\.v\) \/ _vmax\)\)/.test(src);
     })());
