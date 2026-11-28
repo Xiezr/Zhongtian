@@ -10537,6 +10537,19 @@
   M.SURF_CAM_EL_MIN = 0.06;    /* 3.4°：再低就没法保证不穿地 */
   M.SURF_CAM_EL_MAX = 1.35;    /* 77°：原上限不动 */
   M.SURF_CAM_GROUND_GAP = 0.12;/* 相机底部离玩家脚下地面的硬下限（米），保证"眼睛与地面之间" */
+  /* ============================================================
+   * v158.60（老板「在斜坡处，改变相机角度仍然会出现地底下的画面，穿模」）
+   * ------------------------------------------------------------
+   * 取证：61.6° 陡坡上绕一圈 × 5 档仰角共 60 个角度，**60/60 全部穿模**
+   *   （相机周边 1~2m 处的地形比机位径向低 **−2.5m**）。
+   * 根因：旧硬闸只保证**机位中心这一点**离坡面 0.12m，而相机 near 平面
+   *   = max(1, d·0.002) ≈ 0.6~1.74m —— 斜坡上周边 2m 内的地形远高于相机，
+   *   近裁剪面直接扎进坡体，画面下半透出地形内部（看着就是"地底"）。
+   * 改法：把"点"改成"**区域包络 + 净空**"——在机位周围十字采样地形，
+   *   按局部坡度换算需要的径向高度（净空/正割），不足就沿锚点径向抬。
+   *   净空取值与 near 联动（max(CLEAR, near×1.25)），near 变大也不会失守。
+   * ============================================================ */
+  M.SURF_CAM_CLEAR_MAX = 6;    /* 净空抬升上限（米）：收缩兜底时的最大抬升 */
   M.SURF_CAM_EL = 1.0;         /* 初始仰角（弧度）≈ 57° */
   M._surfOrbitYaw = 0;         /* 绕过角色一圈（右键拖） */
   M._surfCamE1 = null;         /* 水平基准，进地表定一次、之后固定（走动时画面不旋转） */
@@ -10557,6 +10570,109 @@
   /* ⛔ v158.49：SURF_CAM_LAG_STOP（停下 0.07s 快速归位）退役 —— 那会把人拽回画面，
      违反「从哪里变动高度就落到哪个位置」（落点=指向处，玩家不动锚点不动）。 */
   M._surfCamAnchor = null;     /* 镜头锚点（世界坐标，初始=相机指向点；玩家移动时滞后跟随） */
+  /* ============================================================
+   * v158.60：**机位区域净空**（斜坡穿模的根治）
+   * ------------------------------------------------------------
+   * 只校验机位中心离地多少是错的 —— 相机不是一个点，它有 near 平面和
+   *   视锥下缘。斜坡上中心离坡 0.12m 时，周边 2m 处的地形已经高出相机
+   *   2.5m（实测），近平面必然切进坡体。
+   * 这里做三件事：
+   *   ① 在机位周围**十字采样**（两环：0.7×clear、1.4×clear），取地形包络
+   *      `gmax` 与极差，估出局部坡度；
+   *   ② 需要的**径向**高度 = gmax + clear / cos(坡度)（径向与坡法线夹坡度角）；
+   *   ③ 不足就沿锚点径向抬，迭代 2 次（抬升会改方向，包络要重采）。
+   * 抬升上限 SURF_CAM_CLEAR_MAX，防极端地形把相机甩到天上。
+   * ⚠️ 采样必须走 M._groundAtUnit（唯一地形出口），不许另算 heightAt。
+   * ============================================================ */
+  /* ============================================================
+   * v158.60：**视线收缩**（坡脊夹在锚点与相机之间 → 看到坡背面/透空）
+   * ------------------------------------------------------------
+   * 净空抬升解决"近平面切坡"；但如果坡脊横在锚点与相机中间，画面上半会
+   *   出现坡的背面（FrontSide 被剔除 → 透出天空或另一侧地形，观感就是
+   *   "地底/空洞"）。标准做法是沿视线从锚点外走，遇到贴坡就把相机收到
+   *   该点之前 —— 宁可贴近人物，也不让坡挡在中间。
+   * ⚠️ 与 `_ok50` 分工：`_ok50` 只看机位与侧向（防机身嵌进坡），这里看
+   *   **整条视线**。两者都要，缺一条就会剩一类穿模。
+   * ============================================================ */
+  /* ============================================================
+   * v158.60：**机位求解**（唯一入口，替代收缩/抬升两条独立补丁）
+   * ------------------------------------------------------------
+   * 输入：A（锚点）、want（期望机位）、up（锚点径向）
+   * 输出：{ pos, pulled, lift }
+   * 判据（三项全过才算可用）：
+   *   ① 机位本体 margin ≥ 0.25（不埋土）
+   *   ② 近平面 3×3 margin ≥ 0.2（近裁剪面不切坡 —— 这是"看到地底"的直接成因）
+   *   ③ 路径每 0.6m 采样 margin ≥ 0.05（坡脊不挡在中间）
+   * 从远到近扫；全不可行 → 沿径向抬升到锚点上方，再复检（特写兜底）。
+   * ⚠️ 地形只走 M._groundAtUnit（唯一出口）。
+   * ============================================================ */
+  function _surfCamFit(A, want, up) {
+    var near = 1, fov = 42;
+    try {
+      if (M._cam && isFinite(M._cam.near)) near = Math.max(0.4, +M._cam.near);
+      if (M._cam && isFinite(M._cam.fov)) fov = +M._cam.fov;
+    } catch (eF60) { }
+    var half = Math.tan(fov * Math.PI / 360) * near;
+    function marginOf(q) {
+      var l = q.length() || 1;
+      return l - (M.R + (M._groundAtUnit([q.x / l, q.y / l, q.z / l]) || 0));
+    }
+    function okAt(q) {
+      if (marginOf(q) < 0.25) return false;
+      var fwd = A.clone().sub(q);
+      if (fwd.lengthSq() < 1e-8) return false;
+      fwd.normalize();
+      var rt = new THREE.Vector3().crossVectors(fwd, up);
+      if (rt.lengthSq() < 1e-6) rt.crossVectors(fwd, new THREE.Vector3(0, 1, 0));
+      if (rt.lengthSq() < 1e-6) rt.set(1, 0, 0);
+      rt.normalize();
+      var upF = new THREE.Vector3().crossVectors(rt, fwd).normalize();
+      var nearC = q.clone().addScaledVector(fwd, near);
+      for (var sx = -1; sx <= 1; sx++) {
+        for (var sy = -1; sy <= 1; sy++) {
+          var p2 = nearC.clone().addScaledVector(rt, sx * half).addScaledVector(upF, sy * half);
+          if (marginOf(p2) < 0.2) return false;
+        }
+      }
+      return true;
+    }
+    function pathOk(t) {
+      var n = Math.max(2, Math.ceil(t / 0.6));
+      for (var i = 1; i <= n; i++) {
+        var q = A.clone().lerp(want, i / n);
+        if (marginOf(q) < 0.05) return false;
+      }
+      return true;
+    }
+    var dv = want.clone().sub(A);
+    var len = dv.length();
+    if (len < 0.8) return { pos: want, pulled: false, lift: 0 };
+    dv.multiplyScalar(1 / len);
+    /* 从远到近：先保视角（远），不行再收 */
+    var best = -1;
+    for (var t = len; t >= 0.9; t -= 0.35) {
+      var q = A.clone().addScaledVector(dv, t);
+      if (okAt(q) && pathOk(t)) { best = t; break; }
+    }
+    if (best > 0) {
+      M._surfClear60 = { mode: 'fit', t: +best.toFixed(2), len: +len.toFixed(2),
+        near: +near.toFixed(2), iter: 0 };
+      return { pos: A.clone().addScaledVector(dv, best), pulled: best < len - 0.05, lift: 0 };
+    }
+    /* 全不可行（锚点贴在陡坡死角）：抬到锚点上方，给一个俯视特写 */
+    var liftMax = M.SURF_CAM_CLEAR_MAX == null ? 6 : +M.SURF_CAM_CLEAR_MAX;
+    var l0 = want.length() || 1;
+    for (var up60 = 0.6; up60 <= liftMax + 0.01; up60 += 0.6) {
+      var q2 = A.clone().addScaledVector(up, up60).addScaledVector(dv, 1.4);
+      if (okAt(q2)) {
+        M._surfClear60 = { mode: 'lift', lift: +up60.toFixed(2), near: +near.toFixed(2), iter: 1 };
+        return { pos: q2, pulled: true, lift: up60 };
+      }
+    }
+    M._surfClear60 = { mode: 'liftMax', lift: +liftMax.toFixed(2), near: +near.toFixed(2), iter: 1 };
+    return { pos: A.clone().addScaledVector(up, liftMax).addScaledVector(dv, 1.2), pulled: true, lift: liftMax };
+  }
+
   M._surfAvatarCam = function () {
     var ci = M.playerCi();
     if (ci < 0) return false;
@@ -10588,9 +10704,14 @@
       var _k = 1 - Math.exp(-_dt / _tau);
       M._surfCamAnchor.lerp(P, Math.min(1, _k));
       /* 贴回球壳：两帧之间走的是**弦**，不修正会一路往地里沉。
-         只修长度、不动方向 —— 角度上的滞后（= 观感里的"人往前挪"）完整保留。 */
+         只修长度、不动方向 —— 角度上的滞后（= 观感里的"人往前挪"）完整保留。
+         ⚠️ v158.60：贴的高度必须按**锚点方向的地形高**算，不能沿用玩家的 R2
+         —— 坡上滞后跟随 1.2m，锚点方向的地形可能高出 1.3m，用玩家的高度
+         贴壳 = 把锚点埋进坡里（走动态实测视线穿坡 −1.27m 的根因）。 */
       var _aL = M._surfCamAnchor.length() || 1;
-      M._surfCamAnchor.multiplyScalar(R2 / _aL);
+      var _aU = M._surfCamAnchor.clone().multiplyScalar(1 / _aL);
+      var _aGh = M._groundAtUnit([_aU.x, _aU.y, _aU.z]) || 0;
+      M._surfCamAnchor.multiplyScalar((M.R + Math.max(_aGh, _ppH) + 0.05) / _aL);
     }
     var A = M._surfCamAnchor;
     /* v158.49：机位基向量改从**锚点径向**算（机位围绕锚点），
@@ -10687,6 +10808,38 @@
           .addScaledVector(up, _lift50);
       }
     }
+
+    /* ============================================================
+     * v158.60（老板「斜坡处改变相机角度仍然会出现地底下的画面，穿模」）：
+     * 上面两步都只处理"机位这一点"和"视线被挡"，**挡不住近裁剪面切坡**
+     * —— 斜坡上机位周边 2m 的地形可比相机高 2.5m（实测 60/60 角度全穿）。
+     * 这里做最后一道：按**区域包络 + 净空**沿锚点径向抬，抬够为止。
+     * 放在遮挡收缩之后：收缩会把相机拉近、可能重新贴坡，必须在最后兜底。
+     * ============================================================ */
+    /* ============================================================
+     * 视线收缩与净空抬升**互相改写对方的前提**（收缩改位置 → 抬升改视线），
+     * 单跑一遍必然剩一类穿模（实测：先收缩后抬升 → 视线 −1.27m；
+     * 先抬升后收缩 → 近平面切坡）。交替迭代到不动点，最多 3 轮。
+     * 收敛判据：两者都不再改动 pos。
+     * ============================================================ */
+    /* ============================================================
+     * v158.60 定稿：**沿视线求一个"看得见且不穿"的机位**
+     * ------------------------------------------------------------
+     * 走过的三条弯路（都留在这里，别再回头）：
+     *   ① 环形包络抬升 → 陡坡把相机顶到 22m 高，画面被坡面填满；
+     *   ② 精确求抬升量 → 离散采样必然漏台阶，平地仍报 23 个角度切坡；
+     *   ③ 收缩 + 抬升交替 → 两个判据互相改写前提，收敛不了。
+     * 现在的做法只有一件事：**从远到近试位置**，每个候选位置检查
+     *   ① 机位本体不埋土（margin ≥ 0.25）
+     *   ② 近平面 3×3 不切地形（margin ≥ 0.2）
+     *   ③ 锚点→机位 的路径不穿坡
+     *   第一个三项全过的 t 就是机位。都不行才抬升（贴脸特写兜底）。
+     * 这样"不减距离就不减视角、不减高度就不穿模"，一次求解不再震荡。
+     * ============================================================ */
+    var _fit60 = _surfCamFit(A, pos, up);
+    pos = _fit60.pos;
+    M._surfCamPull60 = _fit60.pulled ? 1 : 0;
+    M._surfCamLift60 = +(_fit60.lift || 0).toFixed(2);
 
     /* ============================================================
      * v158.35（老板「操作上达到星露谷的标准了吗」）

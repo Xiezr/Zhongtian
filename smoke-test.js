@@ -51132,7 +51132,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /new THREE\.Vector3\(_cd0\[0\] \* _R2a/.test(blk)
       && /else if \(_moving\) \{/.test(blk)                      /* 只有移动才跟 */
       && /M\._surfCamAnchor\.lerp\(P/.test(blk)
-      && /_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk) /* 贴回球壳，不许往地里沉 */
+      /* ============================================================
+       * v158.60 规则变更：贴回球壳的高度从"沿用玩家的 R2"改成
+       *   **锚点方向自己的地形高**（`max(_aGh, _ppH)`）。
+       * 原因：坡上滞后跟随 1.2m 时，锚点方向的地形可能高出 1.3m，
+       *   沿用玩家高度贴壳 = 把锚点埋进坡里（走动态实测视线穿坡 −1.27m）。
+       * 旧形态反向禁止复活。
+       * ============================================================ */
+      && /var _aU = M\._surfCamAnchor\.clone\(\)\.multiplyScalar\(1 \/ _aL\)/.test(blk)
+      && /var _aGh = M\._groundAtUnit\(\[_aU\.x, _aU\.y, _aU\.z\]\)/.test(blk)
+      && /multiplyScalar\(\(M\.R \+ Math\.max\(_aGh, _ppH\) \+ 0\.05\) \/ _aL\)/.test(blk)
+      && !/_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk) /* 旧形态不许复活 */
       && /cam\.position\.copy\(pos\)/.test(blk);                 /* 落位走地面硬闸后的 pos */
   })());
 
@@ -51928,6 +51938,56 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
             && /ex === true && beforeExit\.surf === false && afterExit\.surf === true/.test(pr)
             && /afterUp\.phase === 'takeoff' && afterUp\.surf === false/.test(pr)
             && /v15859-C-landed\.png/.test(sh);
+        })();
+    })());
+
+    /* ============================================================
+     * §623⑩ v158.60（老板「在斜坡处，改变相机角度仍然会出现地底下的
+     *   画面，穿模。解决穿模问题」）
+     * ------------------------------------------------------------
+     * 取证（61.6° 陡坡绕一圈 × 5 档仰角 = 60 个角度）：**60/60 全部穿模**，
+     *   机位周边 1~2m 的地形比相机径向低 −2.5m。
+     * 根因：旧硬闸只保**机位中心这一点**离坡 0.12m，而 near 平面
+     *   = max(1, d×0.002) ≈ 0.6~1.74m —— 坡侧地形高过相机，近裁剪面直接
+     *   扎进坡体，画面下半透出地形内部（"地底"）。
+     * 规则变更：机位不再"点校验 + 事后补丁"，改为**沿视线从远到近求一个
+     *   三项全过的位置**（本体不埋 / 近平面 3×3 不切 / 路径不穿坡）。
+     * ============================================================ */
+    check('§623⑩（v158.60 口径）斜坡机位求解：近平面 3×3 校验 + 从远到近 + 抬升兜底；旧两段补丁退役', (function () {
+      var src = _m3d608;
+      /* ⚠️ 注释不能夹在 return 与表达式之间（ASI 会把整个 check 变成 undefined） */
+      return /function _surfCamFit\(A, want, up\)/.test(src)
+        && /var _fit60 = _surfCamFit\(A, pos, up\);/.test(src)
+        /* ① 本体不埋土 */
+        && /if \(marginOf\(q\) < 0\.25\) return false;/.test(src)
+        /* ② 近平面 3×3（含四角）不切地形 —— 这是"看到地底"的直接成因 */
+        && /var half = Math\.tan\(fov \* Math\.PI \/ 360\) \* near;/.test(src)
+        && /var nearC = q\.clone\(\)\.addScaledVector\(fwd, near\);/.test(src)
+        && /if \(marginOf\(p2\) < 0\.2\) return false;/.test(src)
+        /* ③ 路径不穿坡（坡脊不许夹在锚点与相机之间） */
+        && /function pathOk\(t\)/.test(src)
+        && /if \(marginOf\(q\) < 0\.05\) return false;/.test(src)
+        /* 从远到近：先保视角，不行才收（不是先抬高度） */
+        && /for \(var t = len; t >= 0\.9; t -= 0\.35\)/.test(src)
+        /* 抬升只作贴脸兜底，且受上限约束 */
+        && /for \(var up60 = 0\.6; up60 <= liftMax \+ 0\.01; up60 \+= 0\.6\)/.test(src)
+        && /M\.SURF_CAM_CLEAR_MAX = 6;/.test(src)
+        /* 锚点贴球壳必须用**锚点方向**的地形高（沿用玩家高度会在坡上埋锚点） */
+        && /var _aGh = M\._groundAtUnit\(\[_aU\.x, _aU\.y, _aU\.z\]\)/.test(src)
+        && /M\._surfCamAnchor\.multiplyScalar\(\(M\.R \+ Math\.max\(_aGh, _ppH\) \+ 0\.05\) \/ _aL\)/.test(src)
+        /* 规则变更：环形包络 / 独立视线收缩 两段补丁退役，不许复活 */
+        && !/function _surfCamClearLift/.test(src)
+        && !/function _surfCamSightPull/.test(src)
+        && !/M\.SURF_CAM_CLEAR = /.test(src)
+        /* 探针下限：斜坡与平地都要"零切坡 + 零视线穿坡" */
+        && (function () {
+          /* v158.60 的行为与截图在同一个探针文件里（它自己扫坡、自己拍图） */
+          var pr = _r608('.workbuddy/tools/probe/p_fly_v15860.js');
+          return /sBad\.length === 0 && sPath\.length === 0/.test(pr)
+            && /fBad\.length === 0 && fPath\.length === 0/.test(pr)
+            && /walk\.worst === 0 && walk\.worstPath >= 0/.test(pr)
+            && /perf < 1\.2/.test(pr)
+            && /v15860-A-slope-low\.png/.test(pr);
         })();
     })());
   })();
