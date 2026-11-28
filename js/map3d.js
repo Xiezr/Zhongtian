@@ -7204,6 +7204,18 @@ import './gltf.js';
         }
       }
     } catch (eFH) { }
+    /* v158.46：相机高度 HUD —— 海拔口径（老板拍板：dist−R，不含地形）；
+       sig 去重（取整变化才写 DOM），地图页常驻 */
+    try {
+      if (GAME.ui && GAME.ui.renderAltHud) {
+        var _ag46 = M._rAlt != null ? M._rAlt : (camO.dist - R);
+        var _sig46 = Math.round(Math.max(0, _ag46));
+        if (_sig46 !== (M._altHudSig || -1)) {
+          M._altHudSig = _sig46;
+          GAME.ui.renderAltHud(_ag46);
+        }
+      }
+    } catch (eAH) { }
     try { _dustTick(_epDt); } catch (eEP2) { if (!M._epErr2) { M._epErr2 = String(eEP2 && eEP2.message); } }
     try { _perfTick(_epDt); } catch (eEP3) { if (!M._epErr3) { M._epErr3 = String(eEP3 && eEP3.message); } }
     placeCamera();
@@ -9095,7 +9107,10 @@ import './gltf.js';
        基准比例上限从 5.0 收紧到 **1.45** —— 方块人几何高 1.2，1.45× ≈ 1.74 米，
        而最矮的树也有 2.7 米（树干 1.0+树冠 2.4，缩放 0.78 起）—— 地面人恒小于树。
        高空"看不见"不靠基准比例解决，改由 _figScaleTick 按屏占比动态放大（下方）。 */
-    var sc = Math.max(0.8, Math.min(1.45, cellW * 0.45 / 1.2));
+    /* v158.46（老板「人小一点好了，整个比例尺相应就大了」）：上限 1.45 → **1.0**
+       —— 人 1.2 米 ≈ 最矮树（2.7m）的一半，山/城/星球相对人物更显体量；
+       高空可见性仍由屏占比固定缩放（FIG_SCREEN_FRAC）兜住，不因缩小而看不见。 */
+    var sc = Math.max(0.8, Math.min(1.0, cellW * 0.45 / 1.2));
     var who = [];
     /* ⛔ v157.85：前传的「金色君主人偶」分支已删 —— 现在一律画当前城市。 */
     var pc = GAME.currentCity && GAME.currentCity();

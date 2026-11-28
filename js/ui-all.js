@@ -16996,6 +16996,31 @@ import './ui.js';
     return el;
   };
   /* ============================================================
+   * v158.46（老板「地图界面上加一个相机实时高度数值」）：高度 HUD ——
+   * 地图页常驻一行相机离地高度（米），由 map3d 渲染循环按 sig 去重驱动
+   * （取整变化才写一次 DOM）。左上角，不挡中央视野。
+   * ============================================================ */
+  ui.renderAltHud = function (agl) {
+    var root = (ui.layerRoot && ui.layerRoot()) || null;
+    if (!root || !root.appendChild) return null;
+    var el = document.getElementById('alt-hud');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'alt-hud';
+      el.style.cssText = 'position:absolute;left:12px;top:70px;z-index:1900;'
+        + 'pointer-events:none;display:none;white-space:nowrap;'
+        + 'background:rgba(12,18,26,.72);color:#bfe3ff;'
+        + 'border:1px solid rgba(110,160,210,.35);border-radius:6px;'
+        + 'padding:3px 9px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;';
+      root.appendChild(el);
+    }
+    if (agl == null || !isFinite(agl)) { el.style.display = 'none'; return el; }
+    el.textContent = '📐 相机高度 ' + Math.round(agl) + ' m（海拔）';
+    el.style.display = 'block';
+    return el;
+  };
+
+  /* ============================================================
    * v158.43（诉求1·高空空天飞机飞行）：飞行 HUD —— 只有高空有速度时显示
    * 一行速度 + 键位（占屏最小；静止即隐）。由 map3d 渲染循环按 sig 去重驱动
    * （速度取整变化才写一次 DOM）。诉求 5「必要时对操作方式加以说明」。

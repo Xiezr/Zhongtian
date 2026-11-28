@@ -64,21 +64,37 @@ const check = (name, ok, extra) => {
   check('② 高空屏占比 ≈ 2.5%（恒定口径）',
     fracHi > 0.02 && fracHi < 0.03, (fracHi * 100).toFixed(2) + '%');
 
-  /* ③ 滚轮降到地表：人偶回真实比例 1.45（人 1.74m < 树） */
+  /* ③ 滚轮降到地表：人偶回真实比例 1.0（人 1.2m ≈ 最矮树一半） */
   await p.mouse.move(720, 450);
   for (let i = 0; i < 62; i++) { await p.mouse.wheel(0, -120); await p.waitForTimeout(45); }
   await p.waitForTimeout(1500);
   const sLo = await figProbe();
   console.log('地表: ' + JSON.stringify(sLo));
-  check('③ 地表人偶回基准 1.45（不放大、人 1.74m 小于树）',
-    sLo.stand != null && sLo.stand >= 1.4 && sLo.stand <= 1.55
-    && sLo.base != null && sLo.base <= 1.45, JSON.stringify(sLo));
+  check('③（v158.46 口径）地表人偶回基准 1.0（人小、比例尺大）',
+    sLo.stand != null && sLo.stand >= 0.95 && sLo.stand <= 1.05
+    && sLo.base != null && sLo.base <= 1.0, JSON.stringify(sLo));
 
   /* ④ 缩放只作用于 stand：城市人偶保持基准，不随高度放大 */
   const sCity = await figProbe();
-  check('④ 城市人偶不被屏占比缩放（city scale 恒 ≤ 1.45，与高空 stand 不同源）',
-    sCity.city != null && sCity.city <= 1.45 && sHi.stand > sCity.city,
+  check('④ 城市人偶不被屏占比缩放（city scale 恒 ≤ 1.0，与高空 stand 不同源）',
+    sCity.city != null && sCity.city <= 1.0 && sHi.stand > sCity.city,
     'city=' + sCity.city + ' standHi=' + sHi.stand);
+
+  /* ⑤ 高度 HUD：常驻显示、海拔口径（数值随滚轮变化） */
+  const altHud = await p.evaluate(() => {
+    const el = document.getElementById('alt-hud');
+    const M = GAME.map3d;
+    return {
+      visible: !!el && el.style.display !== 'none',
+      text: el ? (el.textContent || '') : '',
+      rAlt: +(M._rAlt || 0).toFixed(1)
+    };
+  });
+  console.log('高度 HUD: ' + JSON.stringify(altHud));
+  check('⑤ 相机高度 HUD 常驻显示且为海拔口径（文本含数值 ≈ _rAlt）',
+    altHud.visible && /海拔/.test(altHud.text) && /\d+/.test(altHud.text)
+    && Math.abs(parseInt((altHud.text.match(/\d+/) || [])[0], 10) - Math.round(altHud.rAlt)) <= 1,
+    altHud.text + ' rAlt=' + altHud.rAlt);
 
   check('⑤ 全程无页面运行时错误', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log('结果：' + pass + ' 通过 / ' + fail + ' 失败');
