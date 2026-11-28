@@ -7069,33 +7069,11 @@
       if (Math.abs(_zoomTarget - nAgl) < 0.01) nAgl = _zoomTarget;
       camO.dist = R + Math.max(0.6, nAgl);
     })();
-    /* ============================================================
-     * v158.22（老板「操控一小人走在地面上」）：地表态把轨道朝向**对齐玩家**
-     * ------------------------------------------------------------
-     * 地表层（地形/地块/景物）是以 `camO.dir` 为中心、超过半格就重建的
-     * （见下方 `_sdd < Math.cos(_halfCell)` 那段）。
-     * 镜头现在跟着人走，如果 camO.dir 还停在"玩家的滚动落点"，
-     * 人走两步地面就不跟了 —— 表现为"走出一片虚空"。
-     * 所以地表期间每帧把 camO 对齐 player 的 dir，让重建中心 = 玩家脚下。
-     * 退出地表后 camO 自然回到玩家拖过的朝向（这里不改 dist）。
-     * ============================================================ */
-    if (M._surf && M.SURF_AVATAR !== false) {
-      try {
-        var _fc22 = M.playerCi();
-        if (_fc22 >= 0) {
-          var _fp22 = M.playerPose();
-          if (_fp22 && _fp22.dir) {
-            camO.yaw = Math.atan2(_fp22.dir[0], _fp22.dir[2]);
-            camO.pitch = Math.max(-1.35, Math.min(1.35,
-              Math.asin(Math.max(-1, Math.min(1, _fp22.dir[1])))));
-            camO.quat = null; camO._euler = null;
-            /* 视线（_surfDir）不在这里清：贴地分支还要用它算基向量，
-               而且最终机位由 _surfAvatarCam 覆盖，留着不会影响画面。
-               每次进地表时由 _applySurf(true) 重置一次即可。 */
-          }
-        }
-      } catch (eAim22) { }
-    }
+    /* ⛔ v158.49（老板「为什么拉近地面的时候自动跳回了人物所在地？
+       从哪里变动高度就落到哪个位置」）：v158.22 的「地表每帧把 camO 对齐玩家」
+       整段删除 —— 拉近落地时相机指向被瞬间拽回人物所在地，高空"转换位置"
+       形同虚设。新口径：落点 = 相机当前指向（camO.dir 保持拉近时的值）；
+       地表层与机位锚点由 _surfAvatarCam 的锚点驱动（指向处起、玩家移动时才平滑跟随）。 */
     var _yaw = camO.yaw, _pitch = camO.pitch;
     /* v157.101：轨迹球模式下 quat 是**真值**，不许从 yaw/pitch 重建
        （重建会把 roll 与"越过极点"的信息一起抹掉 —— 那就退回转台了）。*/
@@ -7691,8 +7669,11 @@
     if (M._surf) {
       try {
         if (!SR) { rebuildSurf(camO.dir); }
-        else if (camO.dir) {
-          var _sdd = camO.dir[0] * SR.dir[0] + camO.dir[1] * SR.dir[1] + camO.dir[2] * SR.dir[2];
+        else if (M._surfCamAnchor && isFinite(M._surfCamAnchor.x)) {
+          /* v158.49：重锚判据改跟**镜头锚点**（不是 camO.dir —— 它已不再每帧
+             对齐玩家）：锚点走远 1.5 格就重建，地表层跟着落点/玩家走。 */
+          var _aN49 = M._surfCamAnchor.clone().normalize();
+          var _sdd = _aN49.x * SR.dir[0] + _aN49.y * SR.dir[1] + _aN49.z * SR.dir[2];
           /* v158.34（老板「画面太卡」）：半格（2.6 米）就整层重建，实测一次 29ms
              —— 4.5 m/s 走路时每 0.58 秒掉 2 帧，就是"一顿一顿"的来源。
              先放到 1.5 格（7.9 米）：4.5 m/s 时 1.7 秒才重建一次；
@@ -7706,7 +7687,7 @@
             var _nowR = Date.now();
             if (!M._panDrag || _nowR - (M._surfRebuildAt || 0) > 150) {
               M._surfRebuildAt = _nowR;
-              rebuildSurf(camO.dir);
+              rebuildSurf([_aN49.x, _aN49.y, _aN49.z]);
             }
           }
         }
@@ -9613,8 +9594,9 @@
    * 只改**镜头锚点**，不改位姿、不改世界坐标：世界依旧是静止的参照物。
    * ============================================================ */
   M.SURF_CAM_LAG = 0.26;       /* 走动中：锚点时间常数（秒）→ 4.5m/s 时落后约 1.2 米 */
-  M.SURF_CAM_LAG_STOP = 0.07;  /* 停下后：快速归位（不做长时间自漂） */
-  M._surfCamAnchor = null;     /* 镜头锚点（世界坐标，滞后于玩家） */
+  /* ⛔ v158.49：SURF_CAM_LAG_STOP（停下 0.07s 快速归位）退役 —— 那会把人拽回画面，
+     违反「从哪里变动高度就落到哪个位置」（落点=指向处，玩家不动锚点不动）。 */
+  M._surfCamAnchor = null;     /* 镜头锚点（世界坐标，初始=相机指向点；玩家移动时滞后跟随） */
   M._surfAvatarCam = function () {
     var ci = M.playerCi();
     if (ci < 0) return false;
@@ -9623,7 +9605,31 @@
     var d = pp.dir;
     var R2 = M.R + (isFinite(pp.h) ? pp.h : 0) + 0.05;
     var P = new THREE.Vector3(d[0] * R2, d[1] * R2, d[2] * R2);
-    var up = new THREE.Vector3(d[0], d[1], d[2]);
+    /* ---- 镜头锚点（v158.49 口径：落点=指向处）----
+       v158.49（老板「从哪里变动高度就落到哪个位置」）：锚点初始 = **相机指向点**
+       （camO.dir 拉近落地的位置），不再从玩家位置起 —— 玩家在高空把相机转到
+       别处拉近，落地就停在那处，不再跳回人物所在地。
+       玩家**移动时**（WASD 走路）锚点以滞后时间常数平滑跟上玩家；站着不动
+       锚点原地不动（v158.26 的"停下 0.07s 快速归位"退役 —— 那会把人拽回画面）。 */
+    var _dt = Math.max(0.001, Math.min(0.05, M._lastAvDt || 0.016));
+    var _moving = !!(M._lastAvOut && M._lastAvOut.moved);
+    if (!M._surfCamAnchor || !isFinite(M._surfCamAnchor.x)) {
+      /* 初始锚点 = 相机指向点（camO.dir × R2）—— 落哪看哪 */
+      var _cd0 = camO.dir || d;
+      M._surfCamAnchor = new THREE.Vector3(_cd0[0] * R2, _cd0[1] * R2, _cd0[2] * R2);
+    } else if (_moving) {
+      var _tau = Math.max(0.02, M.SURF_CAM_LAG);
+      var _k = 1 - Math.exp(-_dt / _tau);
+      M._surfCamAnchor.lerp(P, Math.min(1, _k));
+      /* 贴回球壳：两帧之间走的是**弦**，不修正会一路往地里沉。
+         只修长度、不动方向 —— 角度上的滞后（= 观感里的"人往前挪"）完整保留。 */
+      var _aL = M._surfCamAnchor.length() || 1;
+      M._surfCamAnchor.multiplyScalar(R2 / _aL);
+    }
+    var A = M._surfCamAnchor;
+    /* v158.49：机位基向量改从**锚点径向**算（机位围绕锚点），
+       不再从玩家径向算 —— 否则锚点在远处时机位方向与落点错位。 */
+    var up = new THREE.Vector3().copy(A).normalize();
     if (!M._surfCamE1) {
       var e0 = new THREE.Vector3(0, 1, 0).cross(up);
       if (e0.lengthSq() < 1e-6) e0.set(1, 0, 0);
@@ -9658,22 +9664,6 @@
     }
     var dirCam = _dcamOf(el);
     var camDist = _distOf(el);
-
-    /* ---- 镜头锚点：走动时滞后，停下立刻归位 ---- */
-    var _dt = Math.max(0.001, Math.min(0.05, M._lastAvDt || 0.016));
-    var _moving = !!(M._lastAvOut && M._lastAvOut.moved);
-    if (!M._surfCamAnchor || !isFinite(M._surfCamAnchor.x)) {
-      M._surfCamAnchor = P.clone();
-    } else {
-      var _tau = _moving ? Math.max(0.02, M.SURF_CAM_LAG) : Math.max(0.02, M.SURF_CAM_LAG_STOP);
-      var _k = 1 - Math.exp(-_dt / _tau);
-      M._surfCamAnchor.lerp(P, Math.min(1, _k));
-      /* 贴回球壳：两帧之间走的是**弦**，不修正会一路往地里沉。
-         只修长度、不动方向 —— 角度上的滞后（= 观感里的"人往前挪"）完整保留。 */
-      var _aL = M._surfCamAnchor.length() || 1;
-      M._surfCamAnchor.multiplyScalar(R2 / _aL);
-    }
-    var A = M._surfCamAnchor;
     var pos = A.clone().addScaledVector(dirCam, camDist);
 
     /* 地面硬闸（v158.39 终版）：既要贴地看人，又不能钻进坡地。

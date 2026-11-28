@@ -51094,21 +51094,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   地表根节点世界矩阵恒等，地砖位置由绝对格号决定。
    * 规则变更：镜头锚点带时间常数（走动 0.26s / 停下 0.07s），
    *   走动时玩家在画面里真的往前挪约 5~7% 屏高，停下迅速归位。
+   * ------------------------------------------------------------
+   * ⛔ v158.49 规则变更（老板「从哪里变动高度就落到哪个位置」）：
+   *   锚点初始 = **相机指向点**（camO.dir×R2，拉近落地的位置），不再从玩家起；
+   *   只有玩家**移动**时才 lerp 跟随（SURF_CAM_LAG 滞后）；站着不动锚点原地
+   *   ——「停下 0.07s 快速归位」整条退役（那会把人拽回画面）。
    * ============================================================ */
-  check('§614① 镜头锚点会在走动时滞后（不是硬贴玩家）', (function () {
-    /* v158.39 规则变更：相机机位从 `cam.position.copy(A)`（锚点直接当机位）改成
-       `pos = A + dirCam*camDist` 再经地面硬闸后 `cam.position.copy(pos)`。
-       锚点滞后语义不变（lerp + 贴回球壳），只是最后落位从 A 变成 pos。
-       旧正则用非贪婪 `[\s\S]*?\n  };` 还会被函数内第一个块提前截断，
-       导致 blk 不含真正的落位行。这里改用「锚点滞后那三行」+「落位走 pos」两处独立钉。 */
+  check('§614①（v158.49 口径）镜头锚点：初始=相机指向点（落哪看哪）；移动才滞后跟随；LAG_STOP 退役', (function () {
     var i = _m3d608.indexOf('M._surfAvatarCam = function');
     var j = _m3d608.indexOf('M.playerPose = function', i);
     var blk = i >= 0 && j > i ? _m3d608.slice(i, j) : '';
     return /M\.SURF_CAM_LAG = 0\.26/.test(_m3d608)
-      && /M\.SURF_CAM_LAG_STOP = 0\.07/.test(_m3d608)
+      && !/M\.SURF_CAM_LAG_STOP = 0\.07/.test(_m3d608)          /* 反向证据：停下归位不许复活 */
+      && /_cd0 = camO\.dir \|\| d/.test(blk)                     /* 初始锚点 = 相机指向点 */
+      && /new THREE\.Vector3\(_cd0\[0\] \* R2/.test(blk)
+      && /else if \(_moving\) \{/.test(blk)                      /* 只有移动才跟 */
       && /M\._surfCamAnchor\.lerp\(P/.test(blk)
-      && /_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk)   /* 贴回球壳，不许往地里沉 */
-      && /cam\.position\.copy\(pos\)/.test(blk);                    /* 落位走地面硬闸后的 pos */
+      && /_surfCamAnchor\.multiplyScalar\(R2 \/ _aL\)/.test(blk) /* 贴回球壳，不许往地里沉 */
+      && /cam\.position\.copy\(pos\)/.test(blk);                 /* 落位走地面硬闸后的 pos */
   })());
 
   (function () {                    /* 外层只算，判定交给唯一的 check（避免同名双条） */
