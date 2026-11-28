@@ -119,8 +119,11 @@ const ang = (a, b) => {
   });
   await p.waitForTimeout(500);
   const altB = await p.evaluate(() => GAME.map3d.flyProbe().alt);
-  ok('①飞行态滚轮不再改高度：连滚 5 格海拔变化 < 0.5m',
-    altA != null && altB != null && Math.abs(altB - altA) < 0.5,
+  /* v158.57：判据从 0.5m 放到 2m —— 引力下沉 1.0 m/s 在 0.5s 测量窗口内
+     本身就会掉 ~0.5m（实测 569.42→568.92）。滚轮若真生效会差几十米，
+     2m 的阈值仍能严格区分，不是放宽语义。 */
+  ok('①飞行态滚轮不再改高度：连滚 5 格海拔变化 < 2m（余量留给引力下沉）',
+    altA != null && altB != null && Math.abs(altB - altA) < 2,
     'alt ' + (altA == null ? 'null' : altA.toFixed(2)) + ' → ' + (altB == null ? 'null' : altB.toFixed(2)));
 
   /* ---------- ⑤ W / ↑ 加速、S / ↓ 减速 ---------- */
@@ -218,7 +221,9 @@ const ang = (a, b) => {
     const okL = M.flyToggle();
     return { ok: okL, phase: M._fly.phase };
   });
-  await p.waitForTimeout(3600);
+  /* v158.57：着陆时长改为随高度（|r0−r1|/26，上限 7s），176m 需 ~6.7s，
+     旧 3.6s 等不到 dock —— 这是规则变更，不是回归。 */
+  await p.waitForTimeout(8000);
   const landEnd = await p.evaluate(() => {
     const M = GAME.map3d;
     return { phase: M._fly.phase, surf: !!M._surf, active: !!M._fly.active,

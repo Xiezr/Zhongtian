@@ -51653,7 +51653,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && !/M\.FLY_VEL_TURN\s*=/.test(src)
         && !/M\.FLY_PITCH\s*=/.test(src)
         && /M\._fly = \{ v: 0, pos: null, head: null, vel: null, up: null, active: false,/.test(src)
-        && /aim: null, phase: 'cruise', phaseT: 0,/.test(src)
+        /* v158.57：_fly 新增 aimPitch（俯仰锁定）/pitch/sink/holdR/autoLand，
+           初始化行因此变成 `aim: null, aimPitch: null, phase: ...` —— 断言跟着对齐 */
+        && /aim: null, aimPitch: null, phase: 'cruise', phaseT: 0,/.test(src)
+        && /pitch: 0, sink: 0, holdR: null, autoLand: 0/.test(src)
         && /M\.flyLaunch = function \(/.test(src)
         && /M\.flyLand = function \(/.test(src)
         && /M\.flyToggle = function \(/.test(src)
@@ -51747,7 +51750,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && 2.6 > 2 && 2.6 < 3.2                      /* 降落时长 */
         && /new THREE\.ConeGeometry\(1\.2, 4, 3\)/.test(src)
         && /new THREE\.SphereGeometry\(0\.5, 8, 6\)/.test(src)
-        && /new THREE\.Line\(tg, new THREE\.LineBasicMaterial/.test(src)
+        /* v158.57 规则变更：尾迹线整条退役 —— 相机永远吊在机尾，尾迹必然
+           沿视线投影成一根贯穿半屏的竖针（v15856-D / v15857-A/B 三次实机图）。
+           这里改**反向断言**禁止复活（不是删除判据）。 */
+        && !/M\._shipTrail = /.test(src)
+        && !/M\.FLY_TRAIL_MAX\s*=/.test(src)
         /* HUD 三件：罗盘八方位 + 离地/球心 + 机头夹角/横滚，全部直印不许藏设置页 */
         && /🌍 星球/.test(_um608) && /离地/.test(_um608) && /球心/.test(_um608)
         && /机头→星球/.test(_um608) && /横滚/.test(_um608)
@@ -51768,7 +51775,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var pr = _r608('.workbuddy/tools/probe/p_fly_v15856.js');
       var sh = _r608('.workbuddy/tools/probe/p_fly_v15856_shot.js');
       return /WheelEvent\('wheel'/.test(pr)                    /* ① 真滚轮 */
-        && /Math\.abs\(altB - altA\) < 0\.5/.test(pr)         /* ① 高度不变的判据 */
+        /* v158.57：判据随引力下沉放到 2m（0.5s 窗口内引力本身掉 ~0.5m；
+           滚轮若生效会差几十米，2m 仍严格区分）—— 是对齐不是放宽语义 */
+        && /Math\.abs\(altB - altA\) < 2/.test(pr)             /* ① 高度不变的判据 */
         && /Math\.abs\(st2\.back - st2\.cfgBack\) < 3/.test(pr) /* ② 尾端机位 */
         && /st3\.screenY > 0\.60 && st3\.screenY < 0\.72/.test(pr) /* ③ 屏幕下 2/5 */
         && /st3\.ndcX\) < 0\.05/.test(pr)                      /* ③ 水平居中 */
@@ -51781,6 +51790,56 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && (pr.match(/ok\('/g) || []).length >= 11              /* 十一条全在册 */
         && /v15856-A-cruise-aim\.png/.test(sh)
         && /v15856-D-landing\.png/.test(sh);
+    })());
+
+    /* ============================================================
+     * §623⑥ v158.57（老板「高空飞行在不改变海拔时，不应该相对固定高度吗？
+     *   然后由于引力逐步下降。设计着陆程序」）
+     * ------------------------------------------------------------
+     * 诊断实测旧行为：水平切向 v=80 飞 6s → 高度 **+124.6m**（沿切线飞离
+     *   星球，没有高度概念）；鼠标纯水平右移 4s → 机头抬头 **37.7°**。
+     * 规则变更：机头拆成「切向方向 + 俯仰角 pitch」；位置每帧按 holdR 贴回
+     *   球面；holdR 由 sink = GRAV·cosθ − v·sinθ 推进；低空下沉自动着陆；
+     *   着陆时长按高度/常下沉率算。尾迹线整条退役（见 ④）。
+     * ============================================================ */
+    check('§623⑥（v158.57 口径）贴球面保高 + 引力下沉 + 俯仰分离 + 低空自动着陆 + 时长随高度', (function () {
+      var src = _m3d608;
+      return /M\.FLY_GRAV_SINK = 1\.0;/.test(src)
+        && /M\.FLY_PITCH_RATE = 0\.9;/.test(src)
+        && /M\.FLY_TRIM = 0;/.test(src)
+        && /M\.FLY_LAND_AUTO_ALT = 26;/.test(src)
+        && /M\.FLY_LAND_SINK = 26;/.test(src)
+        /* 贴球面：半径由 holdR 决定，不再沿切线飞出去 */
+        && /_holdR -= _sink \* dt;/.test(src)
+        && /pos\.setLength\(_holdR\);/.test(src)
+        && /var _sink = \(M\.FLY_GRAV_SINK == null \? 1\.2 : M\.FLY_GRAV_SINK\) \* Math\.cos\(_p0\)/.test(src)
+        /* 俯仰分离：机头 = 切向×cos + 径向×sin；aimPitch 单独锁定 */
+        && /head\.copy\(_tanH\)\.multiplyScalar\(Math\.cos\(_p0\)\)/.test(src)
+        && /f\.aimPitch = pit;/.test(src)
+        && /var _aimPitch = \(fly\.aim && fly\.aimPitch != null\)/.test(src)
+        /* 偏航轴改当地径向（原来绕机体 up 会把机头带出切平面） */
+        && /q\.setFromAxisAngle\(rad, -yaw\)/.test(src)
+        /* 自动着陆 + 时长随高度 */
+        && /\(_holdR - R\) < \(M\.FLY_LAND_AUTO_ALT \|\| 26\) && _sink > 0/.test(src)
+        && /var _need = Math\.abs\(_r0 - _r1\) \/ Math\.max\(1, \(M\.FLY_LAND_SINK \|\| 26\)\)/.test(src)
+        /* 相机俯仰与机头俯仰不许共用键名（旧 flyProbe 里 pitch 被 camPitch 覆盖） */
+        && /yaw: camO\.yaw, camPitch: camO\.pitch/.test(src)
+        && /pitch: f\.pitch \|\| 0, sink: f\.sink \|\| 0,/.test(src)
+        /* HUD 让玩家看懂"为什么在掉高度" */
+        && /下沉/.test(_um608) && /仰角/.test(_um608);
+    })());
+
+    check('§623⑦（v158.57 口径）行为下限由 p_fly_v15857 承担：平飞/转向/爬升/俯冲/自动着陆全带下限', (function () {
+      var pr = _r608('.workbuddy/tools/probe/p_fly_v15857.js');
+      var sh = _r608('.workbuddy/tools/probe/p_fly_v15857_shot.js');
+      return /dAlt <= -2 && dAlt >= -12/.test(pr)          /* 平飞：只按引力沉，不许飞涨 */
+        && /turned >= 20 && Math\.abs\(h1\.pitchDeg\) < 3/.test(pr) /* 水平转向不掉高 */
+        && /u1\.pitchDeg > 8 && \(u1\.alt - u0\) >= 20/.test(pr)     /* 抬头爬升 */
+        && /d1\.pitchDeg < -8 && \(d1\.alt - d0\) <= -20/.test(pr)   /* 俯冲 */
+        && /phase === 'landing' && au\.auto === 1/.test(pr)           /* 自动着陆 */
+        && /tHigh >= 4000 && tLow > 0 && tLow <= 3500 && tHigh > tLow/.test(pr) /* 时长随高度 */
+        && (pr.match(/ok\('/g) || []).length >= 8
+        && /v15857-A-level-flight\.png/.test(sh);
     })());
   })();
 

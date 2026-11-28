@@ -6605,13 +6605,42 @@ import './gltf.js';
   M.FLY_TAKEOFF_T = 2.4;   /* 起飞程序时长（s） */
   M.FLY_LAND_T = 2.6;      /* 降落程序时长（s） */
   M.FLY_TAKEOFF_V = 62;    /* 起飞结束时的速度（m/s，约半巡航） */
-  M.FLY_TRAIL_MAX = 120;   /* 尾迹采样点数 */
+  /* ⛔ v158.57 退役：FLY_TRAIL_MAX（尾迹采样点数）。尾迹线整条删除 ——
+     相机永远吊机尾时它必然投影成一根竖针（v15856-D / v15857-A / v15857-B
+     三次实机图），缩点数不解决问题。去向见 M._fly 上方墓碑。 */
+  /* ============================================================
+   * v158.57（老板：「高空飞行在不改变海拔时，不应该相对固定高度吗？
+   *   然后由于引力逐步下降。设计着陆程序」）
+   * ------------------------------------------------------------
+   * 诊断（`.workbuddy/tmp/diag_v15857_alt.js`）量出两件事：
+   *   · 水平切向 v=80 飞 6 秒，高度自己涨 **+124.6m** —— 旧版沿切线走直线，
+   *     等于一点点飞出星球，根本没有"高度"概念；
+   *   · 鼠标只在水平方向右移 4 秒，机头却抬头 **37.7°** —— 绕机体 up 转 yaw
+   *     会带出径向分量，于是"左右看"变成"往上爬"。
+   * 修法把机头拆成两件事，各自管：
+   *   · **水平切向**（转向）→ 只决定往哪飞，恒留在切平面内；
+   *   · **俯仰角 fly.pitch**（相对当地水平面）→ 单独配平，松手回 FLY_TRIM；
+   *   · 位置每帧按 `holdR` **贴回球面**，holdR 由引力下沉率推进 ——
+   *     于是"平飞不掉高、引力慢慢沉、抬头才爬升"三件事同时成立。
+   * ============================================================ */
+  M.FLY_GRAV_SINK = 1.0;   /* 引力稳态下沉率（m/s）：平飞时的高度自然衰减 */
+  M.FLY_PITCH_RATE = 0.9;  /* 俯仰配平角速度（rad/s）：抬头/低头都不突变 */
+  M.FLY_TRIM = 0;          /* 松手配平迎角（rad）：0 = 平飞不补偿，交给引力慢慢沉 */
+  M.FLY_LAND_AUTO_ALT = 26;/* 低于该离地高度且在下沉 → 自动进入着陆程序 */
+  M.FLY_LAND_SINK = 26;    /* 着陆程序的下降速率（m/s）—— 决定程序时长 */
+  M.FLY_LAND_T_MAX = 7;    /* 着陆程序时长上限（s），高空落下来也不会太久 */
   M.FLY_LEVEL_AFTER = 2.5; /* 无方向输入 N 秒后视角偏移缓慢回 0 */
   M.FLY_LEVEL_RATE = 0.5;
+  /* ⛔ v158.57 退役：尾迹线（fly.trail / _shipTrail）。实机图 v15857-A/B 与
+     v15856-D 三次拍到同一缺陷：相机永远吊在机尾、尾迹沿 -head 指向相机，
+     投影就是一条贯穿半屏的竖针（缩到 18 点仍到底）。老板从未要求尾迹，
+     运动感由战舰姿态 + 引擎光点承担。去向：_ensureShip/_paintShip 已整条删除，
+     §623④ 改为反向断言禁止复活。 */
   M._fly = { v: 0, pos: null, head: null, vel: null, up: null, active: false,
-             climb: 0, trail: [], trailAt: 0,
-             aim: null, phase: 'cruise', phaseT: 0,
-             launchHead: null, landR0: null, landHead: null };
+             climb: 0,
+             aim: null, aimPitch: null, phase: 'cruise', phaseT: 0,
+             launchHead: null, landR0: null, landHead: null,
+             pitch: 0, sink: 0, holdR: null, autoLand: 0 };
   function _flyVec(a) { return new THREE.Vector3(a[0], a[1], a[2]); }
 
   /* ============================================================
@@ -6659,7 +6688,11 @@ import './gltf.js';
       toward: Math.acos(Math.max(-1, Math.min(1, front))) * 180 / Math.PI,
       bank: M._bankAngle || 0,
       /* v158.56：起飞/降落程序态 —— HUD 要能说清"现在是不是我在开" */
-      phase: f.phase || 'cruise'
+      phase: f.phase || 'cruise',
+      /* v158.57：俯仰/下沉率 —— 让玩家看懂"为什么在掉高度" */
+      pitch: (f.pitch || 0) * 180 / Math.PI,
+      sink: f.sink || 0,
+      holdAlt: (f.holdR == null) ? (r - R) : (f.holdR - R)
     };
   };
 
@@ -6675,13 +6708,7 @@ import './gltf.js';
       var eg = new THREE.SphereGeometry(0.5, 8, 6);
       M._shipEngine = new THREE.Mesh(eg, new THREE.MeshBasicMaterial({ color: 0xffb84d }));
       scene.add(M._shipMesh); scene.add(M._shipEngine);
-      var tg = new THREE.BufferGeometry();
-      tg.setAttribute('position', new THREE.BufferAttribute(
-        new Float32Array((M.FLY_TRAIL_MAX || 120) * 3), 3));
-      M._shipTrail = new THREE.Line(tg, new THREE.LineBasicMaterial({
-        color: 0x35ffe8, transparent: true, opacity: 0.75 }));
-      M._shipTrail.frustumCulled = false;
-      scene.add(M._shipTrail);
+      /* ⛔ v158.57 退役：尾迹 THREE.Line（见 M._fly 上方墓碑）。 */
     } catch (eS) { M._shipErr = String(eS && eS.message); }
     return M._shipMesh || null;
   }
@@ -6689,7 +6716,7 @@ import './gltf.js';
     var fly = M._fly;
     if (!fly || !M._shipMesh) return;
     var show = !!(fly.active && !M._surf && fly.pos && fly.head);
-    M._shipMesh.visible = M._shipEngine.visible = M._shipTrail.visible = show;
+    M._shipMesh.visible = M._shipEngine.visible = show;
     if (!show) return;
     try {
       var p = _flyVec(fly.pos), h = _flyVec(fly.head).normalize(), r = p.clone().normalize();
@@ -6706,13 +6733,7 @@ import './gltf.js';
       M._shipMesh.quaternion.setFromRotationMatrix(
         new THREE.Matrix4().makeBasis(_bX, _bY, _bZ));
       M._shipEngine.position.copy(p).addScaledVector(h, -2.2);
-      var arr = M._shipTrail.geometry.attributes.position.array;
-      var n = fly.trail.length;
-      for (var i = 0; i < n; i++) {
-        var t = fly.trail[i]; arr[i * 3] = t[0]; arr[i * 3 + 1] = t[1]; arr[i * 3 + 2] = t[2];
-      }
-      M._shipTrail.geometry.attributes.position.needsUpdate = true;
-      M._shipTrail.geometry.setDrawRange(0, n);
+      /* ⛔ v158.57 退役：尾迹填充（见 M._fly 上方墓碑）。 */
     } catch (eP) { if (!M._shipPaintErr) M._shipPaintErr = String(eP && eP.message); }
   }
   M.paintShip = _paintShip;
@@ -6740,13 +6761,7 @@ import './gltf.js';
     camO.pitch = Math.asin(Math.max(-1, Math.min(1, _ndF.y)));
     camO.quat = null; camO._euler = null;
     var _now = Date.now();
-    /* v158.56：采样门槛从 0.3 提到 3 m/s —— 起降末段低速时点距只有几厘米，
-       120 个点堆在几米内就是一条"针"（实机图抓到）。慢速不画尾迹。 */
-    if (Math.abs(fly.v) > 3 && _now - (fly.trailAt || 0) > 80) {
-      fly.trail.push([pos.x, pos.y, pos.z]);
-      if (fly.trail.length > (M.FLY_TRAIL_MAX || 120)) fly.trail.shift();
-      fly.trailAt = _now;
-    }
+    /* ⛔ v158.57 退役：尾迹采样（见 M._fly 上方墓碑）。 */
     _ensureShip();
     _paintShip();
     try { M._lastAct = _now; } catch (eT) { }
@@ -6781,13 +6796,22 @@ import './gltf.js';
       bank.addScaledVector(head, -bank.dot(head)).normalize();
       if (k >= 1) { fly.phase = 'cruise'; fly.phaseT = 0; }
     } else if (fly.phase === 'landing') {
-      var T2 = M.FLY_LAND_T || 2.6;
+      var _r0 = (fly.landR0 != null) ? fly.landR0 : pos.length();
+      /* v158.57：落点按**地形高**算（与巡航下限同一口径），否则山里"落地"。 */
+      var _terrL = 0;
+      try {
+        _terrL = (M.camFloorAt ? M.camFloorAt([radial.x, radial.y, radial.z]) : 0) || 0;
+      } catch (eTL57) { _terrL = 0; }
+      var _r1 = Math.max(R + (M.SURF_EYE || 1.7) * 1.5, _terrL + (M.SURF_EYE || 1.7));
+      /* v158.57：程序时长按**高度 / 常下沉率**算 —— 高空掉下来不会等太久
+         （上限 7s），低空也不拖沓（下限 1.8s）。旧版固定 2.6s，从 300m 落下来
+         等于 115 m/s 砸地。 */
+      var _need = Math.abs(_r0 - _r1) / Math.max(1, (M.FLY_LAND_SINK || 26));
+      var T2 = Math.max(1.8, Math.min((M.FLY_LAND_T_MAX || 7), _need));
       var k2 = Math.min(1, fly.phaseT / T2);
       var _down = radial.clone().negate();
       head.lerp(_down, Math.min(1, 3.0 * dt)).normalize();
       fly.v = Math.max(0, (fly.v || 0) * (1 - Math.min(1, 2.6 * dt)));
-      var _r0 = (fly.landR0 != null) ? fly.landR0 : pos.length();
-      var _r1 = R + (M.SURF_EYE || 1.7) * 1.5;
       var _e2 = (k2 < 0.35) ? 0 : ((k2 - 0.35) / 0.65);
       _e2 = _e2 * _e2 * (3 - 2 * _e2);
       pos.setLength(Math.max(_r1, _r0 + (_r1 - _r0) * _e2));
@@ -6802,13 +6826,18 @@ import './gltf.js';
         return true;
       }
     }
+    /* v158.57：程序自己管半径，同步 holdR/pitch —— 交回巡航时高度从落点
+       接着算，不会因为 holdR 是旧值而跳一下。 */
+    fly.holdR = pos.length();
+    fly.pitch = Math.asin(Math.max(-1, Math.min(1, head.dot(radial))));
+    fly.sink = 0;
     _commitFlight(fly, pos, head, bank);
     return true;
   }
 
   function _tickFlight(dt) {
     var fly = M._fly || (M._fly = { v: 0, pos: null, head: null, vel: null, active: false,
-                                    climb: 0, trail: [], trailAt: 0 });
+                                    climb: 0 });
     var keys = (GAME && GAME._flyKeys) || null;
     /* 地表/跟随 = 走路态：战舰收起、速度清零 */
     if (M._surf || M.FOLLOW) {
@@ -6816,6 +6845,8 @@ import './gltf.js';
       if (fly.active) fly.active = false;
       if (fly.aim) fly.aim = null;                       /* v158.56：鼠标指示随飞行态作废 */
       if (fly.phase !== 'dock') { fly.phase = 'dock'; fly.phaseT = 0; }
+      fly.autoLand = 0;                                  /* v158.57：落地后清自动着陆标记 */
+      fly.sink = 0;
       if (M._flyCrossOn) {
         M._flyCrossOn = false;
         try { if (GAME.ui && GAME.ui.renderFlyCross) GAME.ui.renderFlyCross(0, 0, false); } catch (eC0) { }
@@ -6900,6 +6931,37 @@ import './gltf.js';
       _bank.lerp(radial, Math.min(1, 0.8 * dt)).normalize();
     }
     head.normalize();
+    /* ============================================================
+     * ③b v158.57：**俯仰与水平转向分离**（老板「不改变海拔时应该相对固定
+     *     高度」）。机头拆成「切向方向（往哪飞）」+「俯仰角 fly.pitch
+     *     （相对当地水平面）」，俯仰单独按 FLY_PITCH_RATE 配平：
+     *       · 有鼠标指示 → 目标俯仰 = aim 相对当地水平面的仰角；
+     *       · 松手 → 回 FLY_TRIM（≈1.15° 的配平迎角，用 v·sinθ 抵消引力）；
+     *       · 重建 head = 切向×cos(pitch) + 径向×sin(pitch)。
+     *     这样"左右转"永远留在切平面内，不会再像旧版那样一转就爬高
+     *     （诊断 C：鼠标纯水平右移，机头却抬头 37.7°）。
+     * ============================================================ */
+    var _aimPitch = (fly.aim && fly.aimPitch != null)
+      ? fly.aimPitch : (M.FLY_TRIM == null ? 0 : M.FLY_TRIM);
+    var _p0 = (fly.pitch == null) ? 0 : fly.pitch;
+    var _pr = (M.FLY_PITCH_RATE || 0.9) * dt;
+    var _dp = _aimPitch - _p0;
+    _p0 += Math.max(-_pr, Math.min(_pr, _dp));
+    fly.pitch = _p0;
+    var _tanH = head.clone().addScaledVector(radial, -head.dot(radial));
+    if (_tanH.lengthSq() < 1e-6) {
+      _tanH.crossVectors(radial, new THREE.Vector3(0, 1, 0));
+      if (_tanH.lengthSq() < 1e-6) _tanH.set(1, 0, 0);
+    }
+    _tanH.normalize();
+    head.copy(_tanH).multiplyScalar(Math.cos(_p0))
+      .addScaledVector(radial, Math.sin(_p0)).normalize();
+    /* v158.57：俯仰改了 head，机体 up 必须跟着重新正交化 —— 否则 head·up
+       不再是 0（探针 v15855⑤ 实测 0.68），HUD 的 right 基与横滚角都会偏。 */
+    _bank.addScaledVector(head, -_bank.dot(head));
+    if (_bank.lengthSq() < 1e-8) _bank.copy(radial);
+    _bank.normalize();
+
     /* ⑤ 速度瞬时对齐机头（v158.53 规则变更）：
        旧"有限追随"实测 0.5s 侧滑 20.8° —— 推了舵还往原方向飘，老板原话
        "不能按自己意愿想去哪就去"。现在 vel = head，看哪飞哪；转向的弧线
@@ -6907,6 +6969,42 @@ import './gltf.js';
        ⑥ 位置沿速度矢量推进 + 状态/相机对账 + 尾迹 + 战舰：全部收进
        _commitFlight（起飞降落程序共用同一条出口，绝不各写一套）。 */
     pos.addScaledVector(head, fly.v * dt);
+    /* ============================================================
+     * ⑤b v158.57：**贴回球面**。旧版不贴：沿切线走直线 = 一点点飞出星球
+     *   （诊断 B：v=80 水平飞 6 秒高度 +124.6m），根本没有"保持高度"。
+     *   现在半径由 holdR 决定，holdR 按引力下沉率推进：
+     *     sink = GRAV_SINK·cos(pitch) − v·sin(pitch)
+     *   平飞（pitch≈0）→ sink≈GRAV_SINK，**缓慢下降**（老板「由于引力逐步下降」）；
+     *   抬头把 v·sin(pitch) 顶过引力 → sink<0 → 爬升；
+     *   低头 → sink 变大 → 快速下降。
+     * ============================================================ */
+    var _sink = (M.FLY_GRAV_SINK == null ? 1.2 : M.FLY_GRAV_SINK) * Math.cos(_p0)
+      - fly.v * Math.sin(_p0);
+    var _holdR = (fly.holdR == null) ? pos.length() : fly.holdR;
+    _holdR -= _sink * dt;
+    /* v158.57：下限必须吃**地形高**。实机图 v15857-C 抓出：定值下限
+       R+2.7m 让飞行器在 22m 高度直接钻进山里，战舰被地形完全遮住。
+       高度只认球心距是不够的 —— 山下 22m 是空中，山上 22m 是土里。 */
+    var _terr = 0;
+    try {
+      _terr = (M.camFloorAt ? M.camFloorAt([radial.x, radial.y, radial.z]) : 0) || 0;
+    } catch (eT57) { _terr = 0; }
+    var _rMin = Math.max(R + (M.SURF_EYE || 1.7) * 1.6, _terr + 4);
+    var _rMax = M.ZOOM_MAX || R * 50;
+    _holdR = Math.max(_rMin, Math.min(_rMax, _holdR));
+    pos.setLength(_holdR);
+    fly.holdR = _holdR;
+    fly.sink = _sink;
+    /* ⑤c v158.57：引力会把高度一路带下来 —— 低空仍在沉就自动进入着陆程序，
+       不让玩家在 10m 高度以 80m/s 撞地。抬头能把 sink 压到 0 以下（爬升），
+       所以想贴地低飞仍然做得到。 */
+    if ((_holdR - R) < (M.FLY_LAND_AUTO_ALT || 26) && _sink > 0) {
+      if (!fly.autoLand) {
+        fly.autoLand = 1;
+        try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🛬 高度过低，自动着陆'); } catch (eAL) { }
+      }
+      M.flyLand();
+    }
     _commitFlight(fly, pos, head, _bank);
     return !!(l || r || u || dn || w || s || a || d || fly.v);
   }
@@ -6919,7 +7017,7 @@ import './gltf.js';
     return { v: f.v || 0, pos: f.pos ? f.pos.slice() : null,
       head: f.head ? f.head.slice() : null, vel: f.vel ? f.vel.slice() : null,
       up: f.up ? f.up.slice() : null,
-      active: !!f.active, climb: f.climb || 0, trail: (f.trail || []).length,
+      active: !!f.active, climb: f.climb || 0, trail: 0,   /* v158.57 尾迹退役，恒 0 */
       alt: f.pos ? (Math.hypot(f.pos[0], f.pos[1], f.pos[2]) - R) : null,
       max: M.FLY_MAX, back: M.FLY_BACK_MAX, accel: M.FLY_ACCEL,
       turn: M.FLY_TURN, lookK: M.FLY_LOOK_K, roll: M.FLY_ROLL,
@@ -6929,8 +7027,18 @@ import './gltf.js';
       phase: f.phase || 'cruise', phaseT: f.phaseT || 0,
       aim: f.aim ? f.aim.slice() : null,
       camBack: M.FLY_CAM_BACK, camUp: M.FLY_CAM_UP, camMix: M.FLY_CAM_MIX,
+      /* v158.57：高度保持/引力下沉/自动着陆的只读快照 */
+      gravSink: M.FLY_GRAV_SINK, pitchRate: M.FLY_PITCH_RATE, trim: M.FLY_TRIM,
+      landAutoAlt: M.FLY_LAND_AUTO_ALT, landSink: M.FLY_LAND_SINK,
+      pitch: f.pitch || 0, sink: f.sink || 0,
+      holdR: f.holdR == null ? null : f.holdR,
+      holdAlt: f.holdR == null ? null : (f.holdR - R),
+      autoLand: f.autoLand || 0,
       bank: M._bankAngle || 0, nav: M._flyNavState ? M._flyNavState() : null,
-      yaw: camO.yaw, pitch: camO.pitch, dir: camO.dir ? camO.dir.slice() : null,
+      /* ⚠️ v158.57：相机俯仰必须叫 camPitch —— 旧字段名 `pitch` 与机头俯仰
+         同名，会把 `pitch: f.pitch` 静默覆盖成相机值（探针⑤实测读到 +24.2°
+         的相机俯仰、而机头其实是 −28.6°）。两个 pitch 语义不同，不许共用键名。 */
+      yaw: camO.yaw, camPitch: camO.pitch, dir: camO.dir ? camO.dir.slice() : null,
       lookYaw: camO.lookYaw, lookPitch: camO.lookPitch,
       camPos: M._flyCam ? M._flyCam.pos.slice() : null };
   };
@@ -6945,7 +7053,7 @@ import './gltf.js';
   M._flyAimAt = function (px, py) {
     var f = M._fly;
     if (!f) return null;
-    if (!f.active || M._surf || !f.pos || !f.head) { f.aim = null; return null; }
+    if (!f.active || M._surf || !f.pos || !f.head) { f.aim = null; f.aimPitch = null; return null; }
     /* ⚠️ canvas 是 M.bindControls(canvas) 的**形参**，模块作用域没有它 ——
        直接引用会抛 ReferenceError 并被外层 try/catch 吞掉（探针④实测 aim 恒 null）。
        统一从 M._cvEl 取（bindControls 里赋值），兜底按 id 查。
@@ -6962,27 +7070,40 @@ import './gltf.js';
     var ny = ((py - oy) / Math.max(1, h) - 0.5) * 2;
     var mag = Math.hypot(nx, ny);
     var dead = (M.FLY_AIM_DEAD == null ? 0.10 : M.FLY_AIM_DEAD);
-    if (mag <= dead) { f.aim = null; return null; }        /* 回中 = 保持航向 */
+    if (mag <= dead) { f.aim = null; f.aimPitch = null; return null; }   /* 回中 = 保持航向 */
     /* 死区外重新标定到 0..1：刚出死区是小角度，靠边才是满偏 */
     var k = Math.min(1, (mag - dead) / Math.max(1e-6, 1 - dead)) / mag;
     var yaw = nx * k * (M.FLY_AIM_MAX == null ? 1.15 : M.FLY_AIM_MAX);
     var pit = -ny * k * (M.FLY_AIM_PITCH == null ? 0.85 : M.FLY_AIM_PITCH);
     var hd = _flyVec(f.head).normalize();
-    var up = f.up ? _flyVec(f.up).normalize() : _flyVec(f.pos).normalize();
-    up.addScaledVector(hd, -up.dot(hd));
-    if (up.lengthSq() < 1e-8) up.crossVectors(new THREE.Vector3(0, 1, 0), hd);
-    if (up.lengthSq() < 1e-8) up.set(1, 0, 0);
-    up.normalize();
-    var right = new THREE.Vector3().crossVectors(hd, up).normalize();
-    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    /* ============================================================
+     * v158.57（老板「不改变海拔时应该相对固定高度」）：偏航轴从**机体 up**
+     *   改回**当地径向**。诊断 C 实测：鼠标纯水平右移 4 秒，机头却抬头
+     *   37.7°（换 pitch 配平后仍 16.6°）—— 因为机体 up 在转向后有横向
+     *   倾斜，绕它转 yaw 会把机头带出切平面。
+     *   现在 yaw 绕 radial：水平输入恒留在切平面，俯仰只由 ny 决定，
+     *   "左右看"再也不会变成"往上爬"。
+     * ============================================================ */
+    var rad = _flyVec(f.pos).normalize();
+    var right = new THREE.Vector3().crossVectors(hd, rad);
+    if (right.lengthSq() < 1e-8) {
+      right.crossVectors(new THREE.Vector3(0, 1, 0), rad);
+      if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    }
+    right.normalize();
     var q = new THREE.Quaternion();
     var aim = hd.clone();
-    /* 鼠标右 → 机头右转（绕 up 负向）；鼠标上 → 抬头（绕 right 正向）。
-       方向由 right = cross(head, up) 的右手定则确定，探针逐项验过符号。 */
-    if (yaw) { q.setFromAxisAngle(up, -yaw); aim.applyQuaternion(q); }
+    /* 鼠标右 → 机头右转（绕径向负向）；鼠标上 → 抬头（绕 right 正向）。
+       方向由 right = cross(head, radial) 的右手定则确定，探针逐项验过符号。 */
+    if (yaw) { q.setFromAxisAngle(rad, -yaw); aim.applyQuaternion(q); }
     if (pit) { q.setFromAxisAngle(right, pit); aim.applyQuaternion(q); }
     aim.normalize();
     f.aim = [aim.x, aim.y, aim.z];
+    /* v158.57：俯仰角**单独存一份锁定值**。若每帧从世界方向 aim 反算
+       asin(aim·radial)，飞行器沿球面飞远后径向转了 45°，同一世界方向的
+       相对仰角就跟着变 —— 诊断 C 实测"鼠标纯水平右移"仍涨到 15.8°。
+       锁定角度后：ny=0 → aimPitch=0 → 俯仰恒 0，飞多远都不变形。 */
+    f.aimPitch = pit;
     return f.aim;
   };
 
@@ -7019,8 +7140,12 @@ import './gltf.js';
     f.launchHead = [_h.x, _h.y, _h.z];
     f.v = 0; f.active = true; f.aim = null;
     f.phase = 'takeoff'; f.phaseT = 0;
-    f.trail.length = 0; f.trailAt = 0;
     f.landR0 = null;
+    /* v158.57：高度/俯仰状态从起飞点重置 —— 否则 holdR 还是上一轮的值，
+       起飞后第一帧就会被 setLength 拽到旧高度。 */
+    f.holdR = _p.length();
+    f.pitch = Math.asin(Math.max(-1, Math.min(1, _h.dot(_rad))));
+    f.sink = 0; f.autoLand = 0;
     try { _zoomTarget = _p.length() - R; _zoomLastT = 0; } catch (eL1) { }
     try { _ensureShip(); _paintShip(); } catch (eL2) { }
     try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🚀 起飞程序启动'); } catch (eL3) { }
@@ -7032,9 +7157,10 @@ import './gltf.js';
     if (f.phase === 'takeoff' || f.phase === 'landing') return false;
     f.phase = 'landing'; f.phaseT = 0; f.aim = null;
     f.landR0 = f.pos ? Math.hypot(f.pos[0], f.pos[1], f.pos[2]) : (camO.dist || R * 2);
-    /* v158.56：降落前清尾迹 —— 减速到 0 时旧采样点会堆成一条竖直"针"
-       （实机图 v15856-D 抓到），落地过程不该拖着这根线。 */
-    if (f.trail) { f.trail.length = 0; f.trailAt = 0; }
+    /* ⚠️ v158.57：这里**不许**清 autoLand —— 自动着陆是先置 1 再调本函数，
+       清掉就等于"自动着陆永远读不到标记"（探针⑥实测 autoLand=0）。
+       标记由 flyLaunch / 落地分支统一清。 */
+    /* ⛔ v158.57：尾迹整条退役，这里的清理一并删除。 */
     try { if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🛬 降落程序启动'); } catch (eL4) { }
     return true;
   };
@@ -7658,11 +7784,24 @@ import './gltf.js';
       if (_camUp.dot(_rad) < 0) _camUp.copy(_rad);
       cam.position.copy(_sp).addScaledVector(_hd, -(M.FLY_CAM_BACK || 26))
         .addScaledVector(_camUp, (M.FLY_CAM_UP || 6));
-      cam.up.copy(_camUp);
       /* 从相机指向战舰的方向 Δ，再绕 right 抬 θ → 战舰落到 FLY_SCREEN_Y */
       var _delta = _sp.clone().sub(cam.position);
       var _dlen = _delta.length();
       var _dn0 = (_dlen > 1e-6) ? _delta.clone().multiplyScalar(1 / _dlen) : _hd.clone();
+      /* ============================================================
+       * v158.57（实机图 v15857-C 抓出）：俯冲/降落时机头压向球心
+       *   （仰角 −73°），相机 up（径向）与视线几乎平行 → `cross(Δ, up)`
+       *   和 `lookAt` 同时退化，**战舰直接从画面消失**。
+       *   视线与 up 近平行时改用**机体 up**做相机上方向（它与 head 正交，
+       *   俯冲时仍非退化），天空/地面朝向依然正确。
+       * ============================================================ */
+      if (Math.abs(_dn0.dot(_camUp)) > 0.97) {
+        _camUp.copy(_mechUp).addScaledVector(_dn0, -_mechUp.dot(_dn0));
+        if (_camUp.lengthSq() < 1e-6) _camUp.crossVectors(_dn0, new THREE.Vector3(0, 1, 0));
+        if (_camUp.lengthSq() < 1e-6) _camUp.set(1, 0, 0);
+        _camUp.normalize();
+      }
+      cam.up.copy(_camUp);
       var _rightAx = new THREE.Vector3().crossVectors(_dn0, _camUp);
       if (_rightAx.lengthSq() < 1e-8) {
         _rightAx.crossVectors(_dn0, new THREE.Vector3(0, 1, 0));

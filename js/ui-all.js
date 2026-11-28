@@ -17112,6 +17112,16 @@ import './ui.js';
         + '<div style="opacity:.7;font-size:12px;">机头→星球 '
         + U.escape(String(Math.round(nav.toward)))
         + '° · 横滚 ' + U.escape(String(Math.round(nav.bank))) + '°</div>'
+        /* v158.57：把"为什么在掉高度"直接印出来 —— 平飞时引力会让高度缓慢
+           下降，玩家看得见下沉率就不会以为操控坏了。 */
+        + '<div style="opacity:.7;font-size:12px;">↕ '
+        + (function (sk) {
+          if (sk > 0.06) return '下沉 ' + sk.toFixed(1);
+          if (sk < -0.06) return '爬升 ' + (-sk).toFixed(1);
+          return '持平 0.0';
+        })(Number(nav.sink) || 0)
+        + ' m/s · 仰角 ' + ((Number(nav.pitch) || 0) >= 0 ? '+' : '')
+        + U.escape(String(Math.round(Number(nav.pitch) || 0))) + '°</div>'
         + '</div></div>';
     }
     el.innerHTML = '<div><span style="opacity:.9;">🚀 空天战舰 · </span>'

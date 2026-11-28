@@ -2,6 +2,10 @@
 /* v158.52 验收探针：高空惯性战舰飞行五条。
    ①高度可变（↑↓升降）②←→加减速（QE 退役）③前进=沿速度矢量
    ④转向留弧线（速度恒定、非转星球）⑤三角锥战舰 + 尾迹形体。
+   ⚠️ 历史探针：本文件记录 v158.52 当轮的验收标准，**不再随产品演进维护**。
+      v158.53 起 ↑↓ 改为速度通道、W/S 改为推进、机头改鼠标控制；
+      v158.57 起尾迹线整条退役（相机吊机尾时必然投影成竖针）。
+      当前口径的行为回归请看 p_fly_v15856 / p_fly_v15857。
    跑法：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" \
          node .workbuddy/tools/probe/p_fly_v15852.js */
 const { chromium } = require('playwright-core');
