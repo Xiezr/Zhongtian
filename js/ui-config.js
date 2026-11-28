@@ -422,7 +422,8 @@ import './ui.js';
         }) + '</div>' +
       '</div>' +
       /* v158.43（老板「把 WSAD 之类操作方式说明放到设置中，别占屏幕」）：
-         操作说明从屏幕 HUD 集中搬到设置页 —— 不再占屏，需要时来这里查。 */
+         完整键位一览放设置页备查。v158.46b：游戏内 HUD 直接印键位，
+         不再出现"见设置页"这类指向 —— 本卡是查漏的说明书，不是必经之路。 */
       '<div class="set-card">' +
         '<div class="res-line"><span class="lbl">🕹️ 操作说明</span><span class="val">大世界 · 键位一览</span></div>' +
         '<div class="ui-sub" style="line-height:2;">' +

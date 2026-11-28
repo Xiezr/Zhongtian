@@ -1233,11 +1233,13 @@ import './ui.js';
       el.id = 'follow-hud';
       el.style.cssText = 'position:absolute;left:22px;bottom:88px;z-index:1901;'
         + 'display:none;pointer-events:none;font-size:14px;line-height:1.9;';
+      /* ⛔ v158.46b（老板「『操作说明见设置页』就是我见过最垃圾最废物的文案和指示」）：
+         HUD 直接印键位，不再写任何"去设置页看"的废话指示 ——
+         指示就该出现在操作现场，不能把玩家打发去翻设置。 */
       el.innerHTML = '<span style="display:inline-block;background:rgba(12,18,26,.88);'
         + 'color:var(--gold-light,#f5e6b8);border:1px solid var(--gold-dark,#8a6d2f);'
         + 'border-radius:8px;padding:8px 12px;font-weight:700;">'
-        + '操作说明见「⚙️ 设置」页'
-        + '<br><span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　左键长按 平移　·　右键长按 转视角</span></span>';
+        + '<span style="opacity:.82;font-weight:600;">左键 点哪走哪　·　左键长按 平移镜头　·　右键长按 转视角　·　WASD/方向键 走动　·　E 交互　·　滚轮 升空</span></span>';
       root.appendChild(el);
     }
     el.style.display = on ? 'block' : 'none';
