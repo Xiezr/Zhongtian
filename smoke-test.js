@@ -49373,11 +49373,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑨ 同一病灶的第二处：**地表层**（老板「还是有规律斑纹」）。
        地表原来用 makeDetailTex('surf') + repeat 28 —— 同一张 384² 的 8/16/32 规整格噪声，
        贴地时同一团纹样按固定间距重复。现在地表也走颗粒图（颜色模式必须 0.74~1.0 区间）。*/
-    check('§589i 地表层同样用域扭曲颗粒图（颜色模式）· 不再用 makeDetailTex(surf)',
-      /makeGrainTex\('c'\)/.test(mp)
-      && /var c = Math\.round\(\(\(mode === 'c'\) \? \(0\.74 \+ n \* 0\.26\)/.test(mp)
+    /* v158.61 规则变更：地表层从"512² 域扭曲颗粒图（repeat 28 = 3.3m 一格）"
+       换成 **1024² 地面纹理（3.2m 一格 + 世界尺度 uv）** —— 旧图近看是糊块，
+       这是"走在空中"的直接成因。判据整条重写（不删不放宽）：
+       锁新图 + 新格尺，并**反向禁止**旧的 512 grainC 地表调用复活。 */
+    check('§589i（v158.61 口径）地表层用 1024² 地面纹理 + 3.2m 世界尺度；旧 512 颗粒图退役',
+      /function makeGroundTex\(\)/.test(mp)
+      && /M\.GROUND_TEX_CELL = 3\.2;/.test(mp)
+      && /var N = 1024;/.test(mp)
+      && /var dt = makeGroundTex\(\);/.test(mp)
+      && /pmat\.map = makeGroundTex\(\);/.test(mp)
+      && !/makeGrainTex\('c'\); dt\.repeat\.set\(28, 28\)/.test(mp)
       && (mp.match(/makeDetailTex\('surf'\)/g) || []).length === 0,
-      '颜色模式 + 地表不再用 384 图');
+      '1024² 地面纹理 + 3.2m 格尺 + 旧地表颗粒图退役');
 
     /* ⑩ 球面**不许再挂颜色细节贴图**（老板两张近景截图 · 规则小记号）
        取证：只留球体网格仍在 → 关顶点色仍在 → 关贴图消失 ⇒ 记号来自平铺贴图。
@@ -51686,7 +51694,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         /* 结构距离：v158.56 机位段加了反解推导注释，阈值随规则变更上调（非放宽语义，
            仍是"placeCamera 必须紧随渲染循环"的形态锁） */
         && k > 0 && p > k && (p - k) < 4500
-        && /if \(M\._surf \|\| M\.FOLLOW\)/.test(src);
+        /* v158.61：早退条件补了 `fly.phase === 'dock'`（下机后不许再把 active 打回 true，
+           否则地表层永远建不起来）—— 判据跟着对齐，并反向禁止旧两段式复活。 */
+        && /if \(M\._surf \|\| M\.FOLLOW \|\| fly\.phase === 'dock'\) \{/.test(src);
     })());
 
     check('§623②（v158.56 口径）W/S/↑/↓/←/→ 全进速度通道；鼠标指示转机头；A/D 横滚；vel 瞬时对齐 head', (function () {
@@ -51988,6 +51998,54 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
             && /walk\.worst === 0 && walk\.worstPath >= 0/.test(pr)
             && /perf < 1\.2/.test(pr)
             && /v15860-A-slope-low\.png/.test(pr);
+        })();
+    })());
+
+    /* ============================================================
+     * §623⑪ v158.61（老板「生成更精细的地面贴图，现在感觉走在空中」）
+     * ------------------------------------------------------------
+     * 取证两条：
+     *   ① 近地截图脚下是**纯色平涂** —— 地块平台 `surfPlate` 的几何**没有 uv**
+     *      （材质无法挂纹理），地形层 uv 是 0..1 归一化到 92m 方阵 × repeat 28
+     *      = **3.3 米一格**，近看只剩糊块；
+     *   ② 场景**没有任何阴影系统**（renderer.shadowMap 关、castShadow 0 个），
+     *      人物没有落地投影 → 悬空感。
+     * 规则变更：新增 1024² 地面纹理（3.2m 一格，四层噪声 + 域扭曲 + 各向异性），
+     *   平台补世界尺度 uv，材质挂 map；另加场景级接触阴影。
+     * 顺带修真 bug：`_tickFlight` 的"走路态"早退没包含 `phase==='dock'`，
+     *   下机后下一帧把 active 打回 true → 派生判定恒 false → **地表层永远建不起来**。
+     * ============================================================ */
+    check('§623⑪（v158.61 口径）1024² 地面纹理 + 平台世界尺度 uv + 接触阴影；dock 早退修复', (function () {
+      var src = _m3d608;
+      /* ① 精细纹理 */
+      return /function makeGroundTex\(\)/.test(src)
+        && /M\.GROUND_TEX_CELL = 3\.2;/.test(src)
+        && /var N = 1024;/.test(src)
+        /* ② 平台 UV（每个顶点都配，含侧壁） */
+        && /function _surfPlateGeo\(ci0, t1, t2\)/.test(src)
+        && /function _pv\(x, y, z\)/.test(src)
+        && /geo\.setAttribute\('uv', new THREE\.Float32BufferAttribute\(uv, 2\)\)/.test(src)
+        && /var pg = _surfPlateGeo\(ci0, t1, t2\);/.test(src)
+        /* ③ 两处材质都挂 map */
+        && /pmat\.map = makeGroundTex\(\); pmat\.needsUpdate = true;/.test(src)
+        && /var dt = makeGroundTex\(\);/.test(src)
+        && /dt\.repeat\.set\(_span \/ \(M\.GROUND_TEX_CELL \|\| 1\.6\)/.test(src)
+        /* ④ 接触阴影：场景级单例 + billboard 压扁（贴地圆盘在低仰角会压成一条线） */
+        && /M\._ensureContactShadow = function \(\)/.test(src)
+        && /_cs\.quaternion\.copy\(cam\.quaternion\);/.test(src)
+        && /_cs\.scale\.set\(1, 0\.45, 1\);/.test(src)
+        && /M\.CONTACT_SHADOW_R = 1\.05;/.test(src)
+        /* ⑤ dock 早退（地表层能建起来的前提） */
+        && /if \(M\._surf \|\| M\.FOLLOW \|\| fly\.phase === 'dock'\) \{/.test(src)
+        /* ⑥ 旧粗纹理不许复活（512² grainC + repeat 28 = 3.3m 一格糊块） */
+        && !/makeGrainTex\('c'\); dt\.repeat\.set\(28, 28\)/.test(src)
+        /* ⑦ 探针下限：纹理必须真的进画面（高频能量）、uv 无 NaN、阴影跟脚 */
+        && (function () {
+          var pr = _r608('.workbuddy/tools/probe/p_fly_v15861.js');
+          return /gain >= 20/.test(pr)
+            && /num\.uvCount === num\.posCount && num\.uvBad === 0/.test(pr)
+            && /cs\.distToFoot <= 0\.3/.test(pr)
+            && /v15861-A-ground-near\.png/.test(pr);
         })();
     })());
   })();

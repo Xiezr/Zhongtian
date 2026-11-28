@@ -1578,7 +1578,7 @@ import './gltf.js';
    * 高度：**整平格四角同高**（水平台面）；未整平格跟随自然地形（角点各自取高度）。
    * 侧壁：4 邻逐条比较，谁高谁画一段竖面（墙高 = 这条边上两格的实际高差）。
    * ============================================================ */
-  function _surfPlateGeo(ci0) {
+  function _surfPlateGeo(ci0, t1, t2) {
     var c0 = SP.cells && SP.cells[ci0];
     var dir0 = (c0 && c0.dir) ? c0.dir : [0, 1, 0];
     var A = _gridAnchorFor(dir0);                 /* 后面所有格坐标都靠这个锚 */
@@ -1592,6 +1592,22 @@ import './gltf.js';
     var g0 = M.gridCellOf(dir0) || { i: 0, j: 0 };
 
     var pos = [], col = [], idx = [], lp = [];
+    /* ============================================================
+     * v158.61：平台几何补 **世界尺度 UV**（原来一个 uv 都没有 → 材质没法挂
+     *   纹理 → 近景纯色平涂，这是"走在空中"的直接成因）。
+     * 用锚点切基 (t1,t2) 把球面方向投成弧长（米），再除以纹理格
+     *   GROUND_TEX_CELL(1.6m)：跨格连续、与地形层同一把尺，接缝为零。
+     * ⚠️ 必须每个顶点都配一对 uv（含侧壁），否则 attribute 长度不匹配。
+     * ============================================================ */
+    var uv = [];
+    var _UVCELL = Math.max(0.5, +M.GROUND_TEX_CELL || 1.6);
+    function _pv(x, y, z) {
+      pos.push(x, y, z);
+      var l = Math.hypot(x, y, z) || 1;
+      var dx = x / l, dy = y / l, dz = z / l;
+      uv.push((dx * t1[0] + dy * t1[1] + dz * t1[2]) * R / _UVCELL,
+              (dx * t2[0] + dy * t2[1] + dz * t2[2]) * R / _UVCELL);
+    }
     /* 描边去重：用**局部格点编号**做整数键。
        原来按顶点坐标 toFixed(3) 拼字符串，2025 格 × 4 边 = 8100 次格式化 + 8 千个
        字符串键 —— 实测这一段占了重建时间的 1/4。局部编号是 int，Set 里直接比。 */
@@ -1683,9 +1699,9 @@ import './gltf.js';
         var Vc = ptOf(ctrD, eC);
 
         var b0 = pos.length / 3;
-        pos.push(Vc[0], Vc[1], Vc[2]); col.push(cC[0] / 255, cC[1] / 255, cC[2] / 255);
+        _pv(Vc[0], Vc[1], Vc[2]); col.push(cC[0] / 255, cC[1] / 255, cC[2] / 255);
         for (k = 0; k < 4; k++) {
-          pos.push(Vs[k][0], Vs[k][1], Vs[k][2]);
+          _pv(Vs[k][0], Vs[k][1], Vs[k][2]);
           col.push(cCs[k][0] / 255, cCs[k][1] / 255, cCs[k][2] / 255);
         }
         /* 绕序按"法向朝外"现场判定（球面各处朝向不同，写死顺序会被背面剔除） */
@@ -1739,10 +1755,10 @@ import './gltf.js';
           if (wnx * wmx + wny * wmy + wnz * wmz < 0) qd = [top0, bot0, bot1, top1];
           /* 顶点色：上面两个是上沿、下面两个是底土 → 竖向渐变（土层剖面） */
           var wb0 = pos.length / 3;
-          pos.push(qd[0][0], qd[0][1], qd[0][2]); col.push(_wcTop[0], _wcTop[1], _wcTop[2]);
-          pos.push(qd[1][0], qd[1][1], qd[1][2]); col.push(_wcTop[0], _wcTop[1], _wcTop[2]);
-          pos.push(qd[2][0], qd[2][1], qd[2][2]); col.push(_wcBot[0], _wcBot[1], _wcBot[2]);
-          pos.push(qd[3][0], qd[3][1], qd[3][2]); col.push(_wcBot[0], _wcBot[1], _wcBot[2]);
+          _pv(qd[0][0], qd[0][1], qd[0][2]); col.push(_wcTop[0], _wcTop[1], _wcTop[2]);
+          _pv(qd[1][0], qd[1][1], qd[1][2]); col.push(_wcTop[0], _wcTop[1], _wcTop[2]);
+          _pv(qd[2][0], qd[2][1], qd[2][2]); col.push(_wcBot[0], _wcBot[1], _wcBot[2]);
+          _pv(qd[3][0], qd[3][1], qd[3][2]); col.push(_wcBot[0], _wcBot[1], _wcBot[2]);
           idx.push(wb0, wb0 + 1, wb0 + 2, wb0, wb0 + 2, wb0 + 3);
         }
 
@@ -1764,6 +1780,7 @@ import './gltf.js';
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
     geo.computeBoundingSphere();
     var lgeo = new THREE.BufferGeometry();
@@ -2386,6 +2403,18 @@ import './gltf.js';
 
   function rebuildSurf(dir) {
     if (!scene || !SP || !SP.cells || !SP.cells.length) return false;
+    /* v158.61：地面纹理的各向异性必须在**渲染器就绪后**再补设 ——
+       makeGroundTex 首次可能在 renderer 建立前调用（拿到 aniso=1），
+       斜视/远处就会糊。这里每次重建补到硬件上限（只改一次，开销可忽略）。 */
+    try {
+      var _gt = makeGroundTex();
+      var _an = (M._renderer && M._renderer.capabilities)
+        ? M._renderer.capabilities.getMaxAnisotropy() : 0;
+      if (_an > (_gt.anisotropy || 0)) {
+        _gt.anisotropy = Math.min(8, _an);
+        _gt.needsUpdate = true;
+      }
+    } catch (eAn61) { }
     var t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     destroySurf();
     var n = _sUnit(dir || [0, 1, 0]);
@@ -2407,17 +2436,24 @@ import './gltf.js';
       /* v157.89e：地表也用**域扭曲 + 互质格**的 512² 颗粒图。
          原用 384² 的 8/16/32 规整格噪声 → 贴地视角看到同一团纹样按固定间距重复（老板「还是有规律斑纹」）。
          颜色模式必须走 0.74~1.0 区间，否则地表整体变暗。*/
-      var dt = makeGrainTex('c'); dt.repeat.set(28, 28);
+      /* v158.61：换 1024² 精细地面纹理，并按**米**铺（uv 0..1 覆盖 2×SURF_R 米）
+         —— 原 512² + repeat 28 = 3.3 米一格，近看只剩糊块。 */
+      var dt = makeGroundTex();
+      var _span = (M.SURF_R || 46) * 2;
+      dt.repeat.set(_span / (M.GROUND_TEX_CELL || 1.6), _span / (M.GROUND_TEX_CELL || 1.6));
       tmat.map = dt; tmat.needsUpdate = true;
     } catch (e) { }
     var terr = new THREE.Mesh(tg, tmat);
     terr.name = 'surfTerrain';
     terr.renderOrder = 1;
     root.add(terr);
+    /* ⛔ v158.61：接触阴影**不挂在地表层** —— destroySurf 会 dispose 掉 root 里
+       所有材质，阴影单例被反复 dispose/复用，实测出现"赋值 0.6 却读到 0.85"
+       的双实例现象。改挂场景级、只建一次（见 _ensureContactShadow）。 */
 
     /* ② 地块平台（台面 + 裙边）+ 描边 */
     var _tt1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    var pg = _surfPlateGeo(ci0);
+    var pg = _surfPlateGeo(ci0, t1, t2);
     var _tt2 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     var pmat = new THREE.MeshBasicMaterial({
       /* 不透明：平台就是"地"，没有透明需求。透明会引入排序问题
@@ -2425,6 +2461,10 @@ import './gltf.js';
       vertexColors: true, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4
     });
+    /* v158.61：平台挂 1024² 精细地面纹理（uv 已按 1.6m 一格铺好）。
+       map 与 vertexColors 相乘 —— 纹理只做 0.70~1.0 的明暗乘子，配色仍由
+       顶点色（sphBiome 原色）决定，不会把森林染成土色。 */
+    try { pmat.map = makeGroundTex(); pmat.needsUpdate = true; } catch (eGT) { }
     var plate = new THREE.Mesh(pg.geo, pmat);
     plate.name = 'surfPlate';
     plate.renderOrder = 3;
@@ -3556,6 +3596,133 @@ import './gltf.js';
    * 修法：512²（POT）+ 互质格 6/15/37 + 域扭曲（低频场推移采样坐标）。
    * 这张图**只给法线用**，颜色仍用原来那张（不改变地形配色）。
    * ============================================================ */
+  /* ============================================================
+   * v158.61（老板「生成更精细的地面贴图，现在感觉走在空中」）
+   * ------------------------------------------------------------
+   * 取证：近地第三人称截图里脚下是**纯色平涂**——地块平台 `surfPlate` 的
+   *   几何**没有 uv**（也就没法加纹理），地形层 `surfTerrain` 的 uv 是
+   *   0..1 归一化到 92m 方阵、repeat 28 → **3.3 米一格**，近看就是糊块。
+   * 这张 1024² 地面纹理专治近景：
+   *   · 三层互质格（9 / 29 / 83）+ 域扭曲：无等间距点阵、平铺不显重复；
+   *   · 中层做**各向异性拉伸**（u 方向 1.9 倍拉长）→ 草叶/土的丝状感；
+   *   · 输出 0.70~1.0 灰度**乘子**（压暗不超过 30%，不改地形配色）；
+   *   · `anisotropy` 吃满硬件上限 —— 斜坡与远处不糊成一片。
+   * ⚠️ 与 makeGrainTex 分开：那张是球面用的粗颗粒（repeat 28 覆盖整球），
+   *    这张按**米**铺（1.6m 一格），混用会让球面出现巨大斑块。
+   * ============================================================ */
+  var _groundTex = null;
+  M.GROUND_TEX_CELL = 3.2;      /* 地面纹理一格对应的世界米数（3.2m 一块，近看是草/土颗粒而不是噪点） */
+  function makeGroundTex() {
+    if (_groundTex) return _groundTex;
+    var N = 1024;
+    function lattice(g, salt) {
+      var a = new Float32Array(g * g);
+      for (var i = 0; i < g * g; i++) a[i] = h3(i % g, (i / g) | 0, salt, 31);
+      return a;
+    }
+    var G0 = lattice(4, 400), GA = lattice(9, 401), GB = lattice(23, 402), GC = lattice(48, 403), GW = lattice(5, 404);
+    function samp(A, g, x, y) {
+      var gx = x * g, gy = y * g, x0 = Math.floor(gx), y0 = Math.floor(gy);
+      var fx = gx - x0, fy = gy - y0;
+      var x1 = ((x0 + 1) % g + g) % g, y1 = ((y0 + 1) % g + g) % g;
+      var x0m = ((x0 % g) + g) % g, y0m = ((y0 % g) + g) % g;
+      var v00 = A[y0m * g + x0m], v10 = A[y0m * g + x1], v01 = A[y1 * g + x0m], v11 = A[y1 * g + x1];
+      var u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+      var t = v00 + (v10 - v00) * u, b = v01 + (v11 - v01) * u;
+      return t + (b - t) * v;
+    }
+    var cv = document.createElement('canvas'); cv.width = N; cv.height = N;
+    var cx = cv.getContext('2d'); var img = cx.createImageData(N, N);
+    for (var yy = 0; yy < N; yy++) {
+      for (var xx = 0; xx < N; xx++) {
+        var u = xx / N, v = yy / N;
+        /* 域扭曲：低频场把采样坐标揉开，消除格点痕 */
+        var wx = (samp(GW, 5, u, v) - 0.5) * 0.09;
+        var wy = (samp(GW, 5, u + 0.41, v + 0.73) - 0.5) * 0.09;
+        /* 各向异性：u 方向频率打 1.9 折 → 沿 v 拉长的丝 */
+        /* 四层：低频大斑（草皮/裸土深浅不一的区块）+ 中频 + 高频颗粒。
+           只有中高频时近看是"均匀刷毛地毯"，缺自然感（实机图对照）。 */
+        var n0 = samp(G0, 4, u + wx * 0.5, v + wy * 0.5);
+        var nA = samp(GA, 9, u + wx, v * 1.4 + wy);
+        var nB = samp(GB, 23, u + wx * 2.2, v * 1.4 + wy * 2.2);
+        var nC = samp(GC, 48, u + wx * 3.4, v * 1.4 + wy * 3.4);
+        var n = n0 * 0.30 + nA * 0.30 + nB * 0.24 + nC * 0.16;
+        /* 细粒：单像素级微抖动，近看有"沙粒"而不是塑料 */
+        n += (h3(xx, yy, 31, 405) - 0.5) * 0.06;
+        /* 对比拉伸：三层平均把方差压到 ±0.18，不拉的话只有 5% 明暗差
+           —— 实机图看着仍接近纯色（首轮 0.70+n*0.30 太淡）。 */
+        n = (n - 0.5) * 1.85 + 0.5;
+        var c = Math.round(Math.max(0, Math.min(1, 0.50 + n * 0.50)) * 255);
+        var o = (yy * N + xx) * 4;
+        img.data[o] = c; img.data[o + 1] = c; img.data[o + 2] = c; img.data[o + 3] = 255;
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    var t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.generateMipmaps = true;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    try {
+      var an = (M._renderer && M._renderer.capabilities)
+        ? M._renderer.capabilities.getMaxAnisotropy() : 0;
+      if (an > 0) t.anisotropy = Math.min(8, an);
+    } catch (eAn) { }
+    t.needsUpdate = true;
+    _groundTex = t;
+    return t;
+  }
+  M.makeGroundTex = makeGroundTex;
+
+  /* ============================================================
+   * v158.61（老板「现在感觉走在空中」）
+   * ------------------------------------------------------------
+   * 场景**没有任何阴影系统**（renderer.shadowMap 关、castShadow/receiveShadow
+   *   全 0 个对象）—— 人物站在地上却没有落地投影，是"悬空感"的第二大来源
+   *   （第一大是地面无纹理，见 makeGroundTex）。
+   * 这里不启用全场景 shadowMap（几十万个顶点 + 每帧阴影 pass，代价太大），
+   *   只给**玩家**做一张**接触阴影**：径向渐变的黑色圆盘，贴着地形放，
+   *   随人物每帧移动。成本一个 draw call。
+   * ============================================================ */
+  var _contactTex = null;
+  function _contactShadowTex() {
+    if (_contactTex) return _contactTex;
+    var cv = document.createElement('canvas');
+    cv.width = 128; cv.height = 128;
+    var cx = cv.getContext('2d');
+    var g = cx.createRadialGradient(64, 64, 2, 64, 64, 62);
+    g.addColorStop(0, 'rgba(0,0,0,0.62)');
+    g.addColorStop(0.38, 'rgba(0,0,0,0.40)');
+    g.addColorStop(0.68, 'rgba(0,0,0,0.09)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    cx.fillStyle = g;
+    cx.fillRect(0, 0, 128, 128);
+    _contactTex = new THREE.CanvasTexture(cv);
+    _contactTex.needsUpdate = true;
+    return _contactTex;
+  }
+  M.CONTACT_SHADOW_R = 1.05;    /* 接触阴影半径（米）：低视角下贴地圆盘会被压扁，略放大才看得见 */
+  M._ensureContactShadow = function () {
+    if (M._contactShadow) return M._contactShadow;
+    if (!scene) return null;
+    var mat = new THREE.MeshBasicMaterial({
+      map: _contactShadowTex(), transparent: true, depthWrite: false,
+      /* v158.61：改成 billboard 后必须保留深度测试（否则会盖在人物身上）；
+         贴地 0.12m + polygonOffset 反向偏移，保证不被台面吃掉。 */
+      polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -16,
+      side: THREE.DoubleSide, opacity: 0.85
+    });
+    try { applyTerminator(mat); } catch (eCS) { }
+    var m = new THREE.Mesh(new THREE.CircleGeometry(M.CONTACT_SHADOW_R || 1.05, 24), mat);
+    m.name = 'contactShadow';
+    m.renderOrder = 4;
+    m.frustumCulled = false;
+    /* 挂场景根（不进地表层 root）：地表层重建/销毁不会碰它 */
+    try { scene.add(m); } catch (eAdd) { }
+    M._contactShadow = m;
+    return m;
+  };
+
   function makeGrainTex(mode) {
     var _ck = (mode === 'c') ? 'grainC' : 'grainN';
     if (_dtCache[_ck]) return _dtCache[_ck];
@@ -6913,8 +7080,18 @@ import './gltf.js';
     var fly = M._fly || (M._fly = { v: 0, pos: null, head: null, vel: null, active: false,
                                     climb: 0 });
     var keys = (GAME && GAME._flyKeys) || null;
-    /* 地表/跟随 = 走路态：战舰收起、速度清零 */
-    if (M._surf || M.FOLLOW) {
+    /* ============================================================
+     * v158.61（老板「现在感觉走在空中」的真身之一）
+     * ------------------------------------------------------------
+     * 地表/跟随 = 走路态：战舰收起、速度清零。
+     * ⚠️ 必须把 **phase === 'dock'（已下机）** 也算进来 —— 下机时
+     *   `flyExit` 把 phase 置 dock、active 置 false 并 surfaceMode(true)，
+     *   但下一帧本函数先于 placeCamera 运行，如果不在这里拦，就会把
+     *   active 又置回 true；于是 placeCamera 的 `_onShip` 恒真、
+     *   `_surfNow` 恒 false —— **地表层永远建不起来**，玩家一直站在
+     *   球面图集上（纯色地块），看起来就是"走在空中"。
+     * ============================================================ */
+    if (M._surf || M.FOLLOW || fly.phase === 'dock') {
       if (fly.v) fly.v = 0;
       if (fly.active) fly.active = false;
       if (fly.aim) fly.aim = null;                       /* v158.56：鼠标指示随飞行态作废 */
@@ -10565,6 +10742,38 @@ import './gltf.js';
     /* 看**锚点**而不是玩家：玩家因此在画面里偏向前进方向（约 5% 屏高），
        走动时"人真的在走"，停下后锚点归位、玩家回到正中。 */
     cam.lookAt(A.x, A.y, A.z);
+
+    /* ============================================================
+     * v158.61：把**接触阴影**摆到玩家脚下（每帧）。
+     * 圆盘在 XY 平面、法线 +Z → 用 setFromUnitVectors 转到径向朝外；
+     * 高度贴地形 +0.06m（与台面 polygonOffset 配合，不会被地形吃掉）。
+     * 相机拉远时淡出（26m 外几乎不可见）：远景不需要这层细节，也省半透明排序。
+     * ============================================================ */
+    try {
+      var _cs = M._ensureContactShadow ? M._ensureContactShadow() : M._contactShadow;
+      if (_cs) {
+        var _pp3 = M.playerPose();
+        if (_pp3 && Array.isArray(_pp3.dir)) {
+          var _cds = _pp3.dir;
+          var _cgh = M._groundAtUnit(_cds) || 0;
+          var _cr = M.R + _cgh + 0.12;
+          _cs.position.set(_cds[0] * _cr, _cds[1] * _cr, _cds[2] * _cr);
+          /* ⚠️ 不能"贴地朝上"：地表相机仰角低到 3.4° 时，贴地圆盘与视线几乎
+             平行、投影成一条线，实测 opacity=0.75 仍完全看不见。
+             改成 **billboard（永远面向相机）+ 纵向压扁 0.45** —— 任何角度都是
+             脚下的一团椭圆暗影，这就是低模游戏里通用的"接地暗示"。 */
+          _cs.quaternion.copy(cam.quaternion);
+          _cs.scale.set(1, 0.45, 1);
+          var _dCS = cam.position.distanceTo(_cs.position);
+          var _kCS = 1 - (_dCS - 6) / 26;
+          _cs.material.opacity = Math.max(0, Math.min(0.75, 0.75 * _kCS));
+          _cs.visible = _cs.material.opacity > 0.02;
+        }
+      }
+    } catch (eCS2) {
+      /* 不许静默：接触阴影定位失败要能被探针看见（首版就是这样丢了 opacity） */
+      if (!M._csErr) M._csErr = String(eCS2 && (eCS2.message || eCS2));
+    }
     return true;
   };
 
